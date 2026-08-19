@@ -9,22 +9,11 @@ export type RfpStatus =
   | "won"
   | "lost";
 export type RequirementStatus =
-  | "unanswered"
-  | "drafted"
-  | "needs_review"
-  | "changes_requested"
-  | "approved"
-  | "rejected";
+  "unanswered" | "drafted" | "needs_review" | "changes_requested" | "approved" | "rejected";
 export type Freshness = "fresh" | "aging" | "stale" | "conflicting";
 export type Authority = "high" | "medium" | "low";
 export type RequirementCategory =
-  | "Security"
-  | "Commercial"
-  | "Compliance"
-  | "Product"
-  | "Legal"
-  | "Architecture"
-  | "Support";
+  "Security" | "Commercial" | "Compliance" | "Product" | "Legal" | "Architecture" | "Support";
 
 export interface Person {
   id: string;
@@ -190,13 +179,7 @@ export interface SubmissionVersion {
 
 export interface NotificationItem {
   id: string;
-  category:
-    | "Reviews"
-    | "Assignments"
-    | "Risks"
-    | "Deadlines"
-    | "Knowledge"
-    | "Submissions";
+  category: "Reviews" | "Assignments" | "Risks" | "Deadlines" | "Knowledge" | "Submissions";
   title: string;
   detail: string;
   at: string;
@@ -212,4 +195,78 @@ export interface AnalyticsSnapshot {
   acceptance: { month: string; accepted: number; edited: number }[];
   completionTime: { month: string; days: number }[];
   smePerformance: { team: string; hours: number; reviews: number }[];
+}
+
+export interface OrgProfile {
+  name: string;
+  domain: string;
+  plan: "Starter" | "Growth" | "Enterprise";
+  seats: number;
+  seatsUsed: number;
+  industry: string;
+  logoInitials: string;
+}
+
+export interface MemberSetting {
+  id: string;
+  personId: string;
+  email: string;
+  role: "Admin" | "Proposal Manager" | "Contributor" | "Reviewer" | "Viewer";
+  status: "active" | "invited" | "suspended";
+  lastActive: string;
+}
+
+export interface RoleSetting {
+  id: string;
+  name: string;
+  description: string;
+  memberCount: number;
+  permissions: string[];
+}
+
+export interface AiSetting {
+  id: string;
+  label: string;
+  description: string;
+  value: boolean | number | string;
+  kind: "toggle" | "select" | "slider";
+  options?: string[];
+  /** Upper bound for `kind: "slider"` settings; defaults to 100 when omitted. */
+  max?: number;
+}
+
+export interface IntegrationSetting {
+  id: string;
+  name: string;
+  category: string;
+  connected: boolean;
+  description: string;
+  lastSynced: string | null;
+}
+
+export interface NotificationPreference {
+  id: string;
+  category: string;
+  label: string;
+  email: boolean;
+  inApp: boolean;
+  digest: boolean;
+}
+
+export interface ApiKeySetting {
+  id: string;
+  label: string;
+  prefix: string;
+  createdAt: string;
+  lastUsed: string | null;
+  scopes: string[];
+}
+
+export interface McpConnection {
+  id: string;
+  name: string;
+  transport: "stdio" | "http" | "sse";
+  status: "connected" | "disconnected" | "error";
+  toolsExposed: number;
+  description: string;
 }
