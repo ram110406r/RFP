@@ -4,7 +4,7 @@ A complete, production-quality frontend for an AI-powered RFP Operating System: 
 
 ## Stack note
 
-This project runs on TanStack Start + React + TypeScript + Tailwind v4 + shadcn/ui + Lucide + TanStack Query (Next.js is not supported here; routing uses TanStack Router file routes). React Hook Form + Zod are already available. Everything else in the brief is unchanged.
+TanStack Start + TanStack Router are the prototype framework (Next.js cannot run on this platform). They are treated as the routing shell only: no business logic is coupled to the router, URLs match the intended Next.js App Router paths exactly, and all backend communication stays behind `src/lib/api/*` so a production NestJS service can be swapped in without UI changes. MCP stays a backend concern — Settings shows a UI representation only. Stack: React, TypeScript, Tailwind v4, shadcn/ui, Lucide, TanStack Query, React Hook Form + Zod, Recharts.
 
 ## Design system
 
