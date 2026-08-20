@@ -1,8 +1,20 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { KeyRound, Plug, ShieldCheck } from "lucide-react";
+import {
+  Bell,
+  Boxes,
+  Building2,
+  KeyRound,
+  Lock,
+  Plug,
+  ShieldCheck,
+  Sparkles,
+  User,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import {
   aiSettingsQueryOptions,
   apiKeysQueryOptions,
@@ -30,7 +42,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getPerson, CURRENT_USER_ID } from "@/data/people";
 import { cn } from "@/lib/utils";
 import type { AiSetting } from "@/types";
@@ -53,86 +64,136 @@ export const Route = createFileRoute("/settings")({
   component: Settings,
 });
 
-const TABS = [
-  "Profile",
-  "Org",
-  "Members",
-  "Roles",
-  "AI",
-  "Knowledge",
-  "Integrations",
-  "Notifications",
-  "Security",
-  "API",
-  "MCP",
+interface SettingsSection {
+  id: string;
+  label: string;
+  group: "Account" | "Organization" | "Configuration" | "Security";
+  icon: LucideIcon;
+  content: () => ReactNode;
+}
+
+const SECTIONS: SettingsSection[] = [
+  { id: "Profile", label: "Profile", group: "Account", icon: User, content: () => <ProfileTab /> },
+  {
+    id: "Org",
+    label: "Organization",
+    group: "Organization",
+    icon: Building2,
+    content: () => <OrgTab />,
+  },
+  {
+    id: "Members",
+    label: "Members",
+    group: "Organization",
+    icon: Users,
+    content: () => <MembersTab />,
+  },
+  {
+    id: "Roles",
+    label: "Roles & permissions",
+    group: "Organization",
+    icon: ShieldCheck,
+    content: () => <RolesTab />,
+  },
+  {
+    id: "AI",
+    label: "AI",
+    group: "Configuration",
+    icon: Sparkles,
+    content: () => <TogglesTab queryOptions={aiSettingsQueryOptions} />,
+  },
+  {
+    id: "Knowledge",
+    label: "Knowledge",
+    group: "Configuration",
+    icon: Boxes,
+    content: () => <TogglesTab queryOptions={knowledgeSettingsQueryOptions} />,
+  },
+  {
+    id: "Integrations",
+    label: "Integrations",
+    group: "Configuration",
+    icon: Plug,
+    content: () => <IntegrationsTab />,
+  },
+  {
+    id: "Notifications",
+    label: "Notifications",
+    group: "Configuration",
+    icon: Bell,
+    content: () => <NotificationsTab />,
+  },
+  {
+    id: "Security",
+    label: "Security",
+    group: "Security",
+    icon: Lock,
+    content: () => <SecurityTab />,
+  },
+  { id: "API", label: "API", group: "Security", icon: KeyRound, content: () => <ApiTab /> },
+  { id: "MCP", label: "MCP", group: "Security", icon: Boxes, content: () => <McpTab /> },
 ];
 
+const GROUPS: SettingsSection["group"][] = ["Account", "Organization", "Configuration", "Security"];
+
 function Settings() {
+  const [active, setActive] = useState("Profile");
+
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Workspace"
         title="Settings"
         description="Manage your profile, organization, and RFP OS configuration."
       />
 
-      <Tabs defaultValue="Profile">
-        <TabsList className="h-auto flex-wrap justify-start gap-1 bg-transparent p-0">
-          {TABS.map((tab) => (
-            <TabsTrigger
-              key={tab}
-              value={tab}
-              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground data-[state=active]:shadow-none"
-            >
-              {tab}
-            </TabsTrigger>
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <nav
+          className="flex shrink-0 flex-col gap-4 overflow-x-auto lg:w-56 lg:overflow-visible"
+          aria-label="Settings sections"
+        >
+          {GROUPS.map((group) => (
+            <div key={group} className="flex gap-1 lg:flex-col">
+              <p className="hidden px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground lg:block">
+                {group}
+              </p>
+              {SECTIONS.filter((s) => s.group === group).map((section) => {
+                const Icon = section.icon;
+                const isActive = section.id === active;
+                return (
+                  <button
+                    key={section.id}
+                    onClick={() => setActive(section.id)}
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      "flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">{section.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           ))}
-        </TabsList>
+        </nav>
 
         {/*
-          forceMount + data-[state=inactive]:hidden keeps every tab's local
-          state (unsaved form edits, optimistic toggles) alive across tab
-          switches instead of unmounting it — Radix drops the subtree on
-          switch by default, which silently discards in-progress edits.
+          Every section stays mounted (just hidden) so unsaved local state —
+          form edits, optimistic toggles — survives switching away and back,
+          instead of resetting to server data on remount.
         */}
-        <TabsContent
-          value="Profile"
-          forceMount
-          className="max-w-lg space-y-4 data-[state=inactive]:hidden"
-        >
-          <ProfileTab />
-        </TabsContent>
-
-        <TabsContent value="Org" forceMount className="data-[state=inactive]:hidden">
-          <OrgTab />
-        </TabsContent>
-        <TabsContent value="Members" forceMount className="data-[state=inactive]:hidden">
-          <MembersTab />
-        </TabsContent>
-        <TabsContent value="Roles" forceMount className="data-[state=inactive]:hidden">
-          <RolesTab />
-        </TabsContent>
-        <TabsContent value="AI" forceMount className="data-[state=inactive]:hidden">
-          <TogglesTab queryOptions={aiSettingsQueryOptions} />
-        </TabsContent>
-        <TabsContent value="Knowledge" forceMount className="data-[state=inactive]:hidden">
-          <TogglesTab queryOptions={knowledgeSettingsQueryOptions} />
-        </TabsContent>
-        <TabsContent value="Integrations" forceMount className="data-[state=inactive]:hidden">
-          <IntegrationsTab />
-        </TabsContent>
-        <TabsContent value="Notifications" forceMount className="data-[state=inactive]:hidden">
-          <NotificationsTab />
-        </TabsContent>
-        <TabsContent value="Security" forceMount className="data-[state=inactive]:hidden">
-          <SecurityTab />
-        </TabsContent>
-        <TabsContent value="API" forceMount className="data-[state=inactive]:hidden">
-          <ApiTab />
-        </TabsContent>
-        <TabsContent value="MCP" forceMount className="data-[state=inactive]:hidden">
-          <McpTab />
-        </TabsContent>
-      </Tabs>
+        <div className="min-w-0 flex-1">
+          {SECTIONS.map((section) => (
+            <div key={section.id} className={cn(section.id !== active && "hidden")}>
+              {section.content()}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -143,7 +204,7 @@ function ProfileTab() {
   const [email, setEmail] = useState("priya.nair@halcyonsystems.com");
 
   return (
-    <>
+    <div className="max-w-lg space-y-4">
       <div className="flex items-center gap-3">
         <PersonAvatar personId={CURRENT_USER_ID} className="h-14 w-14 text-base" />
         <div>
@@ -168,7 +229,7 @@ function ProfileTab() {
       <Button size="sm" onClick={() => toast.success("Profile updated")}>
         Save changes
       </Button>
-    </>
+    </div>
   );
 }
 
@@ -208,7 +269,7 @@ function OrgTab() {
 function MembersTab() {
   const { data: members } = useSuspenseQuery(membersQueryOptions());
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
+    <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -396,7 +457,7 @@ function NotificationsTab() {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
+    <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -493,7 +554,7 @@ function ApiTab() {
           <KeyRound className="h-3.5 w-3.5" /> Create API key
         </Button>
       </div>
-      <div className="overflow-x-auto rounded-xl border bg-card">
+      <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
             <tr>

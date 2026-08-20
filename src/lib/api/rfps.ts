@@ -26,6 +26,7 @@ export interface NewRfpInput {
   deadline: string;
   ownerId: string;
   documents: { name: string; type: RfpDocument["type"]; sizeMb: number }[];
+  collaboratorIds?: string[];
   asDraft?: boolean;
 }
 
@@ -59,7 +60,7 @@ export async function createRfp(input: NewRfpInput): Promise<Rfp> {
       sizeMb: doc.sizeMb,
       status: input.asDraft ? ("queued" as const) : ("processing" as const),
     })),
-    collaboratorIds: [input.ownerId],
+    collaboratorIds: Array.from(new Set([input.ownerId, ...(input.collaboratorIds ?? [])])),
   };
   rfps.unshift(rfp);
   return delay(rfp, 400);

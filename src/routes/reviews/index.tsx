@@ -55,6 +55,7 @@ function ReviewsQueue() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Review queue"
         title="Reviews"
         description={`${pendingCount} awaiting review, ${overdueCount} overdue`}
       />
@@ -91,7 +92,7 @@ function ReviewsQueue() {
       {filtered.length === 0 ? (
         <EmptyState title="Nothing here" description="No reviews match your filters." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card">
+        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <tr>

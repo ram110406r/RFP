@@ -50,6 +50,7 @@ function KnowledgeList() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Knowledge base"
         title="Knowledge"
         description={`${sources.length} sources powering AI-drafted answers`}
       />
@@ -96,7 +97,7 @@ function KnowledgeList() {
           description="Try a different search or filter."
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card">
+        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <tr>

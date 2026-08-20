@@ -117,6 +117,7 @@ function ReviewDetail() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Review"
         title={`${review.requirementCode} — ${review.requirementTitle}`}
         description={
           <Link to="/rfps/$rfpId" params={{ rfpId: review.rfpId }} className="hover:underline">

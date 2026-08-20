@@ -223,6 +223,7 @@ function NewRfpPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="New request"
         title="New RFP"
         description="Upload the RFP package and let AI Assistant extract requirements automatically."
       />

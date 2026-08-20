@@ -179,6 +179,15 @@
   background-color: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: 1rem;
+  box-shadow: 0 1px 2px 0 oklch(0.19 0.012 250 / 4%);
+}
+
+@utility eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
 }
 
 @utility num {

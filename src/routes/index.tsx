@@ -1,9 +1,12 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Copy,
+  ExternalLink,
   FilePlus2,
   ShieldAlert,
   TrendingUp,
@@ -15,11 +18,15 @@ import { activityFeedQueryOptions } from "@/lib/api/activity";
 import { PageHeader } from "@/components/common/page-header";
 import { MetricTile } from "@/components/common/metric-tile";
 import { StatusBadge } from "@/components/common/status-badge";
+import { RiskBadge } from "@/components/common/risk-badge";
 import { PersonAvatar } from "@/components/common/person-avatar";
 import { ActivityTimeline } from "@/components/common/activity-timeline";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageSkeleton } from "@/components/common/page-skeleton";
+import { RowActionsMenu } from "@/components/common/row-actions-menu";
+import { toneClasses } from "@/components/common/tone";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { getPerson, CURRENT_USER_ID } from "@/data/people";
 
 const ACTIVE_STATUSES = ["analyzing", "in_progress", "review", "needs_attention"] as const;
@@ -56,6 +63,12 @@ function Dashboard() {
   const { data: reviews } = useSuspenseQuery(reviewsQueryOptions());
   const { data: activity } = useSuspenseQuery(activityFeedQueryOptions());
   const me = getPerson(CURRENT_USER_ID);
+  const navigate = useNavigate();
+
+  function copyRfpLink(rfpId: string) {
+    void navigator.clipboard.writeText(`${window.location.origin}/rfps/${rfpId}`);
+    toast.success("Link copied");
+  }
 
   const activeRfps = rfps.filter((r) => (ACTIVE_STATUSES as readonly string[]).includes(r.status));
   const dueThisWeek = activeRfps.filter(
@@ -66,6 +79,14 @@ function Dashboard() {
   const avgReadiness = activeRfps.length
     ? Math.round(activeRfps.reduce((sum, r) => sum + r.readiness, 0) / activeRfps.length)
     : 0;
+  const highRiskShare = requirements.length
+    ? Math.round((highRiskReqs.length / requirements.length) * 100)
+    : 0;
+
+  const myTasks = reviews
+    .filter((r) => r.mine && (r.status === "pending" || r.status === "in_review"))
+    .sort((a, b) => a.due.localeCompare(b.due))
+    .slice(0, 5);
 
   const attention = [
     ...requirements
@@ -104,6 +125,7 @@ function Dashboard() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Operating console"
         title={`${greeting()}, ${me?.name.split(" ")[0]}`}
         description="Here's what needs your attention across the pipeline today."
         actions={
@@ -119,37 +141,50 @@ function Dashboard() {
         <MetricTile
           label="Active RFPs"
           value={activeRfps.length}
+          hint={`${rfps.length} total in pipeline`}
           icon={<TrendingUp className="h-4 w-4" />}
         />
         <MetricTile
           label="Due this week"
           value={dueThisWeek.length}
+          hint={dueThisWeek.length > 0 ? "Needs prioritization" : "None upcoming"}
           tone={dueThisWeek.length > 0 ? "warning" : "neutral"}
           icon={<Clock className="h-4 w-4" />}
         />
         <MetricTile
           label="Awaiting review"
           value={awaitingReview.length}
+          hint={`${reviews.filter((r) => r.overdue).length} overdue`}
           tone={awaitingReview.length > 5 ? "warning" : "neutral"}
           icon={<CheckCircle2 className="h-4 w-4" />}
         />
         <MetricTile
           label="High-risk requirements"
           value={highRiskReqs.length}
+          hint={`${highRiskShare}% of all requirements`}
           tone="danger"
           icon={<ShieldAlert className="h-4 w-4" />}
         />
         <MetricTile
           label="Avg. submission readiness"
           value={`${avgReadiness}%`}
+          hint="Across active RFPs"
           icon={<TrendingUp className="h-4 w-4" />}
         />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-3 xl:col-span-2">
-          <h2 className="text-sm font-semibold text-foreground">Pipeline</h2>
-          <div className="overflow-x-auto rounded-xl border bg-card">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">Active RFPs</h2>
+            <Link
+              to="/rfps"
+              className="text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              View all
+            </Link>
+          </div>
+          <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -159,61 +194,129 @@ function Dashboard() {
                   <th className="px-4 py-2.5 font-medium">Risk</th>
                   <th className="px-4 py-2.5 font-medium">Deadline</th>
                   <th className="px-4 py-2.5 font-medium">Status</th>
+                  <th className="w-10 px-4 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {rfps.slice(0, 8).map((rfp) => (
-                  <tr key={rfp.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3">
-                      <Link
-                        to="/rfps/$rfpId"
-                        params={{ rfpId: rfp.id }}
-                        className="font-medium text-foreground hover:underline"
-                      >
-                        {rfp.title}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">{rfp.customer}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
+                {rfps.slice(0, 8).map((rfp) => {
+                  const worstRisk =
+                    rfp.riskCount.critical > 0
+                      ? "critical"
+                      : rfp.riskCount.high > 0
+                        ? "high"
+                        : null;
+                  return (
+                    <tr
+                      key={rfp.id}
+                      className="cursor-pointer hover:bg-muted/30"
+                      onClick={() => navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } })}
+                    >
+                      <td className="max-w-[220px] px-4 py-3">
+                        <Link
+                          to="/rfps/$rfpId"
+                          params={{ rfpId: rfp.id }}
+                          title={rfp.title}
+                          className="block truncate font-medium text-foreground hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {rfp.title}
+                        </Link>
+                        <p className="truncate text-xs text-muted-foreground">{rfp.customer}</p>
+                      </td>
+                      <td className="px-4 py-3" title={getPerson(rfp.ownerId)?.name}>
                         <PersonAvatar personId={rfp.ownerId} />
-                        <span className="text-xs text-muted-foreground">
-                          {getPerson(rfp.ownerId)?.name}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="h-full rounded-full bg-primary"
-                            style={{ width: `${rfp.progress}%` }}
-                          />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary"
+                              style={{ width: `${rfp.progress}%` }}
+                            />
+                          </div>
+                          <span className="num text-xs text-muted-foreground">{rfp.progress}%</span>
                         </div>
-                        <span className="num text-xs text-muted-foreground">{rfp.progress}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {rfp.riskCount.critical + rfp.riskCount.high > 0 ? (
-                        <span className="font-medium text-danger">
-                          {rfp.riskCount.critical + rfp.riskCount.high} high+
-                        </span>
-                      ) : (
-                        <span>None</span>
-                      )}
-                    </td>
-                    <td className="num px-4 py-3 text-xs text-muted-foreground">{rfp.deadline}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={rfp.status} />
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3">
+                        {worstRisk ? (
+                          <RiskBadge risk={worstRisk} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">None</span>
+                        )}
+                      </td>
+                      <td className="num px-4 py-3 text-xs text-muted-foreground">
+                        {rfp.deadline}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={rfp.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <RowActionsMenu
+                          actions={[
+                            {
+                              label: "Open workspace",
+                              icon: ExternalLink,
+                              onSelect: () =>
+                                navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } }),
+                            },
+                            {
+                              label: "Copy link",
+                              icon: Copy,
+                              onSelect: () => copyRfpLink(rfp.id),
+                            },
+                          ]}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
 
         <div className="space-y-6">
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-foreground">My tasks</h2>
+            <div className="surface-panel divide-y p-0">
+              {myTasks.length === 0 ? (
+                <EmptyState
+                  title="No open reviews"
+                  description="You're all caught up."
+                  className="border-none py-8"
+                />
+              ) : (
+                myTasks.map((task) => (
+                  <Link
+                    key={task.id}
+                    to="/reviews/$reviewId"
+                    params={{ reviewId: task.id }}
+                    className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-muted/30"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-foreground">
+                        {task.requirementCode} · {task.requirementTitle}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {task.rfpTitle} — due {task.due}
+                      </span>
+                    </span>
+                    {task.overdue && (
+                      <span
+                        className={cn(
+                          "inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-medium leading-none",
+                          toneClasses.danger,
+                        )}
+                      >
+                        Overdue
+                      </span>
+                    )}
+                  </Link>
+                ))
+              )}
+            </div>
+          </div>
+
           <div className="space-y-3">
             <h2 className="text-sm font-semibold text-foreground">Attention required</h2>
             <div className="surface-panel divide-y p-0">

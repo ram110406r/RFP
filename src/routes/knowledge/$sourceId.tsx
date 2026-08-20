@@ -33,6 +33,7 @@ function KnowledgeDetail() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Knowledge source"
         title={source.name}
         description={`${source.type} · ${source.category} · v${source.version}`}
         actions={<FreshnessBadge freshness={source.freshness} />}
@@ -63,7 +64,7 @@ function KnowledgeDetail() {
         </TabsContent>
 
         <TabsContent value="claims">
-          <div className="overflow-x-auto rounded-xl border bg-card">
+          <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <tr>

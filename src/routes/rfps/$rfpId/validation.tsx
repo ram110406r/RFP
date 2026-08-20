@@ -71,10 +71,14 @@ function Validation() {
     severity,
     issues: snapshot.issues.filter((i) => i.severity === severity),
   }));
+  const blockingIssues = snapshot.issues.filter(
+    (i) => i.severity === "critical" || i.severity === "high",
+  );
+  const ready = blockingIssues.length === 0;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col items-start gap-6 rounded-xl border bg-card p-5 sm:flex-row sm:items-center">
+      <div className="flex flex-col items-start gap-6 rounded-xl border bg-card shadow-sm p-5 sm:flex-row sm:items-center">
         <div className="relative flex h-24 w-24 shrink-0 items-center justify-center">
           <svg viewBox="0 0 36 36" className="h-24 w-24 -rotate-90">
             <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--border)" strokeWidth="3" />
@@ -99,12 +103,20 @@ function Validation() {
             {snapshot.score}%
           </span>
         </div>
-        <div>
+        <div className="space-y-1.5">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide",
+              ready ? "bg-success-soft text-success" : "bg-danger-soft text-danger",
+            )}
+          >
+            {ready ? "Ready for submission" : "Not ready"}
+          </span>
           <h1 className="text-lg font-semibold text-foreground">Submission readiness</h1>
           <p className="text-sm text-muted-foreground">
-            {snapshot.score >= 80
-              ? "Nearly ready — resolve remaining issues below before generating the package."
-              : "Not yet ready for submission. Work through the categories and issues below."}
+            {ready
+              ? "All critical and high-severity issues are resolved. Review the remaining items below before generating the package."
+              : `Blocked by ${blockingIssues.length} critical/high-severity ${blockingIssues.length === 1 ? "issue" : "issues"} — resolve them below before submission.`}
           </p>
         </div>
       </div>

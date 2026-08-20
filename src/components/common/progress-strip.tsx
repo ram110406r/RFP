@@ -18,7 +18,7 @@ export function ProgressStrip({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border bg-card px-4 py-3",
+        "flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border bg-card shadow-sm px-4 py-3",
         className,
       )}
     >

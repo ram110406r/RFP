@@ -30,6 +30,7 @@ function Submissions() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Delivery"
         title="Submissions"
         description="Track submission readiness and history across every RFP."
       />
@@ -41,7 +42,7 @@ function Submissions() {
           description="Submission packages will appear here once an RFP is ready."
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card">
+        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <tr>

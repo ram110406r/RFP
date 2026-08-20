@@ -64,6 +64,7 @@ function Analytics() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Insights"
         title="Analytics"
         description="Pipeline performance, risk, and AI drafting quality over the last 6 months."
       />
