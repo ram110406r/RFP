@@ -1,8 +1,50 @@
-import { Module } from "@nestjs/common";
+import { Module, RequestMethod, type MiddlewareConsumer, type NestModule } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { ThrottlerModule } from "@nestjs/throttler";
 
+import { AppThrottlerGuard } from "./common/guards/app-throttler.guard";
+import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
+import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
+import { TimeoutInterceptor } from "./common/interceptors/timeout.interceptor";
+import { ZodValidationInterceptor } from "./common/interceptors/zod-validation.interceptor";
+import { LoggerModule } from "./common/logger/logger.module";
+import { RequestIdMiddleware } from "./common/middleware/request-id.middleware";
+import { AppConfigModule } from "./config/app-config.module";
+import type { Env } from "./config/env.schema";
 import { HealthModule } from "./health/health.module";
+import { DatabaseModule } from "./infrastructure/database";
 
 @Module({
-  imports: [HealthModule],
+  imports: [
+    AppConfigModule,
+    LoggerModule,
+    DatabaseModule,
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) => ({
+        throttlers: [
+          {
+            ttl: config.get("RATE_LIMIT_TTL_MS", { infer: true }),
+            limit: config.get("RATE_LIMIT_LIMIT", { infer: true }),
+          },
+        ],
+      }),
+    }),
+    HealthModule,
+  ],
+  providers: [
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: TimeoutInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: ZodValidationInterceptor },
+  ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Express 5's router requires the named-wildcard form ("*splat"), not
+    // the bare "*" that worked under Nest + Express 4.
+    consumer.apply(RequestIdMiddleware).forRoutes({ path: "*splat", method: RequestMethod.ALL });
+  }
+}
