@@ -6,13 +6,8 @@ import { requirementsForRfpQueryOptions } from "@/lib/api/requirements";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageSkeleton } from "@/components/common/page-skeleton";
 import { cn } from "@/lib/utils";
-import type {
-  RequirementCategory,
-  RiskLevel,
-  RequirementStatus,
-  ValidationCategory,
-  ValidationIssue,
-} from "@/types";
+import type { RiskLevel, ValidationCategory, ValidationIssue } from "@/types";
+import type { RequirementFilterSeed } from "@/components/requirements/requirement-table";
 
 export const Route = createFileRoute("/rfps/$rfpId/validation")({
   loader: ({ context, params }) =>
@@ -35,28 +30,23 @@ const SEVERITY_TONE: Record<ValidationIssue["severity"], string> = {
   low: "border-border bg-muted/20",
 };
 
-interface WorkspaceSearch {
-  category?: RequirementCategory;
-  risk?: RiskLevel;
-  status?: RequirementStatus;
-  mandatoryOnly?: boolean;
-  hasEvidence?: boolean;
-}
-
-function categorySearch(id: string, requirements: { risk: RiskLevel }[]): WorkspaceSearch {
+function categorySearch(id: string, requirements: { risk: RiskLevel }[]): RequirementFilterSeed {
   switch (id) {
     case "mandatory":
       return { mandatoryOnly: true };
     case "risk":
-      return { risk: requirements.some((r) => r.risk === "critical") ? "critical" : "high" };
+      // "High Risk" — high and critical are both surfaced together, not just one.
+      return requirements.some((r) => r.risk === "critical" || r.risk === "high")
+        ? { risks: ["high", "critical"] }
+        : {};
     case "evidence":
-      return { hasEvidence: false };
+      return { missingEvidence: true };
     case "reviews":
-      return { status: "needs_review" };
+      return { statuses: ["needs_review"] };
     case "legal":
-      return { category: "Legal" };
+      return { categories: ["Legal"] };
     case "commercial":
-      return { category: "Commercial" };
+      return { categories: ["Commercial"] };
     default:
       return {};
   }
