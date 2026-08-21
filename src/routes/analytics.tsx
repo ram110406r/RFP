@@ -102,7 +102,11 @@ function Analytics() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <ChartCard title="RFP volume" description="Received vs. submitted per month">
+        <ChartCard
+          title="RFP volume"
+          description="Received vs. submitted per month"
+          empty={data.volume.length === 0}
+        >
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={data.volume} barGap={4}>
               <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -128,7 +132,11 @@ function Analytics() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Win / loss" description="Deals closed per month">
+        <ChartCard
+          title="Win / loss"
+          description="Deals closed per month"
+          empty={data.winLoss.length === 0}
+        >
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={data.winLoss} barGap={4}>
               <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -154,7 +162,11 @@ function Analytics() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Risk distribution" description="Share of requirements by risk level">
+        <ChartCard
+          title="Risk distribution"
+          description="Share of requirements by risk level"
+          empty={data.riskDistribution.every((r) => r.value === 0)}
+        >
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Tooltip contentStyle={tooltipStyle} />
@@ -180,7 +192,11 @@ function Analytics() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="AI draft acceptance" description="Share of drafts approved without edits">
+        <ChartCard
+          title="AI draft acceptance"
+          description="Share of drafts approved without edits"
+          empty={data.acceptance.length === 0}
+        >
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={data.acceptance} stackOffset="expand" barSize={22}>
               <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -212,7 +228,11 @@ function Analytics() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Avg. completion time" description="Days from intake to submission">
+        <ChartCard
+          title="Avg. completion time"
+          description="Days from intake to submission"
+          empty={data.completionTime.length === 0}
+        >
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={data.completionTime}>
               <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -230,7 +250,11 @@ function Analytics() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="SME review load" description="Review hours by team, last 6 months">
+        <ChartCard
+          title="SME review load"
+          description="Review hours by team, last 6 months"
+          empty={data.smePerformance.every((t) => t.hours === 0)}
+        >
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={data.smePerformance} layout="vertical" margin={{ left: 8 }}>
               <CartesianGrid horizontal={false} stroke="var(--border)" />
@@ -262,10 +286,12 @@ function Analytics() {
 function ChartCard({
   title,
   description,
+  empty,
   children,
 }: {
   title: string;
   description: string;
+  empty?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -274,7 +300,16 @@ function ChartCard({
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      {children}
+      {empty ? (
+        <div className="flex h-[220px] flex-col items-center justify-center gap-1 text-center">
+          <p className="text-sm font-medium text-foreground">No data yet</p>
+          <p className="max-w-[220px] text-xs text-muted-foreground">
+            This chart will populate as more RFPs move through the pipeline.
+          </p>
+        </div>
+      ) : (
+        children
+      )}
     </div>
   );
 }

@@ -39,7 +39,9 @@ function RfpShell() {
       <div className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{rfp.title}</h1>
+            <h1 className="text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+              {rfp.title}
+            </h1>
             <StatusBadge status={rfp.status} />
           </div>
           <p className="text-sm text-muted-foreground">

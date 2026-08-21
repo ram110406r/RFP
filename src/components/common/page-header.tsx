@@ -20,7 +20,9 @@ export function PageHeader({
     >
       <div className="min-w-0 space-y-1">
         {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+        <h1 className="text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+          {title}
+        </h1>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
