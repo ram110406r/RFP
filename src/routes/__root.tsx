@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { ensureSession } from "@/lib/session";
 import { AppShell } from "@/components/layout/app-shell";
 
 function NotFoundComponent() {
@@ -74,18 +75,23 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  beforeLoad: async () => {
+    // Establishes the dev-auth session (and caches the org member list) before
+    // any route component renders — see src/lib/session.ts.
+    await ensureSession();
+  },
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "RFP OS" },
+      { title: "Tendyy" },
       {
         name: "description",
         content:
           "AI-powered RFP operating system — requirements, evidence, review, and submission in one workspace.",
       },
-      { name: "author", content: "RFP OS" },
-      { property: "og:title", content: "RFP OS" },
+      { name: "author", content: "Tendyy" },
+      { property: "og:title", content: "Tendyy" },
       {
         property: "og:description",
         content:
