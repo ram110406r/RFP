@@ -12,7 +12,9 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
     "db:generate": "turbo run db:generate --filter=@rfp-os/db",
-    "db:migrate": "turbo run db:migrate --filter=@rfp-os/db"
+    "db:migrate": "turbo run db:migrate --filter=@rfp-os/db",
+    "db:seed": "turbo run db:seed --filter=@rfp-os/db",
+    "db:reset": "turbo run db:reset --filter=@rfp-os/db"
   },
   "devDependencies": {
     "prettier": "^3.7.3",
