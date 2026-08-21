@@ -3,13 +3,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CheckCircle2, ShieldAlert, UserPlus, XCircle } from "lucide-react";
-import { reviewQueryOptions, addReviewComment, setReviewStatus } from "@/lib/api/reviews";
-import {
-  requirementQueryOptions,
-  assignReviewer,
-  setRequirementStatus,
-} from "@/lib/api/requirements";
-import { evidenceForIdsQueryOptions } from "@/lib/api/evidence";
+import { reviewQueryOptions, submitReviewAction, type ReviewAction } from "@/lib/api/reviews";
+import { requirementQueryOptions, assignReviewer } from "@/lib/api/requirements";
+import { evidenceForRequirementQueryOptions } from "@/lib/api/evidence";
 import { PageHeader } from "@/components/common/page-header";
 import { PageSkeleton } from "@/components/common/page-skeleton";
 import { RouteErrorState } from "@/components/common/route-error-state";
@@ -27,8 +23,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CURRENT_USER_ID, getPerson, people, personName } from "@/data/people";
-import type { ReviewItem, RequirementStatus } from "@/types";
+import { CURRENT_USER_ID, getPerson, people, personName } from "@/lib/session";
+
+const ACTION_FOR_STATUS: Record<"approved" | "rejected" | "changes_requested", ReviewAction> = {
+  approved: "APPROVED",
+  rejected: "REJECTED",
+  changes_requested: "REQUEST_CHANGES",
+};
 
 export const Route = createFileRoute("/reviews/$reviewId")({
   loader: async ({ context, params }) => {
@@ -36,11 +37,11 @@ export const Route = createFileRoute("/reviews/$reviewId")({
     const requirement = await context.queryClient.ensureQueryData(
       requirementQueryOptions(review.requirementId),
     );
-    await context.queryClient.ensureQueryData(evidenceForIdsQueryOptions(requirement.evidenceIds));
+    await context.queryClient.ensureQueryData(evidenceForRequirementQueryOptions(requirement.id));
     return { crumb: review.requirementCode };
   },
   head: ({ loaderData }) => ({
-    meta: [{ title: loaderData ? `${loaderData.crumb} · RFP OS` : "Review · RFP OS" }],
+    meta: [{ title: loaderData ? `${loaderData.crumb} · Tendyy` : "Review · Tendyy" }],
   }),
   pendingComponent: PageSkeleton,
   errorComponent: RouteErrorState,
@@ -52,7 +53,7 @@ function ReviewDetail() {
   const queryClient = useQueryClient();
   const { data: review } = useSuspenseQuery(reviewQueryOptions(reviewId));
   const { data: requirement } = useSuspenseQuery(requirementQueryOptions(review.requirementId));
-  const { data: evidence } = useSuspenseQuery(evidenceForIdsQueryOptions(requirement.evidenceIds));
+  const { data: evidence } = useSuspenseQuery(evidenceForRequirementQueryOptions(requirement.id));
 
   const [comment, setComment] = useState("");
   const [changesNote, setChangesNote] = useState("");
@@ -66,16 +67,13 @@ function ReviewDetail() {
   }
 
   const decide = useMutation({
-    mutationFn: async ({ status, note }: { status: RequirementStatus; note?: string }) => {
-      await setRequirementStatus(requirement.id, status, personName(CURRENT_USER_ID), note);
-      const reviewStatus: ReviewItem["status"] =
-        status === "approved"
-          ? "approved"
-          : status === "rejected"
-            ? "rejected"
-            : "changes_requested";
-      await setReviewStatus(review.id, reviewStatus, CURRENT_USER_ID);
-    },
+    mutationFn: ({
+      status,
+      note,
+    }: {
+      status: "approved" | "rejected" | "changes_requested";
+      note?: string;
+    }) => submitReviewAction(requirement.id, ACTION_FOR_STATUS[status], note),
     onSuccess: (_d, vars) => {
       invalidate();
       setShowChanges(false);
@@ -103,7 +101,7 @@ function ReviewDetail() {
   });
 
   const addComment = useMutation({
-    mutationFn: () => addReviewComment(review.id, comment, CURRENT_USER_ID),
+    mutationFn: () => submitReviewAction(review.requirementId, "COMMENT", comment),
     onSuccess: () => {
       invalidate();
       setComment("");
