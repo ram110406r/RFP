@@ -6,24 +6,18 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "bun run src/db/migrate.ts",
-    "db:push": "drizzle-kit push",
-    "db:seed": "bun run src/db/seed.ts",
-    "db:reset": "bun run src/db/reset.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.4.0",
+    "@rfp-os/db": "workspace:*",
     "drizzle-orm": "^0.44.2",
     "elysia": "^1.4.10",
-    "postgres": "^3.4.5",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
-    "drizzle-kit": "^0.31.5",
     "typescript": "^5.9.3"
   }
 }

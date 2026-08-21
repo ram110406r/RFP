@@ -1,13 +1,11 @@
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "./schema";
+/**
+ * Thin adapter over the shared connection pool in @rfp-os/db.
+ *
+ * The 13 modules in this app import `db` as an eager binding, so the shape is
+ * preserved here rather than rewriting every call site during the migration.
+ * getDb() is lazy, so the pool is still created on first use.
+ */
+import { getDb } from "@rfp-os/db";
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL is required (see .env.example).");
-}
-
-const client = postgres(databaseUrl);
-
-export const db = drizzle(client, { schema });
+export const db = getDb();
 export type Db = typeof db;
