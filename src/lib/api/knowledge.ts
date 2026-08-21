@@ -1,16 +1,14 @@
 import { queryOptions } from "@tanstack/react-query";
-import { knowledgeSources, getKnowledgeSource } from "@/data/knowledge";
-import { delay, ApiNotFoundError } from "./client";
+import { apiRequest } from "./http";
 import type { KnowledgeSource } from "@/types";
 
 export async function fetchKnowledgeSources(): Promise<KnowledgeSource[]> {
-  return delay(knowledgeSources);
+  const { items } = await apiRequest<{ items: KnowledgeSource[] }>("/api/knowledge");
+  return items;
 }
 
 export async function fetchKnowledgeSource(id: string): Promise<KnowledgeSource> {
-  const source = getKnowledgeSource(id);
-  if (!source) throw new ApiNotFoundError("Knowledge source", id);
-  return delay(source);
+  return apiRequest<KnowledgeSource>(`/api/knowledge/${id}`);
 }
 
 export const knowledgeSourcesQueryOptions = () =>

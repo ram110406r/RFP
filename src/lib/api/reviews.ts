@@ -1,16 +1,14 @@
 import { queryOptions } from "@tanstack/react-query";
-import { reviews, computeOverdue } from "@/data/reviews";
-import { delay, ApiNotFoundError } from "./client";
+import { apiRequest } from "./http";
 import type { ReviewItem } from "@/types";
 
 export async function fetchReviews(): Promise<ReviewItem[]> {
-  return delay(reviews);
+  const { items } = await apiRequest<{ items: ReviewItem[] }>("/api/reviews");
+  return items;
 }
 
 export async function fetchReview(id: string): Promise<ReviewItem> {
-  const review = reviews.find((r) => r.id === id);
-  if (!review) throw new ApiNotFoundError("Review", id);
-  return delay(review);
+  return apiRequest<ReviewItem>(`/api/reviews/${id}`);
 }
 
 export const reviewsQueryOptions = () =>
@@ -19,53 +17,20 @@ export const reviewsQueryOptions = () =>
 export const reviewQueryOptions = (id: string) =>
   queryOptions({ queryKey: ["reviews", id], queryFn: () => fetchReview(id) });
 
-function mustFind(id: string): ReviewItem {
-  const review = reviews.find((r) => r.id === id);
-  if (!review) throw new ApiNotFoundError("Review", id);
-  return review;
-}
+export type ReviewAction = "APPROVED" | "REJECTED" | "REQUEST_CHANGES" | "COMMENT" | "ASSIGNED";
 
-export async function setReviewStatus(
-  id: string,
-  status: ReviewItem["status"],
-  actorId: string,
-): Promise<ReviewItem> {
-  const review = mustFind(id);
-  review.status = status;
-  review.overdue = computeOverdue(review.due, status);
-  review.history = [
-    ...review.history,
-    {
-      id: `${id}-h${review.history.length + 1}`,
-      at: new Date().toISOString(),
-      label:
-        status === "approved"
-          ? "Approved"
-          : status === "rejected"
-            ? "Rejected"
-            : status === "changes_requested"
-              ? "Changes requested"
-              : "Status updated",
-      actorId,
-    },
-  ];
-  return delay(review);
-}
-
-export async function addReviewComment(
-  id: string,
-  body: string,
-  actorId: string,
-): Promise<ReviewItem> {
-  const review = mustFind(id);
-  review.comments = [
-    ...review.comments,
-    {
-      id: `${id}-c${review.comments.length + 1}`,
-      authorId: actorId,
-      at: new Date().toISOString(),
-      body,
-    },
-  ];
-  return delay(review);
+/**
+ * Persists a real review event (`rfp_reviews`) and, for decision actions,
+ * updates the requirement's and its assignment's status server-side in the
+ * same request — see server/src/modules/reviews.ts. Used for both the
+ * dedicated review queue (reviews/$reviewId.tsx) and the requirement drawer's
+ * inline review panel, so every approve/reject/request-changes/comment is
+ * logged the same way regardless of where it was taken from.
+ */
+export async function submitReviewAction(
+  requirementId: string,
+  action: ReviewAction,
+  comment?: string,
+): Promise<void> {
+  await apiRequest("/api/reviews", { method: "POST", body: { requirementId, action, comment } });
 }

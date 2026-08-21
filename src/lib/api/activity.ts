@@ -1,10 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
-import { activityFeed } from "@/data/activity";
-import { delay } from "./client";
+import { apiRequest } from "./http";
 import type { ActivityEntry } from "@/types";
 
 export async function fetchActivityFeed(): Promise<ActivityEntry[]> {
-  return delay(activityFeed);
+  const { items } = await apiRequest<{ items: ActivityEntry[] }>("/api/activities");
+  return items;
 }
 
 export const activityFeedQueryOptions = () =>

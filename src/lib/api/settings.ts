@@ -1,43 +1,52 @@
 import { queryOptions } from "@tanstack/react-query";
-import {
-  aiSettings,
-  apiKeys,
-  integrations,
-  knowledgeSettings,
-  mcpConnections,
-  members,
-  notificationPreferences,
-  orgProfile,
-  roles,
-} from "@/data/settings";
-import { delay } from "./client";
+import { apiRequest } from "./http";
+import type {
+  AiSetting,
+  ApiKeySetting,
+  IntegrationSetting,
+  McpConnection,
+  MemberSetting,
+  NotificationPreference,
+  OrgProfile,
+  RoleSetting,
+} from "@/types";
 
-export async function fetchOrgProfile() {
-  return delay(orgProfile);
+export async function fetchOrgProfile(): Promise<OrgProfile> {
+  return apiRequest<OrgProfile>("/api/settings/org");
 }
-export async function fetchMembers() {
-  return delay(members);
+export async function fetchMembers(): Promise<MemberSetting[]> {
+  const { items } = await apiRequest<{ items: MemberSetting[] }>("/api/settings/members");
+  return items;
 }
-export async function fetchRoles() {
-  return delay(roles);
+export async function fetchRoles(): Promise<RoleSetting[]> {
+  const { items } = await apiRequest<{ items: RoleSetting[] }>("/api/settings/roles");
+  return items;
 }
-export async function fetchAiSettings() {
-  return delay(aiSettings);
+export async function fetchAiSettings(): Promise<AiSetting[]> {
+  const { items } = await apiRequest<{ items: AiSetting[] }>("/api/settings/ai");
+  return items;
 }
-export async function fetchKnowledgeSettings() {
-  return delay(knowledgeSettings);
+export async function fetchKnowledgeSettings(): Promise<AiSetting[]> {
+  const { items } = await apiRequest<{ items: AiSetting[] }>("/api/settings/knowledge");
+  return items;
 }
-export async function fetchIntegrations() {
-  return delay(integrations);
+export async function fetchIntegrations(): Promise<IntegrationSetting[]> {
+  const { items } = await apiRequest<{ items: IntegrationSetting[] }>("/api/settings/integrations");
+  return items;
 }
-export async function fetchNotificationPreferences() {
-  return delay(notificationPreferences);
+export async function fetchNotificationPreferences(): Promise<NotificationPreference[]> {
+  const { items } = await apiRequest<{ items: NotificationPreference[] }>(
+    "/api/settings/notification-preferences",
+  );
+  return items;
 }
-export async function fetchApiKeys() {
-  return delay(apiKeys);
+export async function fetchApiKeys(): Promise<ApiKeySetting[]> {
+  const { items } = await apiRequest<{ items: ApiKeySetting[] }>("/api/settings/api-keys");
+  return items;
 }
-export async function fetchMcpConnections() {
-  return delay(mcpConnections);
+export async function fetchMcpConnections(): Promise<McpConnection[]> {
+  const { items } = await apiRequest<{ items: McpConnection[] }>("/api/settings/mcp");
+  return items;
 }
 
 export const orgProfileQueryOptions = () =>

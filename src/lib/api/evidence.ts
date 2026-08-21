@@ -1,15 +1,17 @@
 import { queryOptions } from "@tanstack/react-query";
-import { getEvidenceForIds } from "@/data/evidence";
-import { delay } from "./client";
+import { apiRequest } from "./http";
 import type { Evidence } from "@/types";
 
-export async function fetchEvidenceForIds(ids: string[]): Promise<Evidence[]> {
-  return delay(getEvidenceForIds(ids));
+export async function fetchEvidenceForRequirement(requirementId: string): Promise<Evidence[]> {
+  const { evidence } = await apiRequest<{ evidence: Evidence[] }>(
+    `/api/requirements/${requirementId}/evidence`,
+  );
+  return evidence;
 }
 
-export const evidenceForIdsQueryOptions = (ids: string[]) =>
+export const evidenceForRequirementQueryOptions = (requirementId: string) =>
   queryOptions({
-    queryKey: ["evidence", "byIds", [...ids].sort()],
-    queryFn: () => fetchEvidenceForIds(ids),
-    enabled: ids.length > 0,
+    queryKey: ["evidence", "byRequirement", requirementId],
+    queryFn: () => fetchEvidenceForRequirement(requirementId),
+    enabled: Boolean(requirementId),
   });

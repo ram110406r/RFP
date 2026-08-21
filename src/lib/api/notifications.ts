@@ -1,22 +1,21 @@
 import { queryOptions } from "@tanstack/react-query";
-import { notifications } from "@/data/notifications";
-import { delay } from "./client";
+import { apiRequest } from "./http";
 import type { NotificationItem } from "@/types";
 
 export async function fetchNotifications(): Promise<NotificationItem[]> {
-  return delay(notifications);
+  const { items } = await apiRequest<{ items: NotificationItem[] }>("/api/notifications");
+  return items;
 }
 
 export const notificationsQueryOptions = () =>
   queryOptions({ queryKey: ["notifications"], queryFn: fetchNotifications });
 
 export async function markNotificationRead(id: string): Promise<NotificationItem[]> {
-  const item = notifications.find((n) => n.id === id);
-  if (item) item.read = true;
-  return delay(notifications, 80);
+  await apiRequest(`/api/notifications/${id}`, { method: "PATCH" });
+  return fetchNotifications();
 }
 
 export async function markAllNotificationsRead(): Promise<NotificationItem[]> {
-  notifications.forEach((n) => (n.read = true));
-  return delay(notifications, 80);
+  await apiRequest("/api/notifications/read-all", { method: "PATCH" });
+  return fetchNotifications();
 }
