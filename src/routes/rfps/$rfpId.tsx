@@ -7,7 +7,7 @@ import { PersonAvatar } from "@/components/common/person-avatar";
 import { PageSkeleton } from "@/components/common/page-skeleton";
 import { RouteErrorState } from "@/components/common/route-error-state";
 import { Button } from "@/components/ui/button";
-import { getPerson } from "@/data/people";
+import { getPerson } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/rfps/$rfpId")({
@@ -16,7 +16,7 @@ export const Route = createFileRoute("/rfps/$rfpId")({
     return { crumb: rfp.title };
   },
   head: ({ loaderData }) => ({
-    meta: [{ title: loaderData ? `${loaderData.crumb} · RFP OS` : "RFP · RFP OS" }],
+    meta: [{ title: loaderData ? `${loaderData.crumb} · Tendyy` : "RFP · Tendyy" }],
   }),
   pendingComponent: PageSkeleton,
   errorComponent: RouteErrorState,

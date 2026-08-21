@@ -23,7 +23,7 @@ import { PageSkeleton } from "@/components/common/page-skeleton";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/analytics")({
-  head: () => ({ meta: [{ title: "Analytics · RFP OS" }] }),
+  head: () => ({ meta: [{ title: "Analytics · Tendyy" }] }),
   loader: ({ context }) => context.queryClient.ensureQueryData(analyticsSnapshotQueryOptions()),
   pendingComponent: PageSkeleton,
   component: Analytics,

@@ -39,7 +39,7 @@ import { McpTab } from "@/components/settings/mcp-tab";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/settings")({
-  head: () => ({ meta: [{ title: "Settings · RFP OS" }] }),
+  head: () => ({ meta: [{ title: "Settings · Tendyy" }] }),
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(orgProfileQueryOptions()),
@@ -136,7 +136,7 @@ function Settings() {
       <PageHeader
         eyebrow="Workspace"
         title="Settings"
-        description="Manage your profile, organization, and RFP OS configuration."
+        description="Manage your profile, organization, and Tendyy configuration."
       />
 
       <div className="flex flex-col gap-6 lg:flex-row">

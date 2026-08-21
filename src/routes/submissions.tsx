@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { Send } from "lucide-react";
 
 export const Route = createFileRoute("/submissions")({
-  head: () => ({ meta: [{ title: "Submissions · RFP OS" }] }),
+  head: () => ({ meta: [{ title: "Submissions · Tendyy" }] }),
   loader: ({ context }) => context.queryClient.ensureQueryData(rfpsQueryOptions()),
   pendingComponent: PageSkeleton,
   component: Submissions,

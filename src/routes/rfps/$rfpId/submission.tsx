@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageSkeleton } from "@/components/common/page-skeleton";
-import { CURRENT_USER_ID, personName } from "@/data/people";
+import { CURRENT_USER_ID, personName } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/rfps/$rfpId/submission")({

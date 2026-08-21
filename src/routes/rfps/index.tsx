@@ -20,11 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getPerson } from "@/data/people";
+import { getPerson } from "@/lib/session";
 import type { RfpStatus } from "@/types";
 
 export const Route = createFileRoute("/rfps/")({
-  head: () => ({ meta: [{ title: "RFPs · RFP OS" }] }),
+  head: () => ({ meta: [{ title: "RFPs · Tendyy" }] }),
   loader: ({ context }) => context.queryClient.ensureQueryData(rfpsQueryOptions()),
   pendingComponent: PageSkeleton,
   component: RfpsList,

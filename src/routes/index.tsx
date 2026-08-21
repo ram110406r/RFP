@@ -27,12 +27,12 @@ import { RowActionsMenu } from "@/components/common/row-actions-menu";
 import { toneClasses } from "@/components/common/tone";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getPerson, CURRENT_USER_ID } from "@/data/people";
+import { getPerson, CURRENT_USER_ID } from "@/lib/session";
 
 const ACTIVE_STATUSES = ["analyzing", "in_progress", "review", "needs_attention"] as const;
 
 export const Route = createFileRoute("/")({
-  head: () => ({ meta: [{ title: "Dashboard · RFP OS" }] }),
+  head: () => ({ meta: [{ title: "Dashboard · Tendyy" }] }),
   loader: async ({ context }) => {
     await Promise.all([
       context.queryClient.ensureQueryData(rfpsQueryOptions()),
