@@ -14,3 +14,5 @@ export * from "./identity";
 export * from "./files";
 export * from "./knowledge";
 export * from "./rfp";
+export * from "./audit";
+export * from "./platform";
