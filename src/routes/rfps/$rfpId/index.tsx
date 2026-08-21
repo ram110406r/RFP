@@ -7,15 +7,36 @@ import { WorkspaceBody } from "@/components/rfp/workspace-body";
 import { PageSkeleton } from "@/components/common/page-skeleton";
 
 const searchSchema = z.object({
-  category: z
-    .enum(["Security", "Commercial", "Compliance", "Product", "Legal", "Architecture", "Support"])
+  categories: z
+    .array(
+      z.enum([
+        "Security",
+        "Commercial",
+        "Compliance",
+        "Product",
+        "Legal",
+        "Architecture",
+        "Support",
+      ]),
+    )
     .optional(),
-  risk: z.enum(["low", "medium", "high", "critical"]).optional(),
-  status: z
-    .enum(["unanswered", "drafted", "needs_review", "changes_requested", "approved", "rejected"])
+  risks: z.array(z.enum(["low", "medium", "high", "critical"])).optional(),
+  statuses: z
+    .array(
+      z.enum([
+        "unanswered",
+        "drafted",
+        "needs_review",
+        "changes_requested",
+        "approved",
+        "rejected",
+      ]),
+    )
     .optional(),
+  ownerTeams: z.array(z.string()).optional(),
   mandatoryOnly: z.boolean().optional(),
-  hasEvidence: z.boolean().optional(),
+  missingEvidence: z.boolean().optional(),
+  mine: z.boolean().optional(),
 });
 
 export const Route = createFileRoute("/rfps/$rfpId/")({
