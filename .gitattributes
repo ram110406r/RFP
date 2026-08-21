@@ -1,0 +1,7 @@
+# Drizzle identifies an applied migration by hashing the *content* of its
+# .sql file. core.autocrlf would rewrite these to CRLF on checkout under
+# Windows, changing that hash and making drizzle re-run migrations that a
+# database already has. Pin them to LF so the bytes are identical on every
+# platform and every clone.
+packages/db/migrations/**/*.sql text eol=lf
+packages/db/migrations/meta/*.json text eol=lf

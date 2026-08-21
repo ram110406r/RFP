@@ -1,0 +1,3 @@
+ALTER TABLE "activities" ADD COLUMN "requirement_id" uuid;--> statement-breakpoint
+ALTER TABLE "activities" ADD CONSTRAINT "activities_requirement_id_rfp_requirements_id_fk" FOREIGN KEY ("requirement_id") REFERENCES "public"."rfp_requirements"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "activities_requirement_idx" ON "activities" USING btree ("requirement_id");
