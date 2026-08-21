@@ -10,11 +10,23 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+build
 .output
 .vinxi
 .tanstack/**
 .nitro
+.turbo
 *.local
+
+# Next.js
+.next/
+
+# Plasmo
+.plasmo/
+apps/extension/build/
+
+# NestJS
+apps/api/dist/
 
 # Wrangler / Cloudflare
 .wrangler/
@@ -24,9 +36,12 @@ dist-ssr
 .env
 .env.*
 !.env.example
-server/.env
-server/.env.*
-!server/.env.example
+apps/legacy-web/.env
+apps/legacy-web/.env.*
+!apps/legacy-web/.env.example
+apps/legacy-api/.env
+apps/legacy-api/.env.*
+!apps/legacy-api/.env.example
 
 # Editor directories and files
 .vscode/*

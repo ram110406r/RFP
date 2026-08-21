@@ -1,0 +1,29 @@
+{
+  "name": "@rfp-os/worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "build": "tsc --noEmit",
+    "start": "bun --env-file=../../.env src/index.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rfp-os/ai": "workspace:*",
+    "@rfp-os/db": "workspace:*",
+    "@rfp-os/observability": "workspace:*",
+    "@rfp-os/types": "workspace:*",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@rfp-os/config": "workspace:*",
+    "@types/bun": "latest",
+    "eslint": "^9.32.0",
+    "globals": "^15.15.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
+  }
+}

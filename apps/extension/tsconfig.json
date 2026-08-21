@@ -1,0 +1,18 @@
+{
+  "extends": "@rfp-os/config/nextjs.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "baseUrl": "."
+  },
+  "include": [
+    ".plasmo/index.d.ts",
+    ".",
+    "./**/*.ts",
+    "./**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    ".plasmo"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@rfp-os/extension",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rfp-os/types": "workspace:*",
+    "plasmo": "^0.90.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@rfp-os/config": "workspace:*",
+    "@types/chrome": "^0.0.287",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "^5.9.3"
+  },
+  "manifest": {
+    "name": "RFP OS",
+    "permissions": ["storage"],
+    "host_permissions": ["https://*/*"]
+  }
+}

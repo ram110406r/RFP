@@ -14,8 +14,7 @@ import type { OrgProfile, Person } from "@/types";
  * `src/data/people.ts` synchronously can keep doing so unchanged.
  */
 
-const DEV_LOGIN_EMAIL =
-  import.meta.env["VITE_DEV_LOGIN_EMAIL"] ?? "priya.nair@halcyonsystems.com";
+const DEV_LOGIN_EMAIL = import.meta.env["VITE_DEV_LOGIN_EMAIL"] ?? "priya.nair@halcyonsystems.com";
 const API_BASE_URL = import.meta.env["VITE_API_URL"] ?? "http://localhost:4000";
 
 export let authToken: string | null = null;

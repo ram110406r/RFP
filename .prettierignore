@@ -1,8 +1,12 @@
 node_modules
 dist
+build
+.next
+.turbo
 .output
 .vinxi
+.plasmo
 pnpm-lock.yaml
 package-lock.json
 bun.lock
-routeTree.gen.ts
+apps/legacy-web/src/routeTree.gen.ts

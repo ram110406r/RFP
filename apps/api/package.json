@@ -1,0 +1,37 @@
+{
+  "name": "@rfp-os/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/main.ts",
+    "build": "nest build",
+    "start": "bun --env-file=../../.env src/main.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@rfp-os/ai": "workspace:*",
+    "@rfp-os/db": "workspace:*",
+    "@rfp-os/observability": "workspace:*",
+    "@rfp-os/types": "workspace:*",
+    "@rfp-os/validation": "workspace:*",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/testing": "^11.0.0",
+    "@rfp-os/config": "workspace:*",
+    "@types/bun": "latest",
+    "@types/express": "^5.0.0",
+    "eslint": "^9.32.0",
+    "globals": "^15.15.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
+  }
+}
