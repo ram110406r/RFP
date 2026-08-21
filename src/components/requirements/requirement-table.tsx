@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { ArrowUpDown, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,11 +12,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/common/status-badge";
 import { RiskBadge } from "@/components/common/risk-badge";
 import { ConfidenceMeter } from "@/components/common/confidence-meter";
 import { EmptyState } from "@/components/common/empty-state";
+import { MultiSelect } from "@/components/common/multi-select";
+import {
+  bulkAssignReviewer,
+  bulkSetOwnerTeam,
+  bulkSetRisk,
+  bulkSetStatus,
+} from "@/lib/api/requirements";
+import { CURRENT_USER_ID, personName } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { BulkActionBar } from "./bulk-action-bar";
+import { SavedViewsSelect } from "./saved-views-select";
+import {
+  applyRequirementFilters,
+  isFiltersEmpty,
+  mergeFilters,
+  SAVED_VIEWS,
+} from "./requirement-filters";
+import type { RequirementFilterSeed, RequirementFilters } from "./requirement-filters";
 import type { Requirement, RequirementCategory, RequirementStatus, RiskLevel } from "@/types";
 
 const CATEGORIES: RequirementCategory[] = [
@@ -39,12 +59,29 @@ const STATUSES: RequirementStatus[] = [
 type SortKey = "code" | "risk" | "confidence" | "status";
 const RISK_ORDER: Record<RiskLevel, number> = { low: 0, medium: 1, high: 2, critical: 3 };
 
-export interface RequirementFilterSeed {
-  category?: RequirementCategory | undefined;
-  risk?: RiskLevel | undefined;
-  status?: RequirementStatus | undefined;
-  mandatoryOnly?: boolean | undefined;
-  hasEvidence?: boolean | undefined;
+export type { RequirementFilterSeed };
+
+function downloadCsv(requirements: Requirement[]) {
+  const header = ["Code", "Title", "Category", "Risk", "Confidence", "Status", "Owner team"];
+  const rows = requirements.map((r) => [
+    r.code,
+    r.title,
+    r.category,
+    r.risk,
+    `${Math.round(r.confidence * 100)}%`,
+    r.status.replace("_", " "),
+    r.ownerTeam,
+  ]);
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "requirements-export.csv";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function RequirementTable({
@@ -58,31 +95,31 @@ export function RequirementTable({
   activeReqId?: string | undefined;
   initialFilters?: RequirementFilterSeed | undefined;
 }) {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<RequirementCategory | "all">(
-    initialFilters?.category ?? "all",
-  );
-  const [risk, setRisk] = useState<RiskLevel | "all">(initialFilters?.risk ?? "all");
-  const [status, setStatus] = useState<RequirementStatus | "all">(initialFilters?.status ?? "all");
+  const [viewId, setViewId] = useState("all");
+  const [filters, setFilters] = useState<RequirementFilters>(() => mergeFilters(initialFilters));
   const [sortKey, setSortKey] = useState<SortKey>("code");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const owners = useMemo(
     () => Array.from(new Set(requirements.map((r) => r.ownerTeam))),
     [requirements],
   );
-  const [owner, setOwner] = useState<string>("all");
+
+  function updateFilters(patch: Partial<RequirementFilters>) {
+    setFilters((prev) => ({ ...prev, ...patch }));
+  }
+
+  function selectView(id: string) {
+    setViewId(id);
+    const view = SAVED_VIEWS.find((v) => v.id === id);
+    setFilters(mergeFilters(view?.filters));
+  }
 
   const filtered = useMemo(() => {
-    let list = requirements;
-    if (initialFilters?.mandatoryOnly) list = list.filter((r) => r.mandatory);
-    if (initialFilters?.hasEvidence === false) {
-      list = list.filter((r) => r.evidenceIds.length === 0);
-    }
-    if (category !== "all") list = list.filter((r) => r.category === category);
-    if (risk !== "all") list = list.filter((r) => r.risk === risk);
-    if (status !== "all") list = list.filter((r) => r.status === status);
-    if (owner !== "all") list = list.filter((r) => r.ownerTeam === owner);
+    let list = applyRequirementFilters(requirements, filters, CURRENT_USER_ID);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -92,7 +129,7 @@ export function RequirementTable({
           r.question.toLowerCase().includes(q),
       );
     }
-    const sorted = [...list].sort((a, b) => {
+    return [...list].sort((a, b) => {
       let cmp = 0;
       if (sortKey === "code") cmp = a.code.localeCompare(b.code);
       else if (sortKey === "risk") cmp = RISK_ORDER[a.risk] - RISK_ORDER[b.risk];
@@ -100,19 +137,13 @@ export function RequirementTable({
       else if (sortKey === "status") cmp = a.status.localeCompare(b.status);
       return cmp * sortDir;
     });
-    return sorted;
-  }, [
-    requirements,
-    search,
-    category,
-    risk,
-    status,
-    owner,
-    sortKey,
-    sortDir,
-    initialFilters?.mandatoryOnly,
-    initialFilters?.hasEvidence,
-  ]);
+  }, [requirements, filters, search, sortKey, sortDir]);
+
+  const filteredIds = useMemo(() => filtered.map((r) => r.id), [filtered]);
+  const selectedInView = filteredIds.filter((id) => selectedIds.has(id));
+  const allSelected = filteredIds.length > 0 && selectedInView.length === filteredIds.length;
+  const someSelected = selectedInView.length > 0 && !allSelected;
+  const selectedRequirements = filtered.filter((r) => selectedIds.has(r.id));
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 1 ? -1 : 1));
@@ -120,6 +151,69 @@ export function RequirementTable({
       setSortKey(key);
       setSortDir(1);
     }
+  }
+
+  function toggleRow(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const id of filteredIds) next.delete(id);
+      } else {
+        for (const id of filteredIds) next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function invalidateAfterMutation() {
+    queryClient.invalidateQueries({ queryKey: ["requirements"] });
+    queryClient.invalidateQueries({ queryKey: ["rfps", rfpId] });
+    queryClient.invalidateQueries({ queryKey: ["reviews"] });
+  }
+
+  const bulkMutation = useMutation({
+    mutationFn: async (action: () => Promise<unknown>) => action(),
+    onSuccess: () => {
+      invalidateAfterMutation();
+      setSelectedIds(new Set());
+    },
+    onError: () => toast.error("That bulk action couldn't be completed. Try again."),
+  });
+
+  const selectedIdList = Array.from(selectedIds);
+
+  function handleAssign(reviewerId: string) {
+    bulkMutation.mutate(() => bulkAssignReviewer(selectedIdList, reviewerId, "You"));
+    toast.success(`Assigned ${selectedIdList.length} requirement(s) to ${personName(reviewerId)}`);
+  }
+
+  function handleChangeStatus(status: RequirementStatus) {
+    bulkMutation.mutate(() => bulkSetStatus(selectedIdList, status, "You"));
+    toast.success(`Updated status for ${selectedIdList.length} requirement(s)`);
+  }
+
+  function handleSetRisk(risk: RiskLevel) {
+    bulkMutation.mutate(() => bulkSetRisk(selectedIdList, risk, "You"));
+    toast.success(`Set risk to ${risk} for ${selectedIdList.length} requirement(s)`);
+  }
+
+  function handleChangeOwner(ownerTeam: string) {
+    bulkMutation.mutate(() => bulkSetOwnerTeam(selectedIdList, ownerTeam, "You"));
+    toast.success(`Changed owner team for ${selectedIdList.length} requirement(s)`);
+  }
+
+  function handleExport() {
+    downloadCsv(selectedRequirements);
+    toast.success(`Exported ${selectedRequirements.length} requirement(s)`);
   }
 
   return (
@@ -135,49 +229,32 @@ export function RequirementTable({
             aria-label="Search requirements"
           />
         </div>
+        <SavedViewsSelect value={viewId} onChange={selectView} />
+        <MultiSelect
+          label="Category"
+          placeholder="All categories"
+          options={CATEGORIES.map((c) => ({ value: c, label: c }))}
+          selected={filters.categories}
+          onChange={(next) => updateFilters({ categories: next as RequirementCategory[] })}
+        />
+        <MultiSelect
+          label="Risk"
+          placeholder="All risk"
+          options={RISKS.map((r) => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) }))}
+          selected={filters.risks}
+          onChange={(next) => updateFilters({ risks: next as RiskLevel[] })}
+        />
+        <MultiSelect
+          label="Status"
+          placeholder="All statuses"
+          options={STATUSES.map((s) => ({ value: s, label: s.replace("_", " ") }))}
+          selected={filters.statuses}
+          onChange={(next) => updateFilters({ statuses: next as RequirementStatus[] })}
+        />
         <Select
-          value={category}
-          onValueChange={(v) => setCategory(v as RequirementCategory | "all")}
+          value={filters.ownerTeams[0] ?? "all"}
+          onValueChange={(v) => updateFilters({ ownerTeams: v === "all" ? [] : [v] })}
         >
-          <SelectTrigger className="w-full sm:w-40">
-            <SelectValue placeholder="Category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            {CATEGORIES.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={risk} onValueChange={(v) => setRisk(v as RiskLevel | "all")}>
-          <SelectTrigger className="w-full sm:w-36">
-            <SelectValue placeholder="Risk" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All risk</SelectItem>
-            {RISKS.map((r) => (
-              <SelectItem key={r} value={r} className="capitalize">
-                {r}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={status} onValueChange={(v) => setStatus(v as RequirementStatus | "all")}>
-          <SelectTrigger className="w-full sm:w-44">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {STATUSES.map((s) => (
-              <SelectItem key={s} value={s} className="capitalize">
-                {s.replace("_", " ")}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={owner} onValueChange={setOwner}>
           <SelectTrigger className="w-full sm:w-44">
             <SelectValue placeholder="Owner team" />
           </SelectTrigger>
@@ -190,10 +267,37 @@ export function RequirementTable({
             ))}
           </SelectContent>
         </Select>
+        {!isFiltersEmpty(filters) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setViewId("all");
+              setFilters(mergeFilters(undefined));
+            }}
+          >
+            Reset filters
+          </Button>
+        )}
         <span className="text-xs text-muted-foreground sm:ml-auto">
           {filtered.length} of {requirements.length}
         </span>
       </div>
+
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          count={selectedIds.size}
+          ownerTeams={owners}
+          onAssign={handleAssign}
+          onChangeStatus={handleChangeStatus}
+          onSetRisk={handleSetRisk}
+          onChangeOwner={handleChangeOwner}
+          onExport={handleExport}
+          onClear={() => setSelectedIds(new Set())}
+          pending={bulkMutation.isPending}
+        />
+      )}
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -205,9 +309,15 @@ export function RequirementTable({
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="w-10 px-3 py-2.5">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all requirements"
+                  />
+                </th>
                 <SortableHead
                   label="ID"
-                  sortKey="code"
                   active={sortKey === "code"}
                   dir={sortDir}
                   onClick={() => toggleSort("code")}
@@ -216,21 +326,18 @@ export function RequirementTable({
                 <th className="px-3 py-2.5 font-medium">Category</th>
                 <SortableHead
                   label="Risk"
-                  sortKey="risk"
                   active={sortKey === "risk"}
                   dir={sortDir}
                   onClick={() => toggleSort("risk")}
                 />
                 <SortableHead
                   label="Confidence"
-                  sortKey="confidence"
                   active={sortKey === "confidence"}
                   dir={sortDir}
                   onClick={() => toggleSort("confidence")}
                 />
                 <SortableHead
                   label="Status"
-                  sortKey="status"
                   active={sortKey === "status"}
                   dir={sortDir}
                   onClick={() => toggleSort("status")}
@@ -242,8 +349,19 @@ export function RequirementTable({
               {filtered.map((req) => (
                 <tr
                   key={req.id}
-                  className={cn("hover:bg-muted/30", activeReqId === req.id && "bg-accent/50")}
+                  className={cn(
+                    "hover:bg-muted/30",
+                    activeReqId === req.id && "bg-accent/50",
+                    selectedIds.has(req.id) && "bg-accent/30",
+                  )}
                 >
+                  <td className="px-3 py-2.5">
+                    <Checkbox
+                      checked={selectedIds.has(req.id)}
+                      onCheckedChange={() => toggleRow(req.id)}
+                      aria-label={`Select ${req.code}`}
+                    />
+                  </td>
                   <td className="px-3 py-2.5">
                     <Link
                       to="/rfps/$rfpId/requirements/$reqId"
@@ -295,7 +413,6 @@ function SortableHead({
   onClick,
 }: {
   label: string;
-  sortKey: SortKey;
   active: boolean;
   dir: 1 | -1;
   onClick: () => void;
