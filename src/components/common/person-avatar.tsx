@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { getPerson } from "@/data/people";
+import { getPerson } from "@/lib/session";
 
 export function PersonAvatar({
   personId,

@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { membersQueryOptions } from "@/lib/api/settings";
 import { PersonAvatar } from "@/components/common/person-avatar";
 import { Badge } from "@/components/ui/badge";
-import { getPerson } from "@/data/people";
+import { getPerson } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export function MembersTab() {

@@ -4,7 +4,7 @@ import { PersonAvatar } from "@/components/common/person-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getPerson, CURRENT_USER_ID } from "@/data/people";
+import { getPerson, CURRENT_USER_ID } from "@/lib/session";
 
 export function ProfileTab() {
   const me = getPerson(CURRENT_USER_ID);

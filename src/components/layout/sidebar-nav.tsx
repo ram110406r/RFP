@@ -11,9 +11,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "./nav-items";
-import { CURRENT_USER_ID } from "@/data/people";
-import { getPerson } from "@/data/people";
-import { orgProfile } from "@/data/settings";
+import { CURRENT_USER_ID, getPerson, orgProfile } from "@/lib/session";
 
 export function SidebarNav({
   collapsed = false,
@@ -29,11 +27,11 @@ export function SidebarNav({
     <div className="flex h-full flex-col">
       <div className={cn("flex h-14 items-center gap-2 px-4", collapsed && "justify-center px-0")}>
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-          R
+          T
         </span>
         {!collapsed && (
           <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
-            RFP OS
+            Tendyy
           </span>
         )}
       </div>

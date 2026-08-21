@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Breadcrumbs } from "./breadcrumbs";
 import { NotificationCenter } from "./notification-center";
 import { SidebarNav } from "./sidebar-nav";
-import { getPerson, CURRENT_USER_ID } from "@/data/people";
+import { getPerson, CURRENT_USER_ID } from "@/lib/session";
 
 export function AppTopbar({ onOpenCommandPalette }: { onOpenCommandPalette: () => void }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
