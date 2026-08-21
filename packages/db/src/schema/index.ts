@@ -11,3 +11,4 @@
 export * from "./_shared";
 export * from "./organization";
 export * from "./identity";
+export * from "./files";
