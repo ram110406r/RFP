@@ -17,6 +17,7 @@ build
 .nitro
 .turbo
 *.local
+*.tsbuildinfo
 
 # Next.js
 .next/
