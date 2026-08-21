@@ -13,3 +13,4 @@ export * from "./organization";
 export * from "./identity";
 export * from "./files";
 export * from "./knowledge";
+export * from "./rfp";
