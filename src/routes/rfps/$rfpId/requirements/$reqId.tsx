@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { rfpQueryOptions } from "@/lib/api/rfps";
 import { requirementQueryOptions, requirementsForRfpQueryOptions } from "@/lib/api/requirements";
-import { evidenceForIdsQueryOptions } from "@/lib/api/evidence";
+import { evidenceForRequirementQueryOptions } from "@/lib/api/evidence";
 import { WorkspaceBody } from "@/components/rfp/workspace-body";
 import { RequirementDetailSheet } from "@/components/requirements/requirement-detail-sheet";
 import { RouteErrorState } from "@/components/common/route-error-state";
@@ -17,12 +17,12 @@ export const Route = createFileRoute("/rfps/$rfpId/requirements/$reqId")({
     }
     await Promise.all([
       context.queryClient.ensureQueryData(requirementsForRfpQueryOptions(params.rfpId)),
-      context.queryClient.ensureQueryData(evidenceForIdsQueryOptions(requirement.evidenceIds)),
+      context.queryClient.ensureQueryData(evidenceForRequirementQueryOptions(requirement.id)),
     ]);
     return { crumb: requirement.code };
   },
   head: ({ loaderData }) => ({
-    meta: [{ title: loaderData ? `${loaderData.crumb} · RFP OS` : "Requirement · RFP OS" }],
+    meta: [{ title: loaderData ? `${loaderData.crumb} · Tendyy` : "Requirement · Tendyy" }],
   }),
   errorComponent: RouteErrorState,
   component: RequirementDetailRoute,

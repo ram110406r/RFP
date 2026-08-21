@@ -15,7 +15,7 @@ import { ActivityTimeline } from "@/components/common/activity-timeline";
 import { AnswerEditor } from "./answer-editor";
 import { ReviewPanel } from "./review-panel";
 import { requirementQueryOptions } from "@/lib/api/requirements";
-import { evidenceForIdsQueryOptions } from "@/lib/api/evidence";
+import { evidenceForRequirementQueryOptions } from "@/lib/api/evidence";
 import { ShieldAlert } from "lucide-react";
 
 export function RequirementDetailSheet({
@@ -28,7 +28,7 @@ export function RequirementDetailSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const { data: requirement } = useSuspenseQuery(requirementQueryOptions(reqId));
-  const { data: evidence } = useSuspenseQuery(evidenceForIdsQueryOptions(requirement.evidenceIds));
+  const { data: evidence } = useSuspenseQuery(evidenceForRequirementQueryOptions(requirement.id));
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

@@ -11,9 +11,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { assignReviewer, setRequirementStatus } from "@/lib/api/requirements";
-import { CURRENT_USER_ID, getPerson, people, personName } from "@/data/people";
+import { assignReviewer } from "@/lib/api/requirements";
+import { submitReviewAction, type ReviewAction } from "@/lib/api/reviews";
+import { CURRENT_USER_ID, getPerson, people, personName } from "@/lib/session";
 import type { Requirement } from "@/types";
+
+const ACTION_FOR_STATUS: Record<"approved" | "rejected" | "changes_requested", ReviewAction> = {
+  approved: "APPROVED",
+  rejected: "REJECTED",
+  changes_requested: "REQUEST_CHANGES",
+};
 
 export function ReviewPanel({ requirement }: { requirement: Requirement }) {
   const queryClient = useQueryClient();
@@ -30,8 +37,13 @@ export function ReviewPanel({ requirement }: { requirement: Requirement }) {
   }
 
   const statusMutation = useMutation({
-    mutationFn: ({ status, note }: { status: Requirement["status"]; note?: string }) =>
-      setRequirementStatus(requirement.id, status, personName(CURRENT_USER_ID), note),
+    mutationFn: ({
+      status,
+      note,
+    }: {
+      status: "approved" | "rejected" | "changes_requested";
+      note?: string;
+    }) => submitReviewAction(requirement.id, ACTION_FOR_STATUS[status], note),
     onSuccess: (_data, variables) => {
       invalidate();
       setShowChangesInput(false);

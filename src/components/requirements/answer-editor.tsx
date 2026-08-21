@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { regenerateDraft, updateRequirementAnswer } from "@/lib/api/requirements";
-import { CURRENT_USER_ID, personName } from "@/data/people";
+import { CURRENT_USER_ID, personName } from "@/lib/session";
 import type { Requirement } from "@/types";
 
 const SOURCE_LABEL: Record<Requirement["answerSource"], string> = {
