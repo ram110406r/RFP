@@ -74,26 +74,41 @@
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: oklch(0.984 0.004 95);
-  --foreground: oklch(0.19 0.012 250);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.19 0.012 250);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.19 0.012 250);
-  --primary: oklch(0.395 0.055 176);
-  --primary-foreground: oklch(0.985 0.005 160);
-  --secondary: oklch(0.965 0.005 240);
-  --secondary-foreground: oklch(0.26 0.014 250);
-  --muted: oklch(0.966 0.004 240);
-  --muted-foreground: oklch(0.53 0.016 252);
-  --accent: oklch(0.955 0.014 176);
-  --accent-foreground: oklch(0.33 0.05 176);
+  /*
+   * Tendyy brand tokens.
+   *   --tendyy-primary    = #015384 (brand blue — buttons, active/selected
+   *                         states, links, focus, primary charts)
+   *   --tendyy-background = #FFFFFF (near-white app background)
+   *   --tendyy-text       = #000000 (near-black text)
+   * All three are official brand colors; everything else in this file is a
+   * restrained neutral or semantic tone derived from them. Do not add raw
+   * hex/rgb colors to components — consume these CSS custom properties (via
+   * the Tailwind utilities registered in @theme above) instead.
+   */
+  --tendyy-primary: oklch(0.427 0.106 244.4);
+  --tendyy-background: oklch(1 0 0);
+  --tendyy-text: oklch(0.15 0.01 244);
+
+  --radius: 0.5rem;
+  --background: oklch(0.99 0.002 244);
+  --foreground: var(--tendyy-text);
+  --card: var(--tendyy-background);
+  --card-foreground: var(--tendyy-text);
+  --popover: var(--tendyy-background);
+  --popover-foreground: var(--tendyy-text);
+  --primary: var(--tendyy-primary);
+  --primary-foreground: oklch(0.985 0.003 244);
+  --secondary: oklch(0.965 0.004 244);
+  --secondary-foreground: oklch(0.2 0.01 244);
+  --muted: oklch(0.967 0.003 244);
+  --muted-foreground: oklch(0.5 0.012 244);
+  --accent: oklch(0.95 0.025 244);
+  --accent-foreground: oklch(0.35 0.09 244);
   --destructive: oklch(0.53 0.16 27);
-  --destructive-foreground: oklch(0.985 0.003 250);
-  --border: oklch(0.917 0.006 250);
-  --input: oklch(0.917 0.006 250);
-  --ring: oklch(0.5 0.05 176);
+  --destructive-foreground: oklch(0.985 0.003 244);
+  --border: oklch(0.912 0.006 244);
+  --input: oklch(0.912 0.006 244);
+  --ring: oklch(0.55 0.1 244.4);
   --success: oklch(0.52 0.09 155);
   --success-foreground: oklch(0.985 0.003 160);
   --success-soft: oklch(0.955 0.03 155);
@@ -105,19 +120,19 @@
   --danger-soft: oklch(0.955 0.028 25);
   --info: oklch(0.52 0.09 245);
   --info-soft: oklch(0.955 0.025 245);
-  --chart-1: oklch(0.45 0.07 176);
-  --chart-2: oklch(0.6 0.1 200);
-  --chart-3: oklch(0.6 0.1 75);
-  --chart-4: oklch(0.55 0.12 25);
-  --chart-5: oklch(0.55 0.05 260);
-  --sidebar: oklch(0.973 0.004 95);
-  --sidebar-foreground: oklch(0.29 0.012 250);
-  --sidebar-primary: oklch(0.395 0.055 176);
-  --sidebar-primary-foreground: oklch(0.985 0.005 160);
-  --sidebar-accent: oklch(0.945 0.008 240);
-  --sidebar-accent-foreground: oklch(0.22 0.014 250);
-  --sidebar-border: oklch(0.918 0.005 250);
-  --sidebar-ring: oklch(0.5 0.05 176);
+  --chart-1: oklch(0.45 0.1 244);
+  --chart-2: oklch(0.62 0.09 200);
+  --chart-3: oklch(0.65 0.11 75);
+  --chart-4: oklch(0.58 0.13 25);
+  --chart-5: oklch(0.5 0.04 264);
+  --sidebar: oklch(0.98 0.003 244);
+  --sidebar-foreground: oklch(0.2 0.01 244);
+  --sidebar-primary: var(--tendyy-primary);
+  --sidebar-primary-foreground: oklch(0.985 0.003 244);
+  --sidebar-accent: oklch(0.94 0.02 244);
+  --sidebar-accent-foreground: var(--tendyy-primary);
+  --sidebar-border: oklch(0.912 0.006 244);
+  --sidebar-ring: oklch(0.55 0.1 244.4);
 }
 
 .dark {
@@ -178,8 +193,8 @@
 @utility surface-panel {
   background-color: var(--color-card);
   border: 1px solid var(--color-border);
-  border-radius: 1rem;
-  box-shadow: 0 1px 2px 0 oklch(0.19 0.012 250 / 4%);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px 0 oklch(0.15 0.01 244 / 4%);
 }
 
 @utility eyebrow {
