@@ -1,17 +1,33 @@
 import { queryOptions } from "@tanstack/react-query";
-import { requirements, getRequirement, getRequirementsForRfp } from "@/data/requirements";
-import { reviews } from "@/data/reviews";
-import { getRfp, computeFromRequirements } from "@/data/rfps";
-import { CURRENT_USER_ID } from "@/data/people";
-import { delay, ApiNotFoundError } from "./client";
-import type { ActivityEntry, Requirement, RequirementStatus } from "@/types";
+import { apiRequest } from "./http";
+import type { Requirement, RequirementStatus, RiskLevel } from "@/types";
+
+interface RequirementListResponse {
+  items: Requirement[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+// See src/lib/api/rfps.ts's LIST_ALL_LIMIT note — filtering/sorting/bulk
+// selection in requirement-table.tsx (and requirement-filters.ts's saved
+// views) all operate on an already-fetched array, so list fetches ask for a
+// large page rather than paginating server-side.
+const LIST_ALL_LIMIT = 200;
 
 export async function fetchRequirementsForRfp(rfpId: string): Promise<Requirement[]> {
-  return delay(getRequirementsForRfp(rfpId));
+  const res = await apiRequest<RequirementListResponse>(`/api/rfps/${rfpId}/requirements`, {
+    query: { limit: LIST_ALL_LIMIT },
+  });
+  return res.items;
 }
 
 export async function fetchAllRequirements(): Promise<Requirement[]> {
-  return delay(requirements);
+  const res = await apiRequest<RequirementListResponse>("/api/requirements", {
+    query: { limit: LIST_ALL_LIMIT },
+  });
+  return res.items;
 }
 
 export const allRequirementsQueryOptions = () =>
@@ -22,9 +38,7 @@ export const allRequirementsQueryOptions = () =>
   });
 
 export async function fetchRequirement(id: string): Promise<Requirement> {
-  const req = getRequirement(id);
-  if (!req) throw new ApiNotFoundError("Requirement", id);
-  return delay(req);
+  return apiRequest<Requirement>(`/api/requirements/${id}`);
 }
 
 export const requirementsForRfpQueryOptions = (rfpId: string) =>
@@ -36,109 +50,100 @@ export const requirementsForRfpQueryOptions = (rfpId: string) =>
 export const requirementQueryOptions = (id: string) =>
   queryOptions({ queryKey: ["requirements", id], queryFn: () => fetchRequirement(id) });
 
-function mustFind(id: string): Requirement {
-  const req = requirements.find((r) => r.id === id);
-  if (!req) throw new ApiNotFoundError("Requirement", id);
-  return req;
-}
-
-function pushActivity(req: Requirement, kind: ActivityEntry["kind"], label: string, actor: string) {
-  req.activity = [
-    ...req.activity,
-    {
-      id: `${req.id}-act${req.activity.length + 1}`,
-      at: new Date().toISOString(),
-      kind,
-      label,
-      actor,
-    },
-  ];
-}
+// `actor` is accepted for API-compatibility with existing call sites (which
+// pass a display name derived from the current user) but is otherwise
+// unused: the server always derives the true actor from the caller's
+// authenticated session, never from client input.
 
 export async function updateRequirementAnswer(
   id: string,
   answer: string,
-  actor: string,
+  _actor: string,
 ): Promise<Requirement> {
-  const req = mustFind(id);
-  req.answer = answer;
-  req.answerSource = "human_edited";
-  if (req.status === "unanswered") req.status = "drafted";
-  pushActivity(req, "comment", "Answer edited manually", actor);
-  return delay(req);
+  return apiRequest<Requirement>(`/api/requirements/${id}/answer`, {
+    method: "PATCH",
+    body: { answer },
+  });
 }
 
-// A real backend would call an LLM here; the mock layer simulates a fresh
-// draft by rotating a lead-in clause so the visible answer text actually
-// changes on every click instead of silently no-opping.
-const REGENERATE_OPENERS = [
-  "Based on our current documentation, ",
-  "Drawing on the latest verified sources, ",
-  "Per our most recent internal review, ",
-];
-
-function withRotatedOpener(text: string, variantIndex: number): string {
-  const stripped = REGENERATE_OPENERS.reduce(
-    (t, opener) => (t.startsWith(opener) ? t.slice(opener.length) : t),
-    text,
-  );
-  return `${REGENERATE_OPENERS[variantIndex % REGENERATE_OPENERS.length]}${stripped}`;
-}
-
-export async function regenerateDraft(id: string, actor: string): Promise<Requirement> {
-  const req = mustFind(id);
-  const regenerationCount = req.activity.filter((a) => a.kind === "generated").length;
-  req.answer = req.answer
-    ? withRotatedOpener(req.answer, regenerationCount)
-    : `Draft response to: "${req.question}" — a first pass covering ${req.category.toLowerCase()} requirements, pending SME review before submission.`;
-  req.answerSource = "ai_draft";
-  if (req.status === "unanswered") req.status = "drafted";
-  req.confidence = Math.min(0.98, req.confidence + 0.04);
-  pushActivity(req, "generated", "AI draft regenerated", actor);
-  return delay(req, 900);
+export async function regenerateDraft(id: string, _actor: string): Promise<Requirement> {
+  return apiRequest<Requirement>(`/api/requirements/${id}/answer/regenerate`, { method: "POST" });
 }
 
 export async function setRequirementStatus(
   id: string,
   status: RequirementStatus,
-  actor: string,
+  _actor: string,
   note?: string,
 ): Promise<Requirement> {
-  const req = mustFind(id);
-  req.status = status;
-  const kind: ActivityEntry["kind"] =
-    status === "approved" ? "approved" : status === "rejected" ? "rejected" : "comment";
-  const label =
-    status === "approved"
-      ? "Approved"
-      : status === "rejected"
-        ? "Rejected"
-        : status === "changes_requested"
-          ? `Changes requested${note ? `: ${note}` : ""}`
-          : `Status changed to ${status.replace("_", " ")}`;
-  pushActivity(req, kind, label, actor);
-  // Keep the parent RFP's derived aggregates (progress strip / intelligence
-  // panel / readiness dial) consistent with the requirement's new status.
-  const rfp = getRfp(req.rfpId);
-  if (rfp) Object.assign(rfp, computeFromRequirements(req.rfpId));
-  return delay(req);
+  return apiRequest<Requirement>(`/api/requirements/${id}`, {
+    method: "PATCH",
+    body: { status, note },
+  });
 }
 
 export async function assignReviewer(
   id: string,
   reviewerId: string,
-  actor: string,
+  _actor: string,
 ): Promise<Requirement> {
-  const req = mustFind(id);
-  req.reviewerId = reviewerId;
-  pushActivity(req, "assigned", "Reviewer assigned", actor);
-  // Keep the Reviews queue's ReviewItem records (a separate, denormalized
-  // list) in sync — they carry their own reviewerId/mine copy.
-  for (const review of reviews) {
-    if (review.requirementId === id) {
-      review.reviewerId = reviewerId;
-      review.mine = reviewerId === CURRENT_USER_ID;
-    }
-  }
-  return delay(req);
+  await apiRequest(`/api/assignments`, {
+    method: "POST",
+    body: { requirementId: id, userId: reviewerId },
+  });
+  return fetchRequirement(id);
+}
+
+export async function setRequirementRisk(
+  id: string,
+  risk: RiskLevel,
+  _actor: string,
+): Promise<Requirement> {
+  return apiRequest<Requirement>(`/api/requirements/${id}`, { method: "PATCH", body: { risk } });
+}
+
+export async function setRequirementOwnerTeam(
+  id: string,
+  ownerTeam: string,
+  _actor: string,
+): Promise<Requirement> {
+  return apiRequest<Requirement>(`/api/requirements/${id}`, {
+    method: "PATCH",
+    body: { ownerTeam },
+  });
+}
+
+// Bulk variants used by the Requirements table's contextual action bar. Each
+// reuses the single-item mutation above so behavior stays identical for one
+// row or a hundred.
+export async function bulkSetStatus(
+  ids: string[],
+  status: RequirementStatus,
+  actor: string,
+): Promise<Requirement[]> {
+  return Promise.all(ids.map((id) => setRequirementStatus(id, status, actor)));
+}
+
+export async function bulkSetRisk(
+  ids: string[],
+  risk: RiskLevel,
+  actor: string,
+): Promise<Requirement[]> {
+  return Promise.all(ids.map((id) => setRequirementRisk(id, risk, actor)));
+}
+
+export async function bulkAssignReviewer(
+  ids: string[],
+  reviewerId: string,
+  actor: string,
+): Promise<Requirement[]> {
+  return Promise.all(ids.map((id) => assignReviewer(id, reviewerId, actor)));
+}
+
+export async function bulkSetOwnerTeam(
+  ids: string[],
+  ownerTeam: string,
+  actor: string,
+): Promise<Requirement[]> {
+  return Promise.all(ids.map((id) => setRequirementOwnerTeam(id, ownerTeam, actor)));
 }
