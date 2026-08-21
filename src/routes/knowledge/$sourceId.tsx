@@ -9,7 +9,7 @@ import { FreshnessBadge } from "@/components/common/freshness-badge";
 import { PersonAvatar } from "@/components/common/person-avatar";
 import { EmptyState } from "@/components/common/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getPerson } from "@/data/people";
+import { getPerson } from "@/lib/session";
 
 export const Route = createFileRoute("/knowledge/$sourceId")({
   loader: async ({ context, params }) => {
@@ -19,7 +19,7 @@ export const Route = createFileRoute("/knowledge/$sourceId")({
     return { crumb: source.name };
   },
   head: ({ loaderData }) => ({
-    meta: [{ title: loaderData ? `${loaderData.crumb} · RFP OS` : "Knowledge · RFP OS" }],
+    meta: [{ title: loaderData ? `${loaderData.crumb} · Tendyy` : "Knowledge · Tendyy" }],
   }),
   pendingComponent: PageSkeleton,
   errorComponent: RouteErrorState,

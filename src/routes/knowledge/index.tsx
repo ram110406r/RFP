@@ -16,11 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getPerson } from "@/data/people";
+import { getPerson } from "@/lib/session";
 import type { Authority, Freshness } from "@/types";
 
 export const Route = createFileRoute("/knowledge/")({
-  head: () => ({ meta: [{ title: "Knowledge · RFP OS" }] }),
+  head: () => ({ meta: [{ title: "Knowledge · Tendyy" }] }),
   loader: ({ context }) => context.queryClient.ensureQueryData(knowledgeSourcesQueryOptions()),
   pendingComponent: PageSkeleton,
   component: KnowledgeList,

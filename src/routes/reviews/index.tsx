@@ -18,12 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { getPerson } from "@/data/people";
+import { getPerson } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import type { ReviewItem } from "@/types";
 
 export const Route = createFileRoute("/reviews/")({
-  head: () => ({ meta: [{ title: "Reviews · RFP OS" }] }),
+  head: () => ({ meta: [{ title: "Reviews · Tendyy" }] }),
   loader: ({ context }) => context.queryClient.ensureQueryData(reviewsQueryOptions()),
   pendingComponent: PageSkeleton,
   component: ReviewsQueue,

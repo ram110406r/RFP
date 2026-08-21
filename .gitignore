@@ -20,6 +20,14 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Env files — never commit real credentials. .env.example files ARE tracked.
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
