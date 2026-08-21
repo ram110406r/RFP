@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rfp-os-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rfpos
+      POSTGRES_PASSWORD: rfpos_dev_password
+      POSTGRES_DB: rfpos
+    ports:
+      # Mapped to a non-default host port so this doesn't collide with a
+      # Postgres instance you might already have running locally.
+      - "55432:5432"
+    volumes:
+      - rfp_os_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rfpos -d rfpos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  rfp_os_postgres_data:
