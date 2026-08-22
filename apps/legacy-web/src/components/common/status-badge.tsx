@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { toneClasses, toneDotClasses, type Tone } from "./tone";
+import { badgeBase, toneDotClasses, type Tone } from "./tone";
 import type { RfpStatus, RequirementStatus } from "@/types";
 
 type AnyStatus = RfpStatus | RequirementStatus | "pending" | "in_review";
@@ -23,18 +23,23 @@ const STATUS_META: Record<AnyStatus, { label: string; tone: Tone }> = {
   in_review: { label: "In review", tone: "warning" },
 };
 
+/**
+ * Status badges are deliberately quieter than risk badges: neutral chrome
+ * with a coloured dot, rather than a tinted pill.
+ *
+ * Two competing colour systems in one table row is the reason nothing
+ * currently stands out — a row with an amber "In review" pill next to an
+ * amber "Medium" pill reads as twice as urgent as it is. Risk wins the colour
+ * budget; status keeps the dot, which is enough to scan for.
+ */
 export function StatusBadge({ status, className }: { status: AnyStatus; className?: string }) {
   const meta = STATUS_META[status] ?? { label: status, tone: "neutral" as Tone };
   return (
     <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium leading-none",
-        toneClasses[meta.tone],
-        className,
-      )}
+      className={cn(badgeBase, "border-border bg-surface-sunken font-medium text-fg-2", className)}
     >
       <span
-        className={cn("h-1.5 w-1.5 rounded-full", toneDotClasses[meta.tone])}
+        className={cn("h-1.5 w-1.5 shrink-0 rounded-full", toneDotClasses[meta.tone])}
         aria-hidden="true"
       />
       {meta.label}
