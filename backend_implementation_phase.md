@@ -1,456 +1,37 @@
-# RFP OS — Backend Implementation Plan v2
-
-## 1. Architecture Goal
-
-Build the RFP OS as a modular, multi-tenant, API-first backend that supports:
+## Recommended roadmap
 
 ```text
-RFP Intake
-    ↓
-Document Processing
-    ↓
-Requirement Intelligence
-    ↓
-Knowledge Retrieval
-    ↓
-AI Answer Generation
-    ↓
-Evidence
-    ↓
-Risk Detection
-    ↓
-Human Review
-    ↓
-Validation
-    ↓
-Submission
-    ↓
-Outcome
-    ↓
-Learning
+PHASE 1 — Monorepo & Runtime Foundation        ✓ DONE
+PHASE 2 — NestJS API Foundation                ✓ DONE
+PHASE 3 — Database Foundation                  ✓ DONE
+PHASE 4 — Authentication & Organization        ✓ DONE
+
+────────────────────────────────────────────────────────
+
+PHASE 5 — RFP Core & Lifecycle
+PHASE 6 — Document Processing & Requirements
+PHASE 7 — Knowledge, Search & Evidence
+PHASE 8 — AI Response & RFP Intelligence
+PHASE 9 — Review, Validation & Submission
+PHASE 10 — Events, MCP & Browser Automation
+PHASE 11 — Production Engineering
 ```
 
-The backend must be built around the **RFP domain model**, not around individual frontend screens or AI agents.
+So you now have **7 remaining phases**, not 26.
 
 ---
 
-# 2. Confirmed Technology Stack
+# PHASE 5 — RFP Core & Lifecycle
 
-## Application
+**Combines original Phases 5, 6 and 7**
 
-```text
-Frontend
-  Next.js App Router
-  React
-  TypeScript
+> Note: Your original Phase 5 Audit & Security should be incorporated into the already-completed security foundation rather than treated as a standalone implementation phase. Audit hooks should be added as each business capability is implemented.
 
-Backend
-  NestJS
-  TypeScript
-  Bun runtime
+### Objective
 
-API
-  REST
-  MCP
-```
+Build the actual RFP domain and its complete lifecycle.
 
-## Data
-
-```text
-PostgreSQL
-Drizzle ORM
-pgvector
-OpenSearch
-```
-
-## Infrastructure
-
-```text
-MinIO / S3
-Redis
-BullMQ
-Docker
-Dokploy
-GitHub Actions
-```
-
-## AI
-
-```text
-OpenAI
-Anthropic
-Gemini
-
-Provider Abstraction
-Model Router
-RAG
-Embeddings
-pgvector
-OpenSearch
-```
-
-## Security
-
-```text
-Better Auth
-RBAC
-ABAC
-Audit Logs
-Multi-tenant isolation
-```
-
-## Platform
-
-```text
-Turborepo
-Bun
-GitHub
-```
-
-## Observability
-
-```text
-OpenTelemetry
-Sentry
-PostHog
-```
-
-## Testing
-
-```text
-Vitest
-Playwright
-```
-
-## Browser
-
-```text
-Plasmo
-TypeScript
-```
-
----
-
-# 3. Target Monorepo
-
-```text
-rfp-os/
-│
-├── apps/
-│   ├── web/
-│   │   └── Next.js application
-│   │
-│   ├── api/
-│   │   └── NestJS API
-│   │
-│   ├── worker/
-│   │   └── Bun + BullMQ workers
-│   │
-│   ├── mcp/
-│   │   └── MCP Server
-│   │
-│   └── extension/
-│       └── Plasmo browser extension
-│
-├── packages/
-│   ├── ui/
-│   ├── types/
-│   ├── config/
-│   ├── db/
-│   ├── ai/
-│   ├── validation/
-│   └── observability/
-│
-├── infrastructure/
-│   ├── docker/
-│   ├── postgres/
-│   ├── redis/
-│   ├── minio/
-│   └── opensearch/
-│
-├── docs/
-│
-├── turbo.json
-├── package.json
-└── README.md
-```
-
----
-
-# PHASE 1 — Monorepo & Runtime Foundation
-
-## Objective
-
-Create the development foundation.
-
-### Implement
-
-* Turborepo
-* Bun
-* TypeScript
-* Workspace configuration
-* Environment management
-* Shared package configuration
-* Docker development environment
-
-### Applications
-
-```text
-apps/web
-apps/api
-apps/worker
-apps/mcp
-apps/extension
-```
-
-### Completion criteria
-
-```text
-✓ bun install
-✓ turbo dev
-✓ API starts
-✓ Web starts
-✓ Worker starts
-✓ Shared packages resolve
-✓ Docker infrastructure starts
-```
-
----
-
-# PHASE 2 — NestJS API Foundation
-
-## Objective
-
-Build the production API foundation.
-
-### Structure
-
-```text
-apps/api/src/
-
-├── main.ts
-├── app.module.ts
-│
-├── common/
-│   ├── guards/
-│   ├── interceptors/
-│   ├── filters/
-│   ├── decorators/
-│   └── pipes/
-│
-├── modules/
-│
-└── infrastructure/
-```
-
-### Implement
-
-* NestJS
-* REST API
-* API versioning
-* Global validation
-* Error handling
-* Request IDs
-* Structured logging
-* CORS
-* Rate limiting foundation
-* Health checks
-
-### Endpoints
-
-```http
-GET /health
-GET /ready
-GET /api/v1/health
-```
-
----
-
-# PHASE 3 — Database Foundation
-
-## Objective
-
-Establish PostgreSQL as the transactional source of truth.
-
-### Stack
-
-```text
-PostgreSQL
-     ↓
-Drizzle ORM
-```
-
-### Create
-
-```text
-packages/db/
-├── schema/
-├── migrations/
-├── relations/
-└── client.ts
-```
-
-### Initial database domains
-
-```text
-identity
-organization
-audit
-files
-knowledge
-rfp
-```
-
-### Requirements
-
-* Database connection
-* Drizzle configuration
-* Migration system
-* Relations
-* Indexes
-* Transactions
-* Seed system
-
----
-
-# PHASE 4 — Authentication & Organization
-
-## Objective
-
-Implement multi-tenancy before building RFP functionality.
-
-### Core entities
-
-```text
-User
-Organization
-OrganizationMember
-Role
-Permission
-AccessPolicy
-```
-
-### Authentication
-
-Use:
-
-```text
-Better Auth
-```
-
-### Authorization
-
-Use:
-
-```text
-RBAC + ABAC
-```
-
-### Example roles
-
-```text
-OWNER
-ADMIN
-RFP_MANAGER
-CONTRIBUTOR
-REVIEWER
-SME
-VIEWER
-```
-
-### RFP permissions
-
-```text
-rfp:create
-rfp:read
-rfp:update
-rfp:delete
-rfp:assign
-rfp:review
-rfp:approve
-rfp:submit
-rfp:export
-rfp:manage
-```
-
-### Critical requirement
-
-Every RFP query must be scoped to:
-
-```text
-organization_id
-```
-
----
-
-# PHASE 5 — Audit & Security
-
-## Objective
-
-Make every important business action traceable.
-
-### Audit model
-
-```text
-AuditLog
-
-id
-organization_id
-actor_id
-action
-entity_type
-entity_id
-before
-after
-metadata
-ip_address
-user_agent
-created_at
-```
-
-### Track
-
-```text
-RFP_CREATED
-RFP_UPDATED
-RFP_DELETED
-
-DOCUMENT_UPLOADED
-DOCUMENT_DELETED
-
-REQUIREMENT_CREATED
-REQUIREMENT_UPDATED
-
-ANSWER_GENERATED
-ANSWER_UPDATED
-ANSWER_APPROVED
-ANSWER_REJECTED
-
-EVIDENCE_ATTACHED
-
-REVIEW_ASSIGNED
-
-RFP_VALIDATED
-RFP_SUBMITTED
-
-OUTCOME_RECORDED
-```
-
----
-
-# PHASE 6 — Core RFP Domain
-
-## Objective
-
-Build the core RFP business model.
-
-### Main entity
-
-```text
-RFP
-```
-
-### RFP relationships
+### Core domain
 
 ```text
 RFP
@@ -465,7 +46,7 @@ RFP
 └── Outcome
 ```
 
-### RFP fields
+### RFP model
 
 ```text
 id
@@ -483,37 +64,31 @@ created_at
 updated_at
 ```
 
----
-
-# PHASE 7 — RFP State Machine
-
-## Objective
-
-Make RFP lifecycle explicit and enforceable.
+### Lifecycle
 
 ```text
 DRAFT
- ↓
+  ↓
 INTAKE
- ↓
+  ↓
 PARSING
- ↓
+  ↓
 ANALYZING
- ↓
+  ↓
 QUALIFICATION
- ↓
+  ↓
 RESPONSE
- ↓
+  ↓
 REVIEW
- ↓
+  ↓
 VALIDATION
- ↓
+  ↓
 READY_FOR_SUBMISSION
- ↓
+  ↓
 SUBMITTED
- ↓
+  ↓
 OUTCOME_RECORDED
- ↓
+  ↓
 CLOSED
 ```
 
@@ -525,37 +100,75 @@ ANALYSIS_FAILED
 VALIDATION_FAILED
 ```
 
-Every transition must:
+Every transition:
 
 ```text
 Validate
-↓
+   ↓
 Authorize
-↓
+   ↓
 Persist
-↓
+   ↓
 Audit
-↓
+   ↓
 Publish Event
+```
+
+### Build
+
+* RFP CRUD
+* RFP lifecycle
+* State machine
+* RFP assignments
+* Client/project association
+* Organization isolation
+* Authorization
+* Audit integration
+* Domain events
+
+### Done when
+
+```text
+Create RFP
+   ↓
+Move through lifecycle
+   ↓
+Authorization enforced
+   ↓
+Every important action audited
+   ↓
+Events emitted
 ```
 
 ---
 
-# PHASE 8 — Document Management
+# PHASE 6 — Document Processing & Requirement Intelligence
 
-## Objective
+**Combines original Phases 8, 9, 10 and 11**
 
-Build secure RFP document ingestion.
-
-### Storage
+These should be **one pipeline**.
 
 ```text
-NestJS API
-     ↓
-MinIO / S3
+DOCUMENT UPLOAD
+      ↓
+OBJECT STORAGE
+      ↓
+QUEUE
+      ↓
+DOCUMENT PROCESSING
+      ↓
+TEXT / TABLE EXTRACTION
+      ↓
+NORMALIZATION
+      ↓
+REQUIREMENT EXTRACTION
+      ↓
+REQUIREMENT GRAPH
 ```
 
-### Supported formats
+### Document management
+
+Support:
 
 ```text
 PDF
@@ -566,56 +179,31 @@ ZIP
 HTML
 ```
 
-### Entities
+Build:
 
-```text
-File
-RFPDocument
-DocumentVersion
-```
-
-### Processing status
-
-```text
-UPLOADED
-QUEUED
-PROCESSING
-PARSED
-FAILED
-```
-
-### Implement
-
-* Secure uploads
+* File
+* RFPDocument
+* DocumentVersion
+* Secure upload/download
 * MIME validation
-* File size limits
+* Size limits
 * Checksums
-* Object storage
 * Versioning
-* Secure downloads
-* Delete/archive
+* Archive/delete
 
----
-
-# PHASE 9 — Document Processing Workers
-
-## Objective
-
-Move heavy document processing outside the API.
-
-### Architecture
+### Processing infrastructure
 
 ```text
 NestJS API
-    ↓
+     ↓
 Redis
-    ↓
+     ↓
 BullMQ
-    ↓
+     ↓
 Bun Worker
 ```
 
-### Jobs
+Jobs:
 
 ```text
 DOCUMENT_PARSE
@@ -624,27 +212,7 @@ TABLE_EXTRACTION
 DOCUMENT_NORMALIZATION
 ```
 
-### Pipeline
-
-```text
-Upload
- ↓
-Queue
- ↓
-Detect Type
- ↓
-Extract Text
- ↓
-Extract Tables
- ↓
-Normalize
- ↓
-Store Parsed Content
- ↓
-Trigger Requirement Extraction
-```
-
-### Requirements
+Include:
 
 * Retries
 * Idempotency
@@ -653,38 +221,13 @@ Trigger Requirement Extraction
 * Dead-letter handling
 * Worker recovery
 
----
-
-# PHASE 10 — Requirement Intelligence
-
-## Objective
-
-Transform documents into structured requirements.
-
-### Entity
+### Requirement intelligence
 
 ```text
 RFPRequirement
 ```
 
-### Fields
-
-```text
-id
-rfp_id
-requirement
-question
-category
-mandatory
-risk
-source_location
-owner_id
-reviewer_id
-status
-metadata
-```
-
-### Categories
+Categories:
 
 ```text
 PRODUCT
@@ -698,7 +241,7 @@ SUPPORT
 GENERAL
 ```
 
-### Status
+Statuses:
 
 ```text
 UNANSWERED
@@ -710,13 +253,7 @@ REJECTED
 FINAL
 ```
 
----
-
-# PHASE 11 — Requirement Graph
-
-## Objective
-
-Create traceability between every important requirement and its associated objects.
+### Requirement graph
 
 ```text
 Requirement
@@ -730,7 +267,7 @@ Requirement
 └── Contract
 ```
 
-### Implement
+Support:
 
 * Parent/child requirements
 * Dependencies
@@ -739,17 +276,58 @@ Requirement
 * Source locations
 * Traceability
 
+### Done when
+
+You can do:
+
+```text
+Upload RFP
+     ↓
+Process documents
+     ↓
+Extract content
+     ↓
+Extract requirements
+     ↓
+Store requirements
+     ↓
+Link requirements to source
+```
+
+This is the first major **RFP intelligence milestone**.
+
 ---
 
-# PHASE 12 — Knowledge Architecture
+# PHASE 7 — Knowledge, Search & Evidence
 
-## Objective
+**Combines original Phases 12, 13 and 14**
 
-Connect RFP to the organization's shared knowledge layer.
+These are really one subsystem.
 
-Do NOT create a separate RFP knowledge base.
+```text
+                    KNOWLEDGE
+                        ↓
+                  Chunk / Version
+                        ↓
+                 ┌──────┴──────┐
+                 ↓             ↓
+             pgvector      OpenSearch
+                 ↓             ↓
+              Semantic      Keyword
+                 └──────┬──────┘
+                        ↓
+                 Hybrid Retrieval
+                        ↓
+                     Rerank
+                        ↓
+                    Evidence
+```
 
-### Architecture
+### Knowledge architecture
+
+Do **not** create a separate RFP knowledge base.
+
+Use the organization's shared knowledge layer.
 
 ```text
 Knowledge Source
@@ -767,11 +345,9 @@ And:
 
 ```text
 Knowledge
-      ↓
+    ↓
 OpenSearch
 ```
-
-for hybrid retrieval.
 
 ### Source types
 
@@ -787,64 +363,19 @@ APPROVED_RFP
 HISTORICAL_RFP
 ```
 
----
+### Search
 
-# PHASE 13 — Search & RAG
+Implement:
 
-## Objective
+* Semantic search
+* Keyword search
+* Full-text search
+* Filters
+* Hybrid search
+* Ranking
+* Reranking
 
-Implement hybrid retrieval.
-
-### Architecture
-
-```text
-User / Agent
-     ↓
-Retrieval Service
-     ↓
-┌───────────────┬───────────────┐
-↓               ↓
-pgvector      OpenSearch
-↓               ↓
-Semantic       Keyword /
-Search         Full Text
-└───────┬───────┘
-        ↓
-   Rank / Rerank
-        ↓
-   Best Evidence
-```
-
-### pgvector
-
-Used for:
-
-```text
-Semantic similarity
-Embeddings
-RAG retrieval
-```
-
-### OpenSearch
-
-Used for:
-
-```text
-Keyword search
-Full-text search
-Filters
-Hybrid retrieval
-```
-
----
-
-# PHASE 14 — Evidence Engine
-
-## Objective
-
-Make every important answer traceable.
-
-### Evidence model
+### Evidence
 
 ```text
 RFPEvidence
@@ -858,7 +389,7 @@ RFPEvidence
 └── verified_by
 ```
 
-### Every answer should support:
+Every answer should eventually have:
 
 ```text
 Answer
@@ -874,17 +405,39 @@ Freshness
 Confidence
 ```
 
+### Done when
+
+A requirement can be searched against the organization's knowledge and return **ranked, traceable evidence**.
+
 ---
 
-# PHASE 15 — AI Provider Abstraction
+# PHASE 8 — AI Response & RFP Intelligence
 
-## Objective
+**Combines original Phases 15, 16, 17, 18, 19 and 20**
 
-Prevent vendor lock-in.
+This becomes the main **AI intelligence phase**.
 
-Never directly embed OpenAI/Anthropic/Gemini calls throughout the RFP code.
+```text
+Requirement
+     ↓
+Knowledge Retrieval
+     ↓
+Historical RFP Retrieval
+     ↓
+Evidence Ranking
+     ↓
+AI Generation
+     ↓
+Confidence
+     ↓
+Risk
+     ↓
+SME Routing
+     ↓
+Go / No-Go
+```
 
-### Architecture
+## AI provider abstraction
 
 ```text
 RFP AI Service
@@ -892,12 +445,14 @@ RFP AI Service
 Model Router
        ↓
 Provider Interface
-   ┌───┼────┐
-   ↓   ↓    ↓
-OpenAI Anthropic Gemini
+    ┌──┼──┐
+    ↓  ↓  ↓
+ OpenAI
+ Anthropic
+ Gemini
 ```
 
-### Provider abstraction should support
+Support:
 
 ```text
 generate()
@@ -907,27 +462,19 @@ classify()
 structuredOutput()
 ```
 
-### Model router factors
+Router considers:
 
 ```text
 Task
 Quality
 Latency
 Cost
-Context length
+Context Length
 Availability
 Risk
 ```
 
----
-
-# PHASE 16 — Answer Generation
-
-## Objective
-
-Generate evidence-backed answers.
-
-### Pipeline
+## Answer generation
 
 ```text
 Requirement
@@ -943,29 +490,23 @@ Generate Answer
 Confidence
     ↓
 Risk
-    ↓
-Human Review
 ```
 
-### Answer fields
+## SME workflow
 
 ```text
-answer
-confidence
-status
-generated_by
-generated_at
-approved_by
-approved_at
+AI Draft
+   ↓
+Assignment
+   ↓
+SME Review
+   ↓
+Approve / Reject
+   ↓
+Final
 ```
 
----
-
-# PHASE 17 — SME Workflow
-
-## Objective
-
-Route work to the correct people.
+Routing:
 
 ```text
 Security       → Security
@@ -977,29 +518,9 @@ Implementation → Delivery
 Compliance     → Compliance
 ```
 
-### Workflow
+## Risk engine
 
-```text
-AI Draft
- ↓
-Assignment
- ↓
-SME Review
- ↓
-Approve / Reject
- ↓
-Final
-```
-
----
-
-# PHASE 18 — Risk Engine
-
-## Objective
-
-Detect risk before answers become final.
-
-### Risk types
+Detect:
 
 ```text
 Capability Gap
@@ -1013,7 +534,7 @@ Conflicting Evidence
 Missing Evidence
 ```
 
-### Severity
+Severity:
 
 ```text
 LOW
@@ -1022,56 +543,43 @@ HIGH
 CRITICAL
 ```
 
-### Autonomy policy
+Autonomy:
 
 ```text
 LOW
-→ AI answer
+→ AI Answer
 
 MEDIUM
-→ AI + evidence
+→ AI + Evidence
 
 HIGH
-→ Human review
+→ Human Review
 
 CRITICAL
-→ Specialist approval
+→ Specialist Approval
 ```
 
----
+## Conflict & freshness
 
-# PHASE 19 — Conflict & Freshness Engine
-
-## Objective
-
-Prevent outdated knowledge from becoming authoritative answers.
-
-### Authority hierarchy
+Authority:
 
 ```text
-1. Current signed contract
-2. Current approved policies
-3. Current product documentation
-4. Current architecture/SLA
-5. Approved commercial policies
-6. Historical RFPs
-7. Archived information
+Current Signed Contract
+        ↓
+Current Approved Policies
+        ↓
+Current Product Documentation
+        ↓
+Current Architecture / SLA
+        ↓
+Commercial Policies
+        ↓
+Historical RFPs
+        ↓
+Archived Information
 ```
 
-### Freshness
-
-Track:
-
-```text
-Created
-Updated
-Verified
-Expires
-Owner
-Version
-```
-
-### Detect
+Detect:
 
 ```text
 STALE
@@ -1080,15 +588,9 @@ CONFLICTING
 UNVERIFIED
 ```
 
----
+## Go / No-Go
 
-# PHASE 20 — Go / No-Go Intelligence
-
-## Objective
-
-Evaluate whether an RFP should be pursued.
-
-### Factors
+Evaluate:
 
 ```text
 Product Fit
@@ -1100,7 +602,7 @@ Strategic Fit
 Competitive Position
 ```
 
-### Result
+Return:
 
 ```text
 GO
@@ -1109,15 +611,33 @@ REVIEW
 NO_GO
 ```
 
-Human users must be able to override the AI recommendation.
+Human override is mandatory.
 
 ---
 
-# PHASE 21 — Validation Engine
+# PHASE 9 — Review, Validation & Submission
 
-## Objective
+**Combines original Phases 21, 22 and 23**
 
-Perform final RFP validation.
+These represent the final business workflow.
+
+```text
+AI ANSWERS
+    ↓
+REVIEW
+    ↓
+VALIDATION
+    ↓
+APPROVAL
+    ↓
+SUBMISSION
+    ↓
+OUTCOME
+    ↓
+RFP MEMORY
+```
+
+## Validation
 
 ```text
 Requirement Validation
@@ -1135,7 +655,7 @@ Approval Validation
 Submission Validation
 ```
 
-### Validate
+Validate:
 
 * All mandatory requirements answered
 * High-risk answers reviewed
@@ -1146,15 +666,7 @@ Submission Validation
 * Required approvals completed
 * Submission package complete
 
----
-
-# PHASE 22 — Submission System
-
-## Objective
-
-Create and manage final submission packages.
-
-### Submission
+## Submission
 
 ```text
 RFPSubmission
@@ -1166,7 +678,7 @@ RFPSubmission
 └── metadata
 ```
 
-### Package
+Generate:
 
 ```text
 Completed Questionnaire
@@ -1181,15 +693,7 @@ Approval History
 Submission Record
 ```
 
----
-
-# PHASE 23 — Outcome & RFP Memory
-
-## Objective
-
-Capture the result and learn from it.
-
-### Outcomes
+## Outcome & memory
 
 ```text
 WON
@@ -1198,7 +702,7 @@ CANCELLED
 NO_DECISION
 ```
 
-### Store
+Store:
 
 ```text
 Question
@@ -1212,7 +716,7 @@ Evidence
 Human Edits
 ```
 
-### Future retrieval
+Future retrieval:
 
 ```text
 New Question
@@ -1228,49 +732,17 @@ Win/Loss Context
 Candidate Answer
 ```
 
-Historical answers remain contextual; current authoritative knowledge remains the source of truth.
+Historical answers remain **context**, not authoritative truth.
 
 ---
 
-# PHASE 24 — Event Architecture
+# PHASE 10 — Events, MCP & Browser Automation
 
-## Objective
+**Combines original Phases 24, 25, 26 and 27**
 
-Make the system event-driven.
+These are all ways of exposing/automating the same backend capabilities.
 
-### Events
-
-```text
-RFP_CREATED
-RFP_UPDATED
-
-DOCUMENT_UPLOADED
-DOCUMENT_PARSED
-DOCUMENT_PARSE_FAILED
-
-REQUIREMENTS_EXTRACTED
-
-QUALIFICATION_COMPLETED
-
-ANSWER_GENERATED
-EVIDENCE_RETRIEVED
-
-RISK_DETECTED
-CONFLICT_DETECTED
-
-REVIEW_ASSIGNED
-ANSWER_APPROVED
-ANSWER_REJECTED
-
-VALIDATION_COMPLETED
-
-SUBMISSION_CREATED
-RFP_SUBMITTED
-
-OUTCOME_RECORDED
-```
-
-### Flow
+## Event architecture
 
 ```text
 API
@@ -1288,17 +760,30 @@ Worker
 Result
 ```
 
----
+Events include:
 
-# PHASE 25 — MCP Server
+```text
+RFP_CREATED
+RFP_UPDATED
+DOCUMENT_UPLOADED
+DOCUMENT_PARSED
+REQUIREMENTS_EXTRACTED
+ANSWER_GENERATED
+EVIDENCE_RETRIEVED
+RISK_DETECTED
+CONFLICT_DETECTED
+REVIEW_ASSIGNED
+ANSWER_APPROVED
+ANSWER_REJECTED
+VALIDATION_COMPLETED
+SUBMISSION_CREATED
+RFP_SUBMITTED
+OUTCOME_RECORDED
+```
 
-## Objective
+## MCP
 
-Expose RFP capabilities to AI agents and external agent systems through MCP.
-
-### MCP tools
-
-Potential tools:
+Expose:
 
 ```text
 create_rfp
@@ -1317,32 +802,14 @@ generate_submission
 record_outcome
 ```
 
-### Important
+MCP must use the **same authorization, tenant isolation, audit and risk policies** as REST.
 
-MCP must respect the same:
-
-```text
-Authentication
-Authorization
-Organization isolation
-Audit
-Risk policies
-```
-
-as the REST API.
-
----
-
-# PHASE 26 — Browser Extension Backend
-
-## Objective
-
-Prepare APIs for the Plasmo extension.
+## Browser extension
 
 ```text
 Browser
    ↓
-Plasmo Extension
+Plasmo
    ↓
 RFP API
    ↓
@@ -1357,7 +824,7 @@ Risk
 Answer
 ```
 
-### APIs
+Backend APIs:
 
 ```http
 POST /api/v1/rfp-agent/questions/analyze
@@ -1365,44 +832,42 @@ POST /api/v1/rfp-agent/questions/answer
 POST /api/v1/rfp-agent/questions/evidence
 ```
 
-The extension must not contain its own RAG or AI business logic.
+The extension must **not** implement its own RAG or AI business logic.
 
----
-
-# PHASE 27 — Safe Autofill
-
-## Objective
-
-Backend-enforced risk-based autofill.
+## Safe autofill
 
 ```text
 LOW
-→ Auto-fill allowed
+→ Auto-fill
 
 MEDIUM
-→ Generate + review
+→ Generate + Review
 
 HIGH
-→ Review required
+→ Review Required
 
 CRITICAL
-→ Approval required
-→ Auto-fill prohibited
+→ Approval Required
+→ Auto-fill Prohibited
 ```
-
-The backend is authoritative.
 
 ---
 
-# PHASE 28 — Observability
+# PHASE 11 — Production Engineering
 
-## Objective
+**Combines original Phases 28, 29 and 30**
 
-Make every backend and AI workflow observable.
+This is where you make the system production-ready.
 
-### OpenTelemetry
+## Observability
 
-Track:
+```text
+OpenTelemetry
+Sentry
+PostHog
+```
+
+Trace:
 
 ```text
 Request
@@ -1418,7 +883,7 @@ Worker
 AI Provider
 ```
 
-### AI telemetry
+AI telemetry:
 
 ```text
 Model
@@ -1431,42 +896,9 @@ Confidence
 Result
 ```
 
-### Sentry
+## Testing
 
-Use for:
-
-```text
-Exceptions
-Worker failures
-API errors
-Frontend errors
-```
-
-### PostHog
-
-Use for:
-
-```text
-Feature usage
-Workflow completion
-RFP lifecycle analytics
-User behavior
-Product analytics
-```
-
----
-
-# PHASE 29 — Testing
-
-## Unit testing
-
-Use:
-
-```text
-Vitest
-```
-
-Test:
+### Unit
 
 ```text
 State transitions
@@ -1479,30 +911,29 @@ Validation
 Model routing
 ```
 
-## End-to-end
-
-Use:
-
-```text
-Playwright
-```
-
-Test:
+### E2E
 
 ```text
 Login
+ ↓
 Create RFP
-Upload document
-Process RFP
-Review answers
+ ↓
+Upload
+ ↓
+Process
+ ↓
+Generate Answers
+ ↓
+Review
+ ↓
 Approve
+ ↓
 Validate
+ ↓
 Export
 ```
 
-## AI evaluation
-
-Build a dedicated evaluation dataset:
+### AI evaluation
 
 ```text
 Question
@@ -1512,11 +943,9 @@ Risk
 Expected Confidence
 ```
 
----
+## Production hardening
 
-# PHASE 30 — Production Hardening
-
-## Security
+### Security
 
 ```text
 Authentication
@@ -1532,7 +961,7 @@ Secrets management
 Encryption
 ```
 
-## Reliability
+### Reliability
 
 ```text
 Retries
@@ -1545,7 +974,7 @@ Graceful shutdown
 Health checks
 ```
 
-## Performance
+### Performance
 
 ```text
 Database indexes
@@ -1553,278 +982,107 @@ Pagination
 Batch processing
 Caching
 Parallel workers
-Queue processing
+Queue optimization
 Search optimization
 ```
 
 ---
 
-# 4 Major Development Milestones
+# Final Roadmap
 
-## Milestone 1 — Foundation
+Your backend should now be tracked like this:
 
 ```text
-Phase 1
-Phase 2
-Phase 3
-Phase 4
-Phase 5
-Phase 6
-Phase 7
+┌─────────────────────────────────────────────┐
+│ PHASE 1 — Foundation                 ✓      │
+├─────────────────────────────────────────────┤
+│ PHASE 2 — NestJS API                 ✓      │
+├─────────────────────────────────────────────┤
+│ PHASE 3 — Database                   ✓      │
+├─────────────────────────────────────────────┤
+│ PHASE 4 — Auth + Organization        ✓      │
+├─────────────────────────────────────────────┤
+│                                             │
+│ PHASE 5 — RFP Core + Lifecycle               │
+│                                             │
+│ PHASE 6 — Documents + Requirements           │
+│                                             │
+│ PHASE 7 — Knowledge + Search + Evidence     │
+│                                             │
+│ PHASE 8 — AI + Risk + Intelligence          │
+│                                             │
+│ PHASE 9 — Review + Validation + Submission  │
+│                                             │
+│ PHASE 10 — Events + MCP + Browser           │
+│                                             │
+│ PHASE 11 — Production Engineering            │
+└─────────────────────────────────────────────┘
 ```
 
-Result:
+### And the actual product progression becomes:
 
 ```text
-Secure multi-tenant RFP backend
-+
-Database
-+
-Authentication
-+
-Authorization
-+
-Audit
-+
-RFP lifecycle
+PHASE 5
+RFP CORE
+   ↓
+PHASE 6
+UNDERSTAND RFP
+   ↓
+PHASE 7
+KNOWLEDGE + EVIDENCE
+   ↓
+PHASE 8
+AI + RISK + QUALIFICATION
+   ↓
+PHASE 9
+REVIEW + VALIDATE + SUBMIT
+   ↓
+PHASE 10
+AUTOMATE + MCP + EXTENSION
+   ↓
+PHASE 11
+PRODUCTION
 ```
 
----
+### Most importantly: don't treat these as separate projects
 
-## Milestone 2 — Intelligence Foundation
+For example, **Document Management → Workers → Requirement Intelligence → Requirement Graph** is one continuous pipeline:
 
 ```text
-Phase 8
-Phase 9
-Phase 10
-Phase 11
-Phase 12
-Phase 13
-Phase 14
+UPLOAD
+  ↓
+PROCESS
+  ↓
+UNDERSTAND
+  ↓
+STRUCTURE
 ```
 
-Result:
+Likewise:
 
 ```text
-Upload
- ↓
-Parse
- ↓
-Understand
- ↓
-Requirement Graph
- ↓
-Knowledge
- ↓
-Search
- ↓
-Evidence
+KNOWLEDGE
+  ↓
+SEARCH
+  ↓
+EVIDENCE
 ```
 
----
+is one retrieval subsystem.
 
-## Milestone 3 — AI & Workflow
-
-```text
-Phase 15
-Phase 16
-Phase 17
-Phase 18
-Phase 19
-Phase 20
-```
-
-Result:
+And:
 
 ```text
-Knowledge
- ↓
 AI
  ↓
-Answer
+ANSWER
  ↓
-Evidence
+RISK
  ↓
-Risk
+SME
  ↓
-SME Review
- ↓
-Go / No-Go
+GO/NO-GO
 ```
 
----
+is one intelligence subsystem.
 
-## Milestone 4 — Production RFP OS
-
-```text
-Phase 21
-Phase 22
-Phase 23
-Phase 24
-Phase 25
-Phase 26
-Phase 27
-Phase 28
-Phase 29
-Phase 30
-```
-
-Result:
-
-```text
-Validate
- ↓
-Submit
- ↓
-Learn
- ↓
-MCP
- ↓
-Extension
- ↓
-Observability
- ↓
-Production
-```
-
----
-
-# MVP Scope
-
-Do not implement all 30 phases before testing the product.
-
-The first usable RFP backend should be:
-
-```text
-Organization
-      ↓
-RFP Creation
-      ↓
-Document Upload
-      ↓
-Document Processing
-      ↓
-Requirement Extraction
-      ↓
-Knowledge Retrieval
-      ↓
-AI Answer
-      ↓
-Evidence
-      ↓
-Human Review
-      ↓
-Validation
-      ↓
-Export
-```
-
-The first production milestone should therefore focus on:
-
-```text
-NestJS
-+
-PostgreSQL
-+
-Drizzle
-+
-Better Auth
-+
-RBAC/ABAC
-+
-MinIO
-+
-Redis/BullMQ
-+
-Document Processing
-+
-pgvector
-+
-OpenSearch
-+
-AI Provider Abstraction
-+
-RFP Domain
-```
-
-Then add advanced intelligence.
-
----
-
-# Final Architecture
-
-```text
-                         RFP OS
-                           │
-             ┌─────────────┴─────────────┐
-             │                           │
-         Next.js                     MCP Server
-             │                           │
-             └─────────────┬─────────────┘
-                           ↓
-                       NestJS API
-                           │
-        ┌──────────────────┼──────────────────┐
-        ↓                  ↓                  ↓
-   PostgreSQL          OpenSearch           MinIO
-   + pgvector              │                  │
-        │                  │                  │
-        └──────────────────┼──────────────────┘
-                           ↓
-                     RAG / AI Layer
-                           │
-                 ┌─────────┼─────────┐
-                 ↓         ↓         ↓
-              OpenAI   Anthropic   Gemini
-                 │         │         │
-                 └─────────┼─────────┘
-                           ↓
-                      Model Router
-                           │
-                     Redis + BullMQ
-                           │
-                           ↓
-                     Bun Workers
-                           │
-        ┌──────────────────┼──────────────────┐
-        ↓                  ↓                  ↓
- Document Processing   AI Processing     Validation
-```
-
-# Core Engineering Principle
-
-The backend should ultimately make this chain possible:
-
-```text
-                  RFP OS
-
-                     RFP
-                      ↓
-                  Understand
-                      ↓
-                   Qualify
-                      ↓
-                    Map
-                      ↓
-                  Retrieve
-                      ↓
-                   Answer
-                      ↓
-                  Evidence
-                      ↓
-                    Risk
-                      ↓
-                   Review
-                      ↓
-                  Validate
-                      ↓
-                   Submit
-                      ↓
-                   Outcome
-                      ↓
-                    Learn
-                      ↓
-              Better Next RFP
-```
-
-**Build the foundation first. Build AI on top of the foundation, not the other way around.**

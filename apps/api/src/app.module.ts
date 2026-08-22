@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerModule } from "@nestjs/throttler";
 
+import { AuthGuard, PermissionsGuard } from "./common/auth";
 import { AppThrottlerGuard } from "./common/guards/app-throttler.guard";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
@@ -14,6 +15,11 @@ import { AppConfigModule } from "./config/app-config.module";
 import type { Env } from "./config/env.schema";
 import { HealthModule } from "./health/health.module";
 import { DatabaseModule } from "./infrastructure/database";
+import { AuditModule } from "./infrastructure/audit";
+import { EventsModule } from "./infrastructure/events";
+import { AuthModule } from "./modules/auth";
+import { OrganizationsModule } from "./modules/organizations";
+import { RfpModule } from "./modules/rfp";
 
 @Module({
   imports: [
@@ -32,10 +38,24 @@ import { DatabaseModule } from "./infrastructure/database";
       }),
     }),
     HealthModule,
+    AuditModule,
+    EventsModule,
+    AuthModule,
+    OrganizationsModule,
+    RfpModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    /*
+     * Guard order is registration order. Rate limiting runs first so an
+     * unauthenticated flood is rejected before it costs a session lookup;
+     * AuthGuard then establishes identity and tenant, and PermissionsGuard
+     * decides on the role it resolved. Authentication is global and opt-out
+     * (@Public), never opt-in.
+     */
     { provide: APP_GUARD, useClass: AppThrottlerGuard },
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_INTERCEPTOR, useClass: TimeoutInterceptor },
     { provide: APP_INTERCEPTOR, useClass: ZodValidationInterceptor },
