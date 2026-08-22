@@ -21,7 +21,7 @@ export function AppSidebar({
       </div>
       <button
         onClick={onToggleCollapse}
-        className="flex h-10 items-center justify-center gap-2 border-t border-sidebar-border text-xs font-medium text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+        className="flex h-10 items-center justify-center gap-2 border-t border-sidebar-border text-meta font-medium text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
         {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}

@@ -42,14 +42,19 @@ export function WorkspaceBody({
         highRisk={rfp.riskCount.high + rfp.riskCount.critical}
         needsReview={rfp.needsReview}
       />
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
-        <RequirementTable
-          key={rfp.id}
-          rfpId={rfp.id}
-          requirements={requirements}
-          activeReqId={activeReqId}
-          initialFilters={initialFilters}
-        />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        {/* min-w-0 / minmax(0,1fr): a grid item defaults to min-width:auto, so
+            the wide requirements table grew its own track instead of scrolling
+            inside it, pushing the intelligence panel off the right edge. */}
+        <div className="min-w-0">
+          <RequirementTable
+            key={rfp.id}
+            rfpId={rfp.id}
+            requirements={requirements}
+            activeReqId={activeReqId}
+            initialFilters={initialFilters}
+          />
+        </div>
         <IntelligencePanel rfp={rfp} requirements={requirements} />
       </div>
     </div>

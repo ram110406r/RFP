@@ -219,7 +219,10 @@ export function RequirementTable({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="relative flex-1 sm:max-w-[220px]">
+        {/* flex-1 alone let the input shrink below its own placeholder once the
+            filter row filled up — it collapsed to about 75px and read "Sear".
+            Fixed basis, no shrink. */}
+        <div className="relative w-full sm:w-[220px] sm:flex-none">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search requirements..."
@@ -306,10 +309,24 @@ export function RequirementTable({
         />
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <table className="w-full table-fixed text-sm">
+            {/* Widths are sized to each column's widest real content: the
+                "Changes requested" status badge and the "Critical" risk badge
+                set their columns' floors. Title is the only elastic column and
+                absorbs whatever is left. */}
+            <colgroup>
+              <col className="w-10" />
+              <col className="w-[112px]" />
+              <col />
+              <col className="w-[96px]" />
+              <col className="w-[112px]" />
+              <col className="w-[124px]" />
+              <col className="w-[170px]" />
+              <col className="w-[132px]" />
+            </colgroup>
+            <thead className="border-b border-border bg-surface-sunken text-left text-label uppercase text-muted-foreground">
               <tr>
-                <th className="w-10 px-3 py-2.5">
+                <th className="px-3 py-2.5">
                   <Checkbox
                     checked={allSelected ? true : someSelected ? "indeterminate" : false}
                     onCheckedChange={toggleSelectAll}
@@ -322,8 +339,8 @@ export function RequirementTable({
                   dir={sortDir}
                   onClick={() => toggleSort("code")}
                 />
-                <th className="px-3 py-2.5 font-medium">Title</th>
-                <th className="px-3 py-2.5 font-medium">Category</th>
+                <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Title</th>
+                <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Category</th>
                 <SortableHead
                   label="Risk"
                   active={sortKey === "risk"}
@@ -342,7 +359,7 @@ export function RequirementTable({
                   dir={sortDir}
                   onClick={() => toggleSort("status")}
                 />
-                <th className="px-3 py-2.5 font-medium">Owner</th>
+                <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Owner</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -366,12 +383,12 @@ export function RequirementTable({
                     <Link
                       to="/rfps/$rfpId/requirements/$reqId"
                       params={{ rfpId, reqId: req.id }}
-                      className="num font-medium text-foreground hover:underline"
+                      className="num whitespace-nowrap font-medium text-foreground hover:underline"
                     >
                       {req.code}
                     </Link>
                   </td>
-                  <td className="max-w-xs px-3 py-2.5">
+                  <td className="px-3 py-2.5">
                     <Link
                       to="/rfps/$rfpId/requirements/$reqId"
                       params={{ rfpId, reqId: req.id }}
@@ -385,7 +402,9 @@ export function RequirementTable({
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground">{req.category}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-meta text-fg-2">
+                    {req.category}
+                  </td>
                   <td className="px-3 py-2.5">
                     <RiskBadge risk={req.risk} />
                   </td>
@@ -395,7 +414,14 @@ export function RequirementTable({
                   <td className="px-3 py-2.5">
                     <StatusBadge status={req.status} />
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground">{req.ownerTeam}</td>
+                  {/* Owner is the one column allowed to lose characters: it is
+                      the least load-bearing, and truncating it here is what
+                      keeps every row single-line without a horizontal scroll. */}
+                  <td className="px-3 py-2.5 text-meta text-fg-2">
+                    <span className="block truncate" title={req.ownerTeam}>
+                      {req.ownerTeam}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -418,12 +444,12 @@ function SortableHead({
   onClick: () => void;
 }) {
   return (
-    <th className="px-3 py-2.5 font-medium">
+    <th className="whitespace-nowrap px-3 py-2.5 font-semibold">
       <Button
         variant="ghost"
         size="sm"
         className={cn(
-          "h-auto gap-1 p-0 text-xs font-medium uppercase tracking-wide",
+          "h-auto gap-1 p-0 text-label uppercase",
           active ? "text-foreground" : "text-muted-foreground",
         )}
         onClick={onClick}
