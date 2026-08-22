@@ -32,3 +32,29 @@ export const requirementCategoryEnum = pgEnum("requirement_category", [
   "Architecture",
   "Support",
 ]);
+
+/**
+ * The RFP lifecycle (Phase 5), shared by `rfps.lifecycle_status` and
+ * `rfp_status_history`. Lives here rather than in either domain file because
+ * both need it, and defining it in one would make the two import each other.
+ *
+ * Distinct from `rfp_status` in schema/rfp.ts, which is the prototype's
+ * display state — see schema/rfp-lifecycle.ts for why both exist.
+ */
+export const rfpLifecycleStatusEnum = pgEnum("rfp_lifecycle_status", [
+  "DRAFT",
+  "INTAKE",
+  "PARSING",
+  "ANALYZING",
+  "QUALIFICATION",
+  "RESPONSE",
+  "REVIEW",
+  "VALIDATION",
+  "READY_FOR_SUBMISSION",
+  "SUBMITTED",
+  "OUTCOME_RECORDED",
+  "CLOSED",
+  "PARSING_FAILED",
+  "ANALYSIS_FAILED",
+  "VALIDATION_FAILED",
+]);
