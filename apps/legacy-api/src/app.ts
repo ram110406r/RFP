@@ -24,11 +24,35 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:8080").split("
  */
 export const app = new Elysia()
   .use(cors({ origin: corsOrigins, credentials: true }))
-  .onError(({ error, set }) => {
+  .onError(({ code, error, set }) => {
     if (error instanceof ApiError) {
       set.status = error.status;
       return { error: { code: error.code, message: error.message } };
     }
+
+    /*
+     * Schema validation failures are the client's problem, not ours, and must
+     * say which field was wrong. Without this branch they fell through to the
+     * catch-all below and surfaced as an opaque 500 — which is how a wizard
+     * sending estimatedValue as a string looked like a server crash.
+     */
+    if (code === "VALIDATION") {
+      const detail = error as unknown as {
+        valueError?: { path?: string; message?: string };
+      };
+      const path = detail.valueError?.path?.replace(/^\//, "");
+      set.status = 422;
+      return {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: path
+            ? `${path}: ${detail.valueError?.message ?? "is invalid"}`
+            : "The request body is invalid.",
+          ...(path ? { field: path } : {}),
+        },
+      };
+    }
+
     // Never leak SQL text, stack traces, or other internals to the client.
     console.error(error);
     set.status = 500;

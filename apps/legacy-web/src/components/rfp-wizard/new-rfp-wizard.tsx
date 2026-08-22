@@ -112,7 +112,17 @@ export function NewRfpWizard() {
   }
 
   async function createFinalRfp() {
-    const values = form.getValues();
+    /*
+     * Parsed through the schema, not read raw: form.getValues() returns the
+     * unprocessed field state, so the number input hands back a string and the
+     * API rejects estimatedValue with a 422. handleSaveDraft avoids this by
+     * going through form.handleSubmit, which applies the resolver first; this
+     * path has to coerce for itself.
+     *
+     * Safe to parse rather than safeParse here because the wizard cannot reach
+     * this step without goToDocuments() having already validated the details.
+     */
+    const values = detailsSchema.parse(form.getValues());
     const rfp = await createRfp({
       ...values,
       opportunity: values.opportunity ?? "",
