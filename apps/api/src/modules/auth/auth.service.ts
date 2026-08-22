@@ -1,0 +1,204 @@
+import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { and, eq } from "drizzle-orm";
+import { organizationMembers, organizations, sessions, users, type Database } from "@rfp-os/db";
+import { permissionsForRole, type AuthContext, type OrgRole } from "@rfp-os/types";
+
+import { DATABASE } from "../../infrastructure/database";
+import type { Env } from "../../config/env.schema";
+import { createAuth, type Auth } from "./auth.config";
+
+export interface ResolvedSession {
+  userId: string;
+  sessionId: string;
+  activeOrganizationId: string | null;
+}
+
+export interface MembershipSummary {
+  organizationId: string;
+  organizationName: string;
+  role: OrgRole;
+}
+
+@Injectable()
+export class AuthService {
+  readonly auth: Auth;
+
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    config: ConfigService<Env, true>,
+  ) {
+    this.auth = createAuth(db, {
+      NODE_ENV: config.get("NODE_ENV", { infer: true }),
+      API_PORT: config.get("API_PORT", { infer: true }),
+      CORS_ORIGIN: config.get("CORS_ORIGIN", { infer: true }),
+      LOG_LEVEL: config.get("LOG_LEVEL", { infer: true }),
+      RATE_LIMIT_TTL_MS: config.get("RATE_LIMIT_TTL_MS", { infer: true }),
+      RATE_LIMIT_LIMIT: config.get("RATE_LIMIT_LIMIT", { infer: true }),
+      BETTER_AUTH_SECRET: config.get("BETTER_AUTH_SECRET", { infer: true }),
+      BETTER_AUTH_URL: config.get("BETTER_AUTH_URL", { infer: true }),
+      SESSION_MAX_AGE_SECONDS: config.get("SESSION_MAX_AGE_SECONDS", { infer: true }),
+      INVITATION_TTL_HOURS: config.get("INVITATION_TTL_HOURS", { infer: true }),
+    } as Env);
+  }
+
+  /** Reads the session cookie. Returns null when there is no valid session. */
+  async resolveSession(headers: Headers): Promise<ResolvedSession | null> {
+    const result = await this.auth.api.getSession({ headers });
+    if (!result?.session || !result.user) return null;
+
+    const session = result.session as typeof result.session & {
+      activeOrganizationId?: string | null;
+    };
+
+    return {
+      userId: result.user.id,
+      sessionId: session.id,
+      activeOrganizationId: session.activeOrganizationId ?? null,
+    };
+  }
+
+  /**
+   * Turns an authenticated identity into a tenant-scoped authorization context.
+   *
+   * The organization is resolved server-side in a fixed order — the session's
+   * active organization, else the user's default, else their only membership —
+   * and in every case the membership row is re-read and re-checked. A request
+   * cannot name its own tenant, which is what makes cross-organization access
+   * impossible rather than merely discouraged.
+   *
+   * Returns null when the user has no usable membership; the caller decides
+   * whether that is a 401 or a 403.
+   */
+  async resolveAuthContext(session: ResolvedSession): Promise<AuthContext | null> {
+    const membership = await this.findActiveMembership(session);
+    if (!membership) return null;
+
+    const role = membership.role as OrgRole;
+    return {
+      userId: session.userId,
+      organizationId: membership.organizationId,
+      role,
+      permissions: permissionsForRole(role),
+      sessionId: session.sessionId,
+    };
+  }
+
+  private async findActiveMembership(session: ResolvedSession) {
+    if (session.activeOrganizationId) {
+      const [pinned] = await this.db
+        .select()
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.userId, session.userId),
+            eq(organizationMembers.organizationId, session.activeOrganizationId),
+            eq(organizationMembers.status, "active"),
+          ),
+        )
+        .limit(1);
+      /**
+       * A session pinned to an organization the user has since been removed
+       * from resolves to nothing rather than quietly falling back to another
+       * tenant — silently switching the tenant under an in-flight session is
+       * how data ends up written to the wrong organization.
+       */
+      return pinned ?? null;
+    }
+
+    const [user] = await this.db
+      .select({ organizationId: users.organizationId })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1);
+
+    if (user?.organizationId) {
+      const [preferred] = await this.db
+        .select()
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.userId, session.userId),
+            eq(organizationMembers.organizationId, user.organizationId),
+            eq(organizationMembers.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (preferred) return preferred;
+    }
+
+    const [fallback] = await this.db
+      .select()
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, session.userId),
+          eq(organizationMembers.status, "active"),
+        ),
+      )
+      .limit(1);
+
+    return fallback ?? null;
+  }
+
+  /** Every organization the user can act in, for an org switcher. */
+  async listMemberships(userId: string): Promise<MembershipSummary[]> {
+    const rows = await this.db
+      .select({
+        organizationId: organizationMembers.organizationId,
+        organizationName: organizations.name,
+        role: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+      .where(and(eq(organizationMembers.userId, userId), eq(organizationMembers.status, "active")));
+
+    return rows.map((row) => ({ ...row, role: row.role as OrgRole }));
+  }
+
+  /**
+   * Repoints a session at another organization the caller belongs to.
+   * Membership is verified here, not by the caller, so this is safe to expose
+   * directly to an authenticated request.
+   */
+  async activateOrganization(
+    session: ResolvedSession,
+    organizationId: string,
+  ): Promise<MembershipSummary> {
+    const [membership] = await this.db
+      .select({
+        organizationId: organizationMembers.organizationId,
+        organizationName: organizations.name,
+        role: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+      .where(
+        and(
+          eq(organizationMembers.userId, session.userId),
+          eq(organizationMembers.organizationId, organizationId),
+          eq(organizationMembers.status, "active"),
+        ),
+      )
+      .limit(1);
+
+    if (!membership) {
+      /*
+       * 403, not 401: the caller is authenticated, they simply have no
+       * standing in that tenant. Answering 401 would invite a client to retry
+       * the sign-in it already completed.
+       */
+      throw new ForbiddenException({
+        code: "NOT_A_MEMBER",
+        message: "You are not a member of that organization.",
+      });
+    }
+
+    await this.db
+      .update(sessions)
+      .set({ activeOrganizationId: organizationId, updatedAt: new Date() })
+      .where(eq(sessions.id, session.sessionId));
+
+    return { ...membership, role: membership.role as OrgRole };
+  }
+}
