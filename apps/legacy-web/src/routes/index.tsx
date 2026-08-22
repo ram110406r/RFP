@@ -8,8 +8,9 @@ import {
   Copy,
   ExternalLink,
   FilePlus2,
+  Inbox,
   ShieldAlert,
-  TrendingUp,
+  Sparkles,
 } from "lucide-react";
 import { rfpsQueryOptions } from "@/lib/api/rfps";
 import { allRequirementsQueryOptions } from "@/lib/api/requirements";
@@ -19,15 +20,28 @@ import { PageHeader } from "@/components/common/page-header";
 import { MetricTile } from "@/components/common/metric-tile";
 import { StatusBadge } from "@/components/common/status-badge";
 import { RiskBadge } from "@/components/common/risk-badge";
+import { ProgressBar } from "@/components/common/progress-bar";
 import { PersonAvatar } from "@/components/common/person-avatar";
 import { ActivityTimeline } from "@/components/common/activity-timeline";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageSkeleton } from "@/components/common/page-skeleton";
 import { RowActionsMenu } from "@/components/common/row-actions-menu";
-import { toneClasses } from "@/components/common/tone";
+import {
+  DataRow,
+  DataTable,
+  DeadlineCell,
+  RowCell,
+  RowSub,
+  RowTitle,
+  Td,
+  Th,
+  rowEmphasis,
+} from "@/components/common/data-table";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { daysUntil, deadlineMeta } from "@/lib/dates";
 import { getPerson, CURRENT_USER_ID } from "@/lib/session";
+import type { Rfp, RiskLevel } from "@/types";
 
 const ACTIVE_STATUSES = ["analyzing", "in_progress", "review", "needs_attention"] as const;
 
@@ -52,9 +66,11 @@ function greeting() {
   return "Good evening";
 }
 
-function daysUntil(dateStr: string) {
-  const ms = new Date(dateStr).getTime() - new Date("2026-08-20").getTime();
-  return Math.round(ms / (1000 * 60 * 60 * 24));
+/** The highest risk level present on an RFP, or null when nothing is elevated. */
+function worstRiskOf(rfp: Rfp): RiskLevel | null {
+  if (rfp.riskCount.critical > 0) return "critical";
+  if (rfp.riskCount.high > 0) return "high";
+  return null;
 }
 
 function Dashboard() {
@@ -75,6 +91,7 @@ function Dashboard() {
     (r) => daysUntil(r.deadline) >= 0 && daysUntil(r.deadline) <= 7,
   );
   const awaitingReview = reviews.filter((r) => r.status === "pending" || r.status === "in_review");
+  const overdueCount = reviews.filter((r) => r.overdue).length;
   const highRiskReqs = requirements.filter((r) => r.risk === "high" || r.risk === "critical");
   const avgReadiness = activeRfps.length
     ? Math.round(activeRfps.reduce((sum, r) => sum + r.readiness, 0) / activeRfps.length)
@@ -137,194 +154,175 @@ function Dashboard() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <MetricTile
           label="Active RFPs"
           value={activeRfps.length}
           hint={`${rfps.length} total in pipeline`}
-          icon={<TrendingUp className="h-4 w-4" />}
         />
         <MetricTile
           label="Due this week"
           value={dueThisWeek.length}
           hint={dueThisWeek.length > 0 ? "Needs prioritization" : "None upcoming"}
           tone={dueThisWeek.length > 0 ? "warning" : "neutral"}
-          icon={<Clock className="h-4 w-4" />}
         />
         <MetricTile
           label="Awaiting review"
           value={awaitingReview.length}
-          hint={`${reviews.filter((r) => r.overdue).length} overdue`}
-          tone={awaitingReview.length > 5 ? "warning" : "neutral"}
-          icon={<CheckCircle2 className="h-4 w-4" />}
+          hint={overdueCount > 0 ? `${overdueCount} overdue` : "None overdue"}
+          tone={overdueCount > 0 ? "danger" : awaitingReview.length > 5 ? "warning" : "neutral"}
         />
         <MetricTile
           label="High-risk requirements"
           value={highRiskReqs.length}
           hint={`${highRiskShare}% of all requirements`}
-          tone="danger"
-          icon={<ShieldAlert className="h-4 w-4" />}
+          tone={highRiskReqs.length > 0 ? "danger" : "neutral"}
         />
         <MetricTile
-          label="Avg. submission readiness"
-          value={`${avgReadiness}%`}
+          label="Avg. readiness"
+          value={avgReadiness}
+          unit="%"
           hint="Across active RFPs"
-          icon={<TrendingUp className="h-4 w-4" />}
         />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="space-y-3 xl:col-span-2">
+        <div className="space-y-2.5 xl:col-span-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Active RFPs</h2>
+            <h2 className="text-title text-foreground">Active RFPs</h2>
             <Link
               to="/rfps"
-              className="text-xs font-medium text-muted-foreground hover:text-foreground"
+              className="text-meta font-medium text-fg-2 transition-colors hover:text-foreground"
             >
               View all
             </Link>
           </div>
-          <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">RFP</th>
-                  <th className="px-4 py-2.5 font-medium">Owner</th>
-                  <th className="px-4 py-2.5 font-medium">Progress</th>
-                  <th className="px-4 py-2.5 font-medium">Risk</th>
-                  <th className="px-4 py-2.5 font-medium">Deadline</th>
-                  <th className="px-4 py-2.5 font-medium">Status</th>
-                  <th className="w-10 px-4 py-2.5" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {rfps.slice(0, 8).map((rfp) => {
-                  const worstRisk =
-                    rfp.riskCount.critical > 0
-                      ? "critical"
-                      : rfp.riskCount.high > 0
-                        ? "high"
-                        : null;
-                  return (
-                    <tr
-                      key={rfp.id}
-                      className="cursor-pointer hover:bg-muted/30"
-                      onClick={() => navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } })}
+          <DataTable
+            head={
+              <>
+                <Th>RFP</Th>
+                <Th>Owner</Th>
+                <Th>Progress</Th>
+                <Th>Risk</Th>
+                <Th>Deadline</Th>
+                <Th>Status</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {rfps.slice(0, 8).map((rfp) => {
+              const worstRisk = worstRiskOf(rfp);
+              const deadline = deadlineMeta(rfp.deadline);
+              return (
+                <DataRow
+                  key={rfp.id}
+                  interactive
+                  emphasis={rowEmphasis({
+                    risk: worstRisk,
+                    overdue: deadline.urgency === "overdue",
+                    dueInDays: deadline.days,
+                  })}
+                  onClick={() => navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } })}
+                >
+                  <Td className="max-w-[220px]">
+                    <Link
+                      to="/rfps/$rfpId"
+                      params={{ rfpId: rfp.id }}
+                      title={rfp.title}
+                      className="block truncate hover:underline"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <td className="max-w-[220px] px-4 py-3">
-                        <Link
-                          to="/rfps/$rfpId"
-                          params={{ rfpId: rfp.id }}
-                          title={rfp.title}
-                          className="block truncate font-medium text-foreground hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {rfp.title}
-                        </Link>
-                        <p className="truncate text-xs text-muted-foreground">{rfp.customer}</p>
-                      </td>
-                      <td className="px-4 py-3" title={getPerson(rfp.ownerId)?.name}>
-                        <PersonAvatar personId={rfp.ownerId} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full rounded-full bg-primary"
-                              style={{ width: `${rfp.progress}%` }}
-                            />
-                          </div>
-                          <span className="num text-xs text-muted-foreground">{rfp.progress}%</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {worstRisk ? (
-                          <RiskBadge risk={worstRisk} />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">None</span>
-                        )}
-                      </td>
-                      <td className="num px-4 py-3 text-xs text-muted-foreground">
-                        {rfp.deadline}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={rfp.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <RowActionsMenu
-                          actions={[
-                            {
-                              label: "Open workspace",
-                              icon: ExternalLink,
-                              onSelect: () =>
-                                navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } }),
-                            },
-                            {
-                              label: "Copy link",
-                              icon: Copy,
-                              onSelect: () => copyRfpLink(rfp.id),
-                            },
-                          ]}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      <RowTitle>{rfp.title}</RowTitle>
+                    </Link>
+                    <RowSub>{rfp.customer}</RowSub>
+                  </Td>
+                  <Td title={getPerson(rfp.ownerId)?.name}>
+                    <PersonAvatar personId={rfp.ownerId} />
+                  </Td>
+                  <Td>
+                    <ProgressBar value={rfp.progress} size="sm" />
+                  </Td>
+                  <Td>
+                    {worstRisk ? (
+                      <RiskBadge risk={worstRisk} />
+                    ) : (
+                      <RowCell className="text-muted-foreground">None</RowCell>
+                    )}
+                  </Td>
+                  <Td>
+                    <DeadlineCell meta={deadline} />
+                  </Td>
+                  <Td>
+                    <StatusBadge status={rfp.status} />
+                  </Td>
+                  <Td>
+                    <RowActionsMenu
+                      actions={[
+                        {
+                          label: "Open workspace",
+                          icon: ExternalLink,
+                          onSelect: () =>
+                            navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } }),
+                        },
+                        { label: "Copy link", icon: Copy, onSelect: () => copyRfpLink(rfp.id) },
+                      ]}
+                    />
+                  </Td>
+                </DataRow>
+              );
+            })}
+          </DataTable>
         </div>
 
         <div className="space-y-6">
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-foreground">My tasks</h2>
-            <div className="surface-panel divide-y p-0">
+          <div className="space-y-2.5">
+            <h2 className="text-title text-foreground">My tasks</h2>
+            <div className="surface-panel divide-y divide-line-soft p-0">
               {myTasks.length === 0 ? (
                 <EmptyState
+                  size="inline"
+                  icon={<CheckCircle2 className="h-4 w-4" />}
                   title="No open reviews"
                   description="You're all caught up."
-                  className="border-none py-8"
                 />
               ) : (
-                myTasks.map((task) => (
-                  <Link
-                    key={task.id}
-                    to="/reviews/$reviewId"
-                    params={{ reviewId: task.id }}
-                    className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-muted/30"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-foreground">
-                        {task.requirementCode} · {task.requirementTitle}
+                myTasks.map((task) => {
+                  const due = deadlineMeta(task.due);
+                  return (
+                    <Link
+                      key={task.id}
+                      to="/reviews/$reviewId"
+                      params={{ reviewId: task.id }}
+                      className={cn(
+                        "flex items-start justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface-sunken",
+                        task.overdue && "shadow-[inset_3px_0_0_var(--risk-high-fg)]",
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-supporting font-medium text-foreground">
+                          {task.requirementCode} · {task.requirementTitle}
+                        </span>
+                        <span className="block truncate text-meta text-muted-foreground">
+                          {task.rfpTitle}
+                        </span>
                       </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {task.rfpTitle} — due {task.due}
-                      </span>
-                    </span>
-                    {task.overdue && (
-                      <span
-                        className={cn(
-                          "inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-medium leading-none",
-                          toneClasses.danger,
-                        )}
-                      >
-                        Overdue
-                      </span>
-                    )}
-                  </Link>
-                ))
+                      <DeadlineCell meta={due} className="shrink-0" />
+                    </Link>
+                  );
+                })
               )}
             </div>
           </div>
 
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-foreground">Attention required</h2>
-            <div className="surface-panel divide-y p-0">
+          <div className="space-y-2.5">
+            <h2 className="text-title text-foreground">Attention required</h2>
+            <div className="surface-panel divide-y divide-line-soft p-0">
               {attention.length === 0 ? (
                 <EmptyState
+                  size="inline"
+                  icon={<Sparkles className="h-4 w-4" />}
                   title="Nothing urgent"
-                  description="You're on top of things."
-                  className="border-none py-8"
+                  description="No critical risks or overdue reviews right now."
                 />
               ) : (
                 attention.map((item) => {
@@ -333,22 +331,28 @@ function Dashboard() {
                     <Link
                       key={item.id}
                       to={item.to}
-                      className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30"
+                      className={cn(
+                        "flex items-start gap-3 px-4 py-2.5 transition-colors hover:bg-surface-sunken",
+                        item.tone === "danger"
+                          ? "shadow-[inset_3px_0_0_var(--risk-high-fg)]"
+                          : "shadow-[inset_3px_0_0_var(--risk-medium-line)]",
+                      )}
                     >
                       <span
-                        className={
+                        className={cn(
+                          "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
                           item.tone === "danger"
-                            ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger"
-                            : "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning"
-                        }
+                            ? "bg-risk-high-bg text-risk-high-fg"
+                            : "bg-risk-medium-bg text-risk-medium-fg",
+                        )}
                       >
                         <Icon className="h-3.5 w-3.5" />
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-sm font-medium text-foreground">
+                        <span className="block text-supporting font-medium text-foreground">
                           {item.title}
                         </span>
-                        <span className="block truncate text-xs text-muted-foreground">
+                        <span className="block truncate text-meta text-muted-foreground">
                           {item.detail}
                         </span>
                       </span>
@@ -359,10 +363,19 @@ function Dashboard() {
             </div>
           </div>
 
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-foreground">Recent activity</h2>
+          <div className="space-y-2.5">
+            <h2 className="text-title text-foreground">Recent activity</h2>
             <div className="surface-panel p-4">
-              <ActivityTimeline entries={activity.slice(0, 8)} />
+              {activity.length === 0 ? (
+                <EmptyState
+                  size="inline"
+                  icon={<Inbox className="h-4 w-4" />}
+                  title="No activity yet"
+                  description="Actions across your RFPs will appear here."
+                />
+              ) : (
+                <ActivityTimeline entries={activity.slice(0, 8)} />
+              )}
             </div>
           </div>
         </div>

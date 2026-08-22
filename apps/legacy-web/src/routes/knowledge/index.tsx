@@ -1,13 +1,23 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Search, SearchX } from "lucide-react";
 import { knowledgeSourcesQueryOptions } from "@/lib/api/knowledge";
 import { PageHeader } from "@/components/common/page-header";
 import { PageSkeleton } from "@/components/common/page-skeleton";
 import { FreshnessBadge } from "@/components/common/freshness-badge";
 import { EmptyState } from "@/components/common/empty-state";
 import { PersonAvatar } from "@/components/common/person-avatar";
+import {
+  DataRow,
+  DataTable,
+  RowCell,
+  RowSub,
+  RowTitle,
+  Td,
+  Th,
+} from "@/components/common/data-table";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -17,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getPerson } from "@/lib/session";
+import { cn } from "@/lib/utils";
 import type { Authority, Freshness } from "@/types";
 
 export const Route = createFileRoute("/knowledge/")({
@@ -27,6 +38,31 @@ export const Route = createFileRoute("/knowledge/")({
 });
 
 const AUTHORITY_LABEL: Record<Authority, string> = { high: "High", medium: "Medium", low: "Low" };
+
+/**
+ * Authority is a ranking, so it renders as one — a filled/hollow pip meter
+ * rather than the word alone. Scanning the column, "which of these sources
+ * wins a disagreement" is answerable without reading.
+ */
+function AuthorityMeter({ authority }: { authority: Authority }) {
+  const level = authority === "high" ? 3 : authority === "medium" ? 2 : 1;
+  return (
+    <span className="flex items-center gap-1.5" title={`${AUTHORITY_LABEL[authority]} authority`}>
+      <span className="flex gap-0.5" aria-hidden="true">
+        {[1, 2, 3].map((i) => (
+          <span
+            key={i}
+            className={cn(
+              "h-3 w-1 rounded-[1px]",
+              i <= level ? (authority === "high" ? "bg-primary" : "bg-fg-2") : "bg-progress-track",
+            )}
+          />
+        ))}
+      </span>
+      <RowCell>{AUTHORITY_LABEL[authority]}</RowCell>
+    </span>
+  );
+}
 
 function KnowledgeList() {
   const { data: sources } = useSuspenseQuery(knowledgeSourcesQueryOptions());
@@ -47,12 +83,26 @@ function KnowledgeList() {
     return list;
   }, [sources, search, freshness, authority]);
 
+  const staleCount = sources.filter(
+    (s) => s.freshness === "stale" || s.freshness === "conflicting",
+  ).length;
+
+  function clearFilters() {
+    setSearch("");
+    setFreshness("all");
+    setAuthority("all");
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Knowledge base"
         title="Knowledge"
-        description={`${sources.length} sources powering AI-drafted answers`}
+        description={
+          staleCount > 0
+            ? `${sources.length} sources powering AI-drafted answers · ${staleCount} ${staleCount === 1 ? "needs" : "need"} attention`
+            : `${sources.length} sources powering AI-drafted answers`
+        }
       />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -93,60 +143,79 @@ function KnowledgeList() {
 
       {filtered.length === 0 ? (
         <EmptyState
+          icon={<SearchX className="h-5 w-5" />}
           title="No knowledge sources match"
-          description="Try a different search or filter."
+          description="Try a different search term, or widen the freshness and authority filters."
+          action={
+            <Button variant="outline" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          }
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Source</th>
-                <th className="px-4 py-2.5 font-medium">Type</th>
-                <th className="px-4 py-2.5 font-medium">Version</th>
-                <th className="px-4 py-2.5 font-medium">Authority</th>
-                <th className="px-4 py-2.5 font-medium">Freshness</th>
-                <th className="px-4 py-2.5 font-medium">Owner</th>
-                <th className="px-4 py-2.5 font-medium">Last verified</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filtered.map((source) => (
-                <tr key={source.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <Link
-                      to="/knowledge/$sourceId"
-                      params={{ sourceId: source.id }}
-                      className="font-medium text-foreground hover:underline"
-                    >
-                      {source.name}
-                    </Link>
-                    <p className="text-xs text-muted-foreground">{source.category}</p>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{source.type}</td>
-                  <td className="num px-4 py-3 text-xs text-muted-foreground">{source.version}</td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {AUTHORITY_LABEL[source.authority]}
-                  </td>
-                  <td className="px-4 py-3">
-                    <FreshnessBadge freshness={source.freshness} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <PersonAvatar personId={source.ownerId} />
-                      <span className="text-xs text-muted-foreground">
-                        {getPerson(source.ownerId)?.name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="num px-4 py-3 text-xs text-muted-foreground">
-                    {source.lastVerified}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          head={
+            <>
+              <Th>Source</Th>
+              <Th>Type</Th>
+              <Th>Version</Th>
+              <Th>Authority</Th>
+              <Th>Freshness</Th>
+              <Th>Owner</Th>
+              <Th>Last verified</Th>
+            </>
+          }
+        >
+          {filtered.map((source) => (
+            <DataRow
+              key={source.id}
+              /*
+               * Stale and conflicting sources are the knowledge equivalent of
+               * a high-risk requirement: an answer citing one is quietly
+               * wrong. Same stripe vocabulary as the other tables.
+               */
+              emphasis={
+                source.freshness === "conflicting"
+                  ? "critical"
+                  : source.freshness === "stale"
+                    ? "high"
+                    : null
+              }
+            >
+              <Td>
+                <Link
+                  to="/knowledge/$sourceId"
+                  params={{ sourceId: source.id }}
+                  className="hover:underline"
+                >
+                  <RowTitle>{source.name}</RowTitle>
+                </Link>
+                <RowSub>{source.category}</RowSub>
+              </Td>
+              <Td>
+                <RowCell>{source.type}</RowCell>
+              </Td>
+              <Td>
+                <RowCell>{source.version}</RowCell>
+              </Td>
+              <Td>
+                <AuthorityMeter authority={source.authority} />
+              </Td>
+              <Td>
+                <FreshnessBadge freshness={source.freshness} />
+              </Td>
+              <Td>
+                <span className="flex items-center gap-1.5">
+                  <PersonAvatar personId={source.ownerId} />
+                  <RowCell>{getPerson(source.ownerId)?.name}</RowCell>
+                </span>
+              </Td>
+              <Td>
+                <RowCell>{source.lastVerified}</RowCell>
+              </Td>
+            </DataRow>
+          ))}
+        </DataTable>
       )}
     </div>
   );

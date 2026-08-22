@@ -2,15 +2,27 @@ import { useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, ExternalLink, FilePlus2, Search } from "lucide-react";
+import { Copy, ExternalLink, FilePlus2, Search, SearchX } from "lucide-react";
 import { rfpsQueryOptions } from "@/lib/api/rfps";
 import { PageHeader } from "@/components/common/page-header";
 import { PageSkeleton } from "@/components/common/page-skeleton";
 import { StatusBadge } from "@/components/common/status-badge";
 import { RiskBadge } from "@/components/common/risk-badge";
+import { ProgressBar } from "@/components/common/progress-bar";
 import { PersonAvatar } from "@/components/common/person-avatar";
 import { EmptyState } from "@/components/common/empty-state";
 import { RowActionsMenu } from "@/components/common/row-actions-menu";
+import {
+  DataRow,
+  DataTable,
+  DeadlineCell,
+  RowCell,
+  RowSub,
+  RowTitle,
+  Td,
+  Th,
+  rowEmphasis,
+} from "@/components/common/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { deadlineMeta } from "@/lib/dates";
 import { getPerson } from "@/lib/session";
 import type { RfpStatus } from "@/types";
 
@@ -90,6 +103,12 @@ function RfpsList() {
     setPage(1);
   }
 
+  function clearFilters() {
+    setSearch("");
+    setStatus("all");
+    setPage(1);
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -143,117 +162,112 @@ function RfpsList() {
 
       {filtered.length === 0 ? (
         <EmptyState
+          icon={<SearchX className="h-5 w-5" />}
           title="No RFPs match your filters"
-          description="Try adjusting your search or status filter."
+          description="Try a different search term, or widen the status filter."
+          action={
+            <Button variant="outline" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          }
         />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">RFP</th>
-                  <th className="px-4 py-2.5 font-medium">Owner</th>
-                  <th className="px-4 py-2.5 font-medium">Progress</th>
-                  <th className="px-4 py-2.5 font-medium">Requirements</th>
-                  <th className="px-4 py-2.5 font-medium">Risk</th>
-                  <th className="px-4 py-2.5 font-medium">Value</th>
-                  <th className="px-4 py-2.5 font-medium">Deadline</th>
-                  <th className="px-4 py-2.5 font-medium">Status</th>
-                  <th className="w-10 px-4 py-2.5" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {paged.map((rfp) => {
-                  const worstRisk =
-                    rfp.riskCount.critical > 0
-                      ? "critical"
-                      : rfp.riskCount.high > 0
-                        ? "high"
-                        : null;
-                  return (
-                    <tr
-                      key={rfp.id}
-                      className="cursor-pointer hover:bg-muted/30"
-                      onClick={() => navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } })}
+          <DataTable
+            head={
+              <>
+                <Th>RFP</Th>
+                <Th>Owner</Th>
+                <Th>Progress</Th>
+                <Th>Requirements</Th>
+                <Th>Risk</Th>
+                <Th>Value</Th>
+                <Th>Deadline</Th>
+                <Th>Status</Th>
+                <Th className="w-10" />
+              </>
+            }
+          >
+            {paged.map((rfp) => {
+              const worstRisk =
+                rfp.riskCount.critical > 0 ? "critical" : rfp.riskCount.high > 0 ? "high" : null;
+              const deadline = deadlineMeta(rfp.deadline);
+              return (
+                <DataRow
+                  key={rfp.id}
+                  interactive
+                  emphasis={rowEmphasis({
+                    risk: worstRisk,
+                    overdue: deadline.urgency === "overdue",
+                    dueInDays: deadline.days,
+                  })}
+                  onClick={() => navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } })}
+                >
+                  <Td className="max-w-[220px]">
+                    <Link
+                      to="/rfps/$rfpId"
+                      params={{ rfpId: rfp.id }}
+                      title={rfp.title}
+                      className="block truncate hover:underline"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <td className="max-w-[220px] px-4 py-3">
-                        <Link
-                          to="/rfps/$rfpId"
-                          params={{ rfpId: rfp.id }}
-                          title={rfp.title}
-                          className="block truncate font-medium text-foreground hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {rfp.title}
-                        </Link>
-                        <p className="truncate text-xs text-muted-foreground">{rfp.customer}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <PersonAvatar personId={rfp.ownerId} />
-                          <span className="text-xs text-muted-foreground">
-                            {getPerson(rfp.ownerId)?.name}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full rounded-full bg-primary"
-                              style={{ width: `${rfp.progress}%` }}
-                            />
-                          </div>
-                          <span className="num text-xs text-muted-foreground">{rfp.progress}%</span>
-                        </div>
-                      </td>
-                      <td className="num px-4 py-3 text-xs text-muted-foreground">
-                        {rfp.requirementsComplete}/{rfp.requirementsTotal}
-                      </td>
-                      <td className="px-4 py-3">
-                        {worstRisk ? (
-                          <RiskBadge risk={worstRisk} />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">None</span>
-                        )}
-                      </td>
-                      <td className="num px-4 py-3 text-xs text-muted-foreground">
-                        ${(rfp.estimatedValue / 1000).toFixed(0)}k
-                      </td>
-                      <td className="num px-4 py-3 text-xs text-muted-foreground">
-                        {rfp.deadline}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={rfp.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <RowActionsMenu
-                          actions={[
-                            {
-                              label: "Open workspace",
-                              icon: ExternalLink,
-                              onSelect: () =>
-                                navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } }),
-                            },
-                            {
-                              label: "Copy link",
-                              icon: Copy,
-                              onSelect: () => copyRfpLink(rfp.id),
-                            },
-                          ]}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      <RowTitle>{rfp.title}</RowTitle>
+                    </Link>
+                    <RowSub>{rfp.customer}</RowSub>
+                  </Td>
+                  <Td>
+                    <span className="flex items-center gap-1.5">
+                      <PersonAvatar personId={rfp.ownerId} />
+                      <RowCell>{getPerson(rfp.ownerId)?.name}</RowCell>
+                    </span>
+                  </Td>
+                  <Td>
+                    <ProgressBar value={rfp.progress} size="default" />
+                  </Td>
+                  <Td>
+                    <RowCell>
+                      {rfp.requirementsComplete}/{rfp.requirementsTotal}
+                    </RowCell>
+                  </Td>
+                  <Td>
+                    {worstRisk ? (
+                      <RiskBadge risk={worstRisk} />
+                    ) : (
+                      <RowCell className="text-muted-foreground">None</RowCell>
+                    )}
+                  </Td>
+                  <Td>
+                    <RowCell className="font-medium text-foreground">
+                      ${(rfp.estimatedValue / 1000).toFixed(0)}k
+                    </RowCell>
+                  </Td>
+                  <Td>
+                    <DeadlineCell meta={deadline} />
+                  </Td>
+                  <Td>
+                    <StatusBadge status={rfp.status} />
+                  </Td>
+                  <Td>
+                    <RowActionsMenu
+                      actions={[
+                        {
+                          label: "Open workspace",
+                          icon: ExternalLink,
+                          onSelect: () =>
+                            navigate({ to: "/rfps/$rfpId", params: { rfpId: rfp.id } }),
+                        },
+                        { label: "Copy link", icon: Copy, onSelect: () => copyRfpLink(rfp.id) },
+                      ]}
+                    />
+                  </Td>
+                </DataRow>
+              );
+            })}
+          </DataTable>
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>
+            <div className="flex items-center justify-between text-supporting text-fg-2">
+              <span className="num">
                 Showing {(currentPage - 1) * pageSize + 1}–
                 {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length}
               </span>
@@ -266,7 +280,7 @@ function RfpsList() {
                 >
                   Previous
                 </Button>
-                <span className="num text-xs">
+                <span className="num text-meta">
                   Page {currentPage} of {totalPages}
                 </span>
                 <Button
