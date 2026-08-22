@@ -7,3 +7,5 @@ export type {
   RfpDomainEvent,
   RfpEventName,
 } from "./domain-events";
+export { DOCUMENT_EVENTS } from "./document-events";
+export type { DocumentDomainEvent, DocumentEventName } from "./document-events";

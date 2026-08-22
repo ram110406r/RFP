@@ -408,27 +408,30 @@ async function main() {
 
   await db.insert(rfpDocuments).values([
     {
+      organizationId: org.id,
       rfpId: rfp1.id,
       filename: "RFP_Questionnaire.pdf",
       type: "PDF",
       sizeMb: "4.2",
-      status: "ready",
+      status: "parsed",
       uploadedBy: priya,
     },
     {
+      organizationId: org.id,
       rfpId: rfp1.id,
       filename: "Technical_Requirements.docx",
       type: "DOCX",
       sizeMb: "1.8",
-      status: "ready",
+      status: "parsed",
       uploadedBy: priya,
     },
     {
+      organizationId: org.id,
       rfpId: rfp2.id,
       filename: "Pricing.xlsx",
       type: "XLSX",
       sizeMb: "0.6",
-      status: "ready",
+      status: "parsed",
       uploadedBy: priya,
     },
   ]);

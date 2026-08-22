@@ -57,6 +57,20 @@
       "when": 1787400929169,
       "tag": "0007_wealthy_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787500000000,
+      "tag": "0008_document_status_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787500000001,
+      "tag": "0009_document_management",
+      "breakpoints": true
     }
   ]
 }

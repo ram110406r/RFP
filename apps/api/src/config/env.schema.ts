@@ -1,5 +1,19 @@
 import { z } from "zod";
 
+/**
+ * Treats an empty or whitespace-only value as absent.
+ *
+ * The committed .env leaves secrets blank rather than omitting the keys, so
+ * without this a blank line would satisfy a required string and produce a
+ * zero-length secret — accepted at boot and broken at runtime.
+ */
+function blankToUndefined<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    schema.optional(),
+  );
+}
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_PORT: z.coerce.number().int().positive().default(4100),
@@ -14,10 +28,7 @@ export const envSchema = z.object({
    * normalised to "absent" rather than being accepted as a 0-length secret —
    * see the production check below, which refuses to boot without a real one.
    */
-  BETTER_AUTH_SECRET: z.preprocess(
-    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-    z.string().min(32, "must be at least 32 characters").optional(),
-  ),
+  BETTER_AUTH_SECRET: blankToUndefined(z.string().min(32, "must be at least 32 characters")),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:4100"),
   /** How long a session stays valid, in seconds. Default 7 days. */
   SESSION_MAX_AGE_SECONDS: z.coerce
@@ -27,6 +38,26 @@ export const envSchema = z.object({
     .default(60 * 60 * 24 * 7),
   /** How long an organization invitation remains acceptable, in hours. */
   INVITATION_TTL_HOURS: z.coerce.number().int().positive().default(72),
+
+  /*
+   * Object storage (Phase 6a). Declared in .env.example since Phase 1 but not
+   * validated until now, so they were readable only via process.env and had no
+   * types. Optional in development: with no endpoint configured the storage
+   * readiness check reports "skipped" and upload endpoints fail loudly rather
+   * than the API refusing to boot.
+   */
+  STORAGE_ENDPOINT: z.string().url().optional(),
+  STORAGE_REGION: z.string().default("us-east-1"),
+  STORAGE_BUCKET: z.string().default("rfp-os-documents"),
+  STORAGE_ACCESS_KEY_ID: blankToUndefined(z.string().min(1)),
+  STORAGE_SECRET_ACCESS_KEY: blankToUndefined(z.string().min(1)),
+  /** MinIO addresses buckets by path; real S3 uses a subdomain. */
+  STORAGE_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
+  /** 100 MB. Enforced before presigning, so oversized uploads never start. */
+  UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(104_857_600),
+  UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  /** Downloads are short-lived: the URL grants the bytes to whoever holds it. */
+  DOWNLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -51,10 +82,23 @@ export function validateEnv(config: Record<string, unknown>): Env {
    * an ephemeral one and warns), but in production it would silently make every
    * session forgeable. Fail the boot instead.
    */
-  if (result.data.NODE_ENV === "production" && !result.data.BETTER_AUTH_SECRET) {
-    throw new Error(
-      "Invalid environment configuration:\n  - BETTER_AUTH_SECRET: required in production (min 32 characters)",
-    );
+  if (result.data.NODE_ENV === "production") {
+    const missing: string[] = [];
+    if (!result.data.BETTER_AUTH_SECRET) {
+      missing.push("BETTER_AUTH_SECRET: required in production (min 32 characters)");
+    }
+    /*
+     * Storage is optional in development so the API boots without MinIO, but
+     * in production a missing credential would only surface when someone first
+     * tried to upload — a real document, rather than the deploy.
+     */
+    if (!result.data.STORAGE_ACCESS_KEY_ID || !result.data.STORAGE_SECRET_ACCESS_KEY) {
+      missing.push("STORAGE_ACCESS_KEY_ID / STORAGE_SECRET_ACCESS_KEY: both required in production");
+    }
+    if (missing.length > 0) {
+      const issues = missing.map((entry) => `  - ${entry}`).join("\n");
+      throw new Error(`Invalid environment configuration:\n${issues}`);
+    }
   }
 
   return result.data;

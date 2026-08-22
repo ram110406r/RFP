@@ -59,6 +59,21 @@ export class AuditService {
  * Audit action names for the RFP domain. String constants rather than an enum
  * so the column stays open to other domains, and typo-proof at the call site.
  */
+/**
+ * Document audit actions.
+ *
+ * DOWNLOADED is recorded like any mutation even though it changes nothing:
+ * a presigned URL hands the raw bytes to whoever holds it, so who asked for
+ * one is exactly the question a compliance review will ask.
+ */
+export const DOCUMENT_AUDIT_ACTIONS = {
+  UPLOAD_STARTED: "DOCUMENT_UPLOAD_STARTED",
+  UPLOADED: "DOCUMENT_UPLOADED",
+  DOWNLOADED: "DOCUMENT_DOWNLOADED",
+  ARCHIVED: "DOCUMENT_ARCHIVED",
+  VERSION_ADDED: "DOCUMENT_VERSION_ADDED",
+} as const;
+
 export const RFP_AUDIT_ACTIONS = {
   CREATED: "RFP_CREATED",
   UPDATED: "RFP_UPDATED",

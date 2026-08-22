@@ -17,7 +17,9 @@ import { HealthModule } from "./health/health.module";
 import { DatabaseModule } from "./infrastructure/database";
 import { AuditModule } from "./infrastructure/audit";
 import { EventsModule } from "./infrastructure/events";
+import { StorageModule } from "./infrastructure/storage";
 import { AuthModule } from "./modules/auth";
+import { DocumentsModule } from "./modules/documents";
 import { OrganizationsModule } from "./modules/organizations";
 import { RfpModule } from "./modules/rfp";
 
@@ -40,9 +42,11 @@ import { RfpModule } from "./modules/rfp";
     HealthModule,
     AuditModule,
     EventsModule,
+    StorageModule,
     AuthModule,
     OrganizationsModule,
     RfpModule,
+    DocumentsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

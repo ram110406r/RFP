@@ -44,6 +44,9 @@ export const PERMISSIONS = [
   "member:invite",
   "member:update",
   "member:remove",
+  "document:read",
+  "document:upload",
+  "document:delete",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -62,6 +65,16 @@ const ALL_RFP: Permission[] = [
 ];
 
 /**
+ * Document permissions are separate from `rfp:*` because uploading source
+ * material and editing the RFP record are different acts: a CONTRIBUTOR who
+ * may add documents should not thereby gain the ability to delete them, and a
+ * REVIEWER needs to read the source of an answer without being able to change
+ * what was uploaded. There is deliberately no `document:manage` — nothing
+ * needs it, and an unused permission is one more thing to get wrong.
+ */
+const ALL_DOCUMENT: Permission[] = ["document:read", "document:upload", "document:delete"];
+
+/**
  * The role matrix. Deliberately a static, code-owned table rather than rows in
  * the database: it is a security invariant, it must be reviewable in a diff,
  * and resolving it must not cost a query on every request. Per-organization
@@ -77,6 +90,7 @@ const ALL_RFP: Permission[] = [
 export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
   OWNER: [
     ...ALL_RFP,
+    ...ALL_DOCUMENT,
     "org:read",
     "org:update",
     "member:read",
@@ -86,6 +100,7 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
   ],
   ADMIN: [
     ...ALL_RFP,
+    ...ALL_DOCUMENT,
     "org:read",
     "org:update",
     "member:read",
@@ -104,16 +119,25 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "rfp:submit",
     "rfp:export",
     "rfp:manage",
+    ...ALL_DOCUMENT,
     "org:read",
     "member:read",
   ],
   /** Drafts and edits answers. Cannot approve their own work or submit. */
-  CONTRIBUTOR: ["rfp:read", "rfp:update", "rfp:export", "org:read", "member:read"],
+  CONTRIBUTOR: [
+    "rfp:read",
+    "rfp:update",
+    "rfp:export",
+    "document:read",
+    "document:upload",
+    "org:read",
+    "member:read",
+  ],
   /** Judges answers. Can review and approve, but not author or submit. */
-  REVIEWER: ["rfp:read", "rfp:review", "rfp:approve", "org:read", "member:read"],
+  REVIEWER: ["rfp:read", "rfp:review", "rfp:approve", "document:read", "org:read", "member:read"],
   /** Domain specialist: reviews and may correct answers in their area. */
-  SME: ["rfp:read", "rfp:update", "rfp:review", "org:read", "member:read"],
-  VIEWER: ["rfp:read", "org:read"],
+  SME: ["rfp:read", "rfp:update", "rfp:review", "document:read", "org:read", "member:read"],
+  VIEWER: ["rfp:read", "document:read", "org:read"],
 };
 
 /** Roles that may act on membership, used to protect privilege escalation. */

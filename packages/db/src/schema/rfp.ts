@@ -62,11 +62,26 @@ export const documentTypeEnum = pgEnum("document_type", [
   "HTML",
 ]);
 
+/**
+ * The document processing lifecycle.
+ *
+ * Value order matches the physical enum order in Postgres, which matters:
+ * migration 0008 adds `uploaded` BEFORE `queued` and `parsed` AFTER
+ * `processing`, so declaring them in any other order here would show up as
+ * drift on the next `db:generate`.
+ *
+ * `ready` is the prototype's terminal value and is deprecated in favour of
+ * `parsed` — apps/legacy-web still renders it, so it stays until that app is
+ * retired. New code must write `parsed`.
+ */
 export const documentStatusEnum = pgEnum("document_status", [
+  "uploaded",
   "queued",
   "processing",
+  "parsed",
   "ready",
   "failed",
+  "archived",
 ]);
 
 export const answerSourceEnum = pgEnum("answer_source", ["ai_draft", "human_edited", "reused"]);
@@ -155,23 +170,55 @@ export const rfpCollaborators = pgTable(
   (t) => [primaryKey({ columns: [t.rfpId, t.userId] })],
 );
 
+/**
+ * An RFP's source material: the uploaded questionnaire, requirements sheet,
+ * and anything else the buyer supplied.
+ *
+ * `organizationId` is carried directly rather than inferred through `rfpId`.
+ * The Phase 6 processing worker acts on documents with no `AuthContext` to
+ * join from, and making this the one domain table whose tenancy needs a join
+ * is exactly the discipline-over-structure trade the rest of the schema
+ * avoids.
+ *
+ * `storageKey` is the prototype's inline key and is superseded by `fileId`,
+ * which points at the `files` row registered at upload. New code writes
+ * `fileId`; the old column stays only while apps/legacy-api reads it.
+ */
 export const rfpDocuments = pgTable(
   "rfp_documents",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
     rfpId: uuid("rfp_id")
       .notNull()
       .references(() => rfps.id, { onDelete: "cascade" }),
     filename: text("filename").notNull(),
     type: documentTypeEnum("type").notNull(),
     sizeMb: numeric("size_mb", { precision: 10, scale: 2 }).notNull().default("0"),
-    status: documentStatusEnum("status").notNull().default("queued"),
+    status: documentStatusEnum("status").notNull().default("uploaded"),
     storageKey: text("storage_key"),
     fileId: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
     uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+    /** Which `document_versions` row is live; bumped by POST /versions. */
+    currentVersion: integer("current_version").notNull().default(1),
+    pageCount: integer("page_count"),
+    /** Populated when status is `failed`, so the UI can say why. */
+    failureReason: text("failure_reason"),
+    /**
+     * Soft delete. The `files` row is never removed, because evidence
+     * provenance cites it — archiving hides the document without breaking the
+     * chain from an answer back to the bytes it was drawn from.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [index("rfp_documents_rfp_idx").on(t.rfpId)],
+  (t) => [
+    index("rfp_documents_rfp_idx").on(t.rfpId),
+    index("rfp_documents_org_idx").on(t.organizationId),
+    index("rfp_documents_org_status_idx").on(t.organizationId, t.status),
+  ],
 );
 
 // ---------------------------------------------------------------------------

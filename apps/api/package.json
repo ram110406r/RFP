@@ -20,6 +20,7 @@
     "@rfp-os/ai": "workspace:*",
     "@rfp-os/db": "workspace:*",
     "@rfp-os/observability": "workspace:*",
+    "@rfp-os/storage": "workspace:*",
     "@rfp-os/types": "workspace:*",
     "@rfp-os/validation": "workspace:*",
     "better-auth": "^1.7.1",

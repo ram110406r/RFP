@@ -27,6 +27,12 @@ const env = {
   BETTER_AUTH_URL: "http://localhost:4100",
   SESSION_MAX_AGE_SECONDS: 3600,
   INVITATION_TTL_HOURS: 72,
+  STORAGE_REGION: "us-east-1",
+  STORAGE_BUCKET: "rfp-os-documents",
+  STORAGE_FORCE_PATH_STYLE: true,
+  UPLOAD_MAX_BYTES: 104_857_600,
+  UPLOAD_URL_TTL_SECONDS: 900,
+  DOWNLOAD_URL_TTL_SECONDS: 300,
 } satisfies Env;
 
 const config = {

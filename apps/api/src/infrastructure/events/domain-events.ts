@@ -11,6 +11,8 @@
  * been committed — a subscriber can never veto them, only react.
  */
 
+import type { DocumentDomainEvent } from "./document-events";
+
 export const RFP_EVENTS = {
   CREATED: "RFP_CREATED",
   UPDATED: "RFP_UPDATED",
@@ -75,4 +77,4 @@ export type RfpDomainEvent =
   | RfpStatusChangedEvent
   | RfpAssignmentChangedEvent;
 
-export type DomainEvent = RfpDomainEvent;
+export type DomainEvent = RfpDomainEvent | DocumentDomainEvent;

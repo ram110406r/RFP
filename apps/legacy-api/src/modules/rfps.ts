@@ -296,6 +296,9 @@ export const rfpsModule = new Elysia({ prefix: "/api/rfps" })
       if (body.documents.length) {
         await db.insert(rfpDocuments).values(
           body.documents.map((doc) => ({
+            // rfp_documents carries its own organization_id as of the Phase 6
+            // document work, so the processing worker can scope without a join.
+            organizationId: auth.organizationId,
             rfpId: rfp.id,
             filename: doc.name,
             type: doc.type,
@@ -403,6 +406,7 @@ export const rfpsModule = new Elysia({ prefix: "/api/rfps" })
       const [doc] = await db
         .insert(rfpDocuments)
         .values({
+          organizationId: auth.organizationId,
           rfpId: params.id,
           filename: body.name,
           type: body.type,
