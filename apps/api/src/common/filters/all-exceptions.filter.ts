@@ -1,4 +1,10 @@
-import { Catch, HttpException, HttpStatus, type ArgumentsHost, type ExceptionFilter } from "@nestjs/common";
+import {
+  Catch,
+  HttpException,
+  HttpStatus,
+  type ArgumentsHost,
+  type ExceptionFilter,
+} from "@nestjs/common";
 import type { Request, Response } from "express";
 
 import { PinoLoggerService } from "../logger/pino-logger.service";
@@ -49,7 +55,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const status = exception.getStatus();
       const payload = exception.getResponse();
       const { code, message, details } = this.normalizeHttpExceptionPayload(exception, payload);
-      return { status, body: { error: { code, message, requestId, ...(details ? { details } : {}) } } };
+      return {
+        status,
+        body: { error: { code, message, requestId, ...(details ? { details } : {}) } },
+      };
     }
 
     return {
