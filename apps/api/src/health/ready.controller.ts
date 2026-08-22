@@ -1,7 +1,15 @@
-import { Controller, Get, HttpCode, HttpStatus, ServiceUnavailableException, VERSION_NEUTRAL } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  ServiceUnavailableException,
+  VERSION_NEUTRAL,
+} from "@nestjs/common";
 import { SkipThrottle } from "@nestjs/throttler";
 
 import { HealthService } from "./health.service";
+import { Public } from "../common/auth";
 
 /**
  * Readiness probe: can this instance actually serve traffic right now (are
@@ -9,6 +17,7 @@ import { HealthService } from "./health.service";
  * but not ready (e.g. database unreachable).
  */
 @SkipThrottle()
+@Public()
 @Controller({ path: "ready", version: VERSION_NEUTRAL })
 export class ReadyController {
   constructor(private readonly health: HealthService) {}

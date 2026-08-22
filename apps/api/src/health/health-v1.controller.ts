@@ -2,6 +2,7 @@ import { Controller, Get, VERSION_NEUTRAL } from "@nestjs/common";
 import { SkipThrottle } from "@nestjs/throttler";
 
 import { HealthService } from "./health.service";
+import { Public } from "../common/auth";
 
 /**
  * Same liveness check as GET /health, but under the versioned API surface
@@ -19,6 +20,7 @@ import { HealthService } from "./health.service";
  * automatically from the global defaultVersion with no boilerplate.
  */
 @SkipThrottle()
+@Public()
 @Controller({ path: "v1/health", version: VERSION_NEUTRAL })
 export class HealthV1Controller {
   constructor(private readonly health: HealthService) {}
