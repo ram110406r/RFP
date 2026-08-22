@@ -34,6 +34,16 @@ export async function requireAuth(
     .limit(1);
   const user = rows[0];
   if (!user) throw unauthorized("Invalid session token.");
+  /**
+   * organization_id became nullable in Phase 4: identity is global and
+   * membership lives in organization_members, so a user can exist with no
+   * default organization. This prototype API predates that and scopes every
+   * query by this one column, so a user without it has no tenant here — which
+   * is a refusal, never a query that silently spans organizations.
+   */
+  if (!user.organizationId) {
+    throw unauthorized("This account is not a member of any organization.");
+  }
 
   return { userId: user.id, organizationId: user.organizationId };
 }
