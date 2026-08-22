@@ -22,6 +22,7 @@
     "@rfp-os/observability": "workspace:*",
     "@rfp-os/types": "workspace:*",
     "@rfp-os/validation": "workspace:*",
+    "better-auth": "^1.7.1",
     "drizzle-orm": "^0.44.2",
     "helmet": "^8.0.0",
     "reflect-metadata": "^0.2.2",
