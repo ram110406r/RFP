@@ -32,21 +32,33 @@ describe("Workflow API", () => {
   let rfpId: string;
   let requirementId: string;
 
+  /**
+   * Emails are unique per run, not fixed. users.email became globally unique
+   * in Phase 4 (it is the sign-in identifier), so fixed addresses made this
+   * fixture unrunnable whenever a previous run was interrupted before its
+   * teardown — the leftover rows blocked every subsequent insert.
+   */
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
   beforeAll(async () => {
     const [org] = await db
       .insert(organizations)
-      .values({ name: `workflow-test-${Date.now()}`, domain: "workflow-test.test" })
+      .values({ name: `workflow-test-${runId}`, domain: "workflow-test.test" })
       .returning();
     if (!org) throw new Error("failed to seed org");
     orgId = org.id;
 
     const [owner] = await db
       .insert(users)
-      .values({ organizationId: orgId, name: "Owner", email: "owner@workflow-test.test" })
+      .values({ organizationId: orgId, name: "Owner", email: `owner-${runId}@workflow-test.test` })
       .returning();
     const [reviewer] = await db
       .insert(users)
-      .values({ organizationId: orgId, name: "Reviewer", email: "reviewer@workflow-test.test" })
+      .values({
+        organizationId: orgId,
+        name: "Reviewer",
+        email: `reviewer-${runId}@workflow-test.test`,
+      })
       .returning();
     if (!owner || !reviewer) throw new Error("failed to seed users");
     userId = owner.id;

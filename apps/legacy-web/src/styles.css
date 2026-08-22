@@ -1,6 +1,7 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+@import "./styles/tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -71,6 +72,87 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* ---------------------------------------------------------------
+     Interface Kit registration — turns ./styles/tokens.css into
+     Tailwind utilities. Everything above this line predates the kit.
+     --------------------------------------------------------------- */
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-line-soft: var(--line-soft);
+  --color-fg-2: var(--fg-2);
+
+  --color-risk-low-fg: var(--risk-low-fg);
+  --color-risk-low-bg: var(--risk-low-bg);
+  --color-risk-low-line: var(--risk-low-line);
+  --color-risk-medium-fg: var(--risk-medium-fg);
+  --color-risk-medium-bg: var(--risk-medium-bg);
+  --color-risk-medium-line: var(--risk-medium-line);
+  --color-risk-high-fg: var(--risk-high-fg);
+  --color-risk-high-bg: var(--risk-high-bg);
+  --color-risk-high-line: var(--risk-high-line);
+  --color-risk-critical-fg: var(--risk-critical-fg);
+  --color-risk-critical-bg: var(--risk-critical-bg);
+  --color-risk-critical-line: var(--risk-critical-line);
+  --color-row-critical-bg: var(--row-critical-bg);
+  --color-row-critical-bg-hover: var(--row-critical-bg-hover);
+
+  --color-progress-track: var(--progress-track);
+  --color-progress-early: var(--progress-early);
+  --color-progress-mid: var(--progress-mid);
+  --color-progress-high: var(--progress-high);
+  --color-progress-done: var(--progress-done);
+
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-series-muted: var(--series-muted);
+
+  --shadow-e1: var(--elevation-1);
+  --shadow-e2: var(--elevation-2);
+  --shadow-e3: var(--elevation-3);
+
+  /*
+   * Type scale. The old scale collapsed into three sizes doing eight jobs;
+   * the two that matter most are `metric` and `label`, which together stop
+   * a stat card's label from competing with its own number.
+   *
+   * `label` is 11px rather than the 12px it is tempting to use: at 12px,
+   * uppercase-with-tracking sits close enough to 13px body that the two
+   * textures blur. It also matches the pre-existing .eyebrow utility, so
+   * adopting it costs no migration.
+   */
+  --text-display: 1.75rem;
+  --text-display--line-height: 1.15;
+  --text-display--letter-spacing: -0.02em;
+  --text-display--font-weight: 600;
+
+  --text-metric: 1.875rem;
+  --text-metric--line-height: 1.05;
+  --text-metric--letter-spacing: -0.025em;
+  --text-metric--font-weight: 700;
+
+  --text-metric-sm: 1.5rem;
+  --text-metric-sm--line-height: 1.1;
+  --text-metric-sm--letter-spacing: -0.02em;
+  --text-metric-sm--font-weight: 700;
+
+  --text-title: 0.9375rem;
+  --text-title--line-height: 1.35;
+  --text-title--letter-spacing: -0.01em;
+  --text-title--font-weight: 600;
+
+  --text-supporting: 0.8125rem;
+  --text-supporting--line-height: 1.45;
+
+  --text-meta: 0.75rem;
+  --text-meta--line-height: 1.4;
+
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1rem;
+  --text-label--letter-spacing: 0.08em;
+  --text-label--font-weight: 600;
 }
 
 :root {
@@ -190,11 +272,34 @@
   }
 }
 
+/* e1 — the resting level. Static content you read: stat cards, chart
+   cards, table containers. */
 @utility surface-panel {
   background-color: var(--color-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 1px 2px 0 oklch(0.15 0.01 244 / 4%);
+  box-shadow: var(--elevation-1);
+}
+
+/* e1 -> e2. The lift IS the affordance: apply this only where the whole
+   surface is clickable, never for decoration. */
+@utility surface-interactive {
+  transition:
+    box-shadow 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+
+  &:hover {
+    border-color: color-mix(in oklch, var(--color-primary) 35%, var(--color-border));
+    box-shadow: var(--elevation-2);
+    transform: translateY(-1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surface-interactive:hover {
+    transform: none;
+  }
 }
 
 @utility eyebrow {

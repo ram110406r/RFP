@@ -7,16 +7,26 @@ import {
   rfpOutcomes,
   rfpRequirements,
   rfpReviews,
+  rfpSubmissions,
   rfps,
 } from "../db/schema";
 import { requireAuth } from "../lib/auth";
 
 /**
  * Every figure here is computed from real rows for the caller's
- * organization. Where the schema genuinely doesn't track something yet
- * (e.g. SME hours — there's no time-tracking entity), the value is 0 and
- * period-over-period deltas are 0 rather than invented, per the migration
- * brief's "never invent analytics" rule.
+ * organization, and nothing is invented.
+ *
+ * Two series used to return placeholder shapes that the frontend could not
+ * tell apart from "no data yet":
+ *
+ *   smePerformance carried a hard-coded `hours: 0` beside a real `reviews`
+ *   count. There is no time-tracking entity in the schema, so the field has
+ *   been dropped rather than shipped as a permanent zero — review count is
+ *   the load measure this data can actually support.
+ *
+ *   completionTime returned [] unconditionally. It is now derived from each
+ *   RFP's creation date to its first submission, which the schema has always
+ *   been able to answer.
  */
 export const analyticsModule = new Elysia({ prefix: "/api/analytics" }).get(
   "/",
@@ -36,6 +46,7 @@ export const analyticsModule = new Elysia({ prefix: "/api/analytics" }).get(
       byMonthOutcome,
       byMonthAnswers,
       ownerTeamReviews,
+      byMonthCompletion,
     ] = await Promise.all([
       db
         .select({ count: sql<number>`count(*)`.mapWith(Number) })
@@ -157,6 +168,32 @@ export const analyticsModule = new Elysia({ prefix: "/api/analytics" }).get(
         .innerJoin(rfps, eq(rfps.id, rfpRequirements.rfpId))
         .where(eq(rfps.organizationId, orgId))
         .groupBy(rfpRequirements.ownerTeam),
+      /*
+       * Average days from an RFP's creation to its FIRST submission, by the
+       * month it was submitted in. min(created_at) per RFP, so an RFP with
+       * three submission revisions still counts once, measured to the point
+       * it first went out.
+       */
+      db
+        .select({
+          month: sql<string>`to_char(first_submission.submitted_at, 'Mon')`,
+          monthIdx: sql<number>`extract(month from first_submission.submitted_at)`.mapWith(Number),
+          days: sql<number>`round(avg(extract(epoch from (first_submission.submitted_at - ${rfps.createdAt})) / 86400))`.mapWith(
+            Number,
+          ),
+          submitted: sql<number>`count(*)`.mapWith(Number),
+        })
+        .from(rfps)
+        .innerJoin(
+          sql`(select ${rfpSubmissions.rfpId} as rfp_id, min(${rfpSubmissions.createdAt}) as submitted_at
+               from ${rfpSubmissions} group by ${rfpSubmissions.rfpId}) as first_submission`,
+          sql`first_submission.rfp_id = ${rfps.id}`,
+        )
+        .where(eq(rfps.organizationId, orgId))
+        .groupBy(
+          sql`to_char(first_submission.submitted_at, 'Mon')`,
+          sql`extract(month from first_submission.submitted_at)`,
+        ),
     ]);
 
     const total = requirementCount[0]?.count ?? 0;
@@ -175,6 +212,17 @@ export const analyticsModule = new Elysia({ prefix: "/api/analytics" }).get(
 
     const sortByMonth = <T extends { monthIdx: number }>(rows: T[]) =>
       [...rows].sort((a, b) => a.monthIdx - b.monthIdx);
+
+    /**
+     * Reviews actually completed, replacing the "SME review hours" KPI that
+     * reported a hard-coded "0 hrs / Not yet tracked". There is no
+     * time-tracking entity to measure hours against, and a tile that always
+     * reads zero teaches people to ignore the row it sits in.
+     */
+    const reviewsCompleted = ownerTeamReviews.reduce((sum, r) => sum + r.reviews, 0);
+
+    /** First submissions per month, keyed for merging into the volume series. */
+    const submittedByMonth = new Map(byMonthCompletion.map((r) => [r.monthIdx, r.submitted]));
 
     return {
       kpis: [
@@ -213,7 +261,13 @@ export const analyticsModule = new Elysia({ prefix: "/api/analytics" }).get(
           delta: 0,
           hint: "Share flagged high or critical",
         },
-        { id: "k7", label: "SME review hours", value: "0 hrs", delta: 0, hint: "Not yet tracked" },
+        {
+          id: "k7",
+          label: "Reviews completed",
+          value: String(reviewsCompleted),
+          delta: 0,
+          hint: "All time, across SME teams",
+        },
         {
           id: "k8",
           label: "Evidence freshness",
@@ -225,7 +279,9 @@ export const analyticsModule = new Elysia({ prefix: "/api/analytics" }).get(
       volume: sortByMonth(byMonthReceived).map((r) => ({
         month: r.month,
         received: r.received,
-        submitted: 0,
+        // Was hard-coded 0, which drew the "Submitted" series as a permanently
+        // invisible flat line under a legend that promised it.
+        submitted: submittedByMonth.get(r.monthIdx) ?? 0,
       })),
       winLoss: sortByMonth(byMonthOutcome).map((r) => ({
         month: r.month,
@@ -243,10 +299,13 @@ export const analyticsModule = new Elysia({ prefix: "/api/analytics" }).get(
         accepted: r.accepted,
         edited: r.edited,
       })),
-      completionTime: [],
+      completionTime: sortByMonth(byMonthCompletion).map((r) => ({
+        month: r.month,
+        days: r.days,
+      })),
       smePerformance: ownerTeamReviews
         .filter((r) => r.team)
-        .map((r) => ({ team: r.team, hours: 0, reviews: r.reviews })),
+        .map((r) => ({ team: r.team, reviews: r.reviews })),
     };
   },
 );
