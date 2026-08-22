@@ -19,6 +19,7 @@ import {
   mcpConnections,
   notificationPreferences,
   notifications,
+  organizationMembers,
   organizations,
   permissions,
   rfpAnswers,
@@ -212,6 +213,32 @@ async function main() {
       .returning();
     if (user) userByEmail.set(p.email, user.id);
   }
+
+  /*
+   * Memberships are what authorization reads (users.organization_id is only a
+   * default), so seeding users without them would leave a freshly reset
+   * database that nobody can sign in to. The migration backfill covers
+   * existing installs; this covers new ones.
+   *
+   * The prototype's role tiers map onto the platform roles, and the first
+   * person becomes OWNER so the organization is administrable.
+   */
+  const ROLE_TO_ORG_ROLE = {
+    Admin: "ADMIN",
+    "Proposal Manager": "RFP_MANAGER",
+    Contributor: "CONTRIBUTOR",
+    Reviewer: "REVIEWER",
+    Viewer: "VIEWER",
+  } as const;
+
+  await db.insert(organizationMembers).values(
+    PEOPLE.map((p, index) => ({
+      organizationId,
+      userId: userByEmail.get(p.email)!,
+      role: index === 0 ? ("OWNER" as const) : ROLE_TO_ORG_ROLE[p.role],
+      status: "active" as const,
+    })),
+  );
   const priya = userByEmail.get("priya.nair@halcyonsystems.com")!;
   const marcus = userByEmail.get("marcus.webb@halcyonsystems.com")!;
   const elena = userByEmail.get("elena.fischer@halcyonsystems.com")!;

@@ -13,7 +13,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { requirementCategoryEnum, timestamps } from "./_shared";
+import { requirementCategoryEnum, rfpLifecycleStatusEnum, timestamps } from "./_shared";
 import { files } from "./files";
 import { users } from "./identity";
 import { knowledgeSources } from "./knowledge";
@@ -114,6 +114,18 @@ export const rfps = pgTable(
     deadline: date("deadline").notNull(),
     estimatedValue: numeric("estimated_value", { precision: 14, scale: 2 }).notNull().default("0"),
     status: rfpStatusEnum("status").notNull().default("draft"),
+    /**
+     * The lifecycle position the state machine owns (Phase 5). Separate from
+     * `status` above, which remains the prototype's display state — see
+     * schema/rfp-lifecycle.ts for why the two coexist.
+     */
+    lifecycleStatus: rfpLifecycleStatusEnum("lifecycle_status").notNull().default("DRAFT"),
+    /**
+     * Soft archive. Deleting an RFP would orphan its requirements, answers,
+     * evidence and audit trail, so "delete" archives: the row stays, and every
+     * list query excludes it unless explicitly asked for.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     progress: integer("progress").notNull().default(0),
     evidenceCoverage: integer("evidence_coverage").notNull().default(0),
     readiness: integer("readiness").notNull().default(0),
@@ -122,6 +134,11 @@ export const rfps = pgTable(
   (t) => [
     index("rfps_org_idx").on(t.organizationId),
     index("rfps_org_status_idx").on(t.organizationId, t.status),
+    index("rfps_org_lifecycle_idx").on(t.organizationId, t.lifecycleStatus),
+    index("rfps_org_owner_idx").on(t.organizationId, t.ownerId),
+    index("rfps_org_deadline_idx").on(t.organizationId, t.deadline),
+    index("rfps_org_created_idx").on(t.organizationId, t.createdAt),
+    index("rfps_org_archived_idx").on(t.organizationId, t.archivedAt),
   ],
 );
 

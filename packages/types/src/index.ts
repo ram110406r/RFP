@@ -26,3 +26,5 @@ export interface ApiErrorShape {
     message: string;
   };
 }
+
+export * from "./authz";
