@@ -38,7 +38,20 @@ export class ZodValidationInterceptor implements NestInterceptor {
         request.body = parseOrThrow(bodySchema, request.body);
       }
       if (querySchema) {
-        Object.assign(request.query, parseOrThrow(querySchema, request.query));
+        /*
+         * Express 5 exposes `query` as a prototype getter that re-parses the
+         * query string on every access, so Object.assign-ing onto it mutated a
+         * throwaway object and the parsed result — including Zod defaults —
+         * was silently discarded before the handler read it. Defining an own
+         * property shadows the getter, so `@Query()` sees the validated value.
+         */
+        const parsed = parseOrThrow(querySchema, request.query);
+        Object.defineProperty(request, "query", {
+          value: parsed,
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
       }
     }
 
