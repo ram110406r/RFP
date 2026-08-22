@@ -6,7 +6,13 @@ if (!databaseUrl) {
 }
 
 export default defineConfig({
-  schema: "./src/schema",
+  /**
+   * The barrel, not the directory. Pointing at "./src/schema" made drizzle-kit
+   * load every file in the folder — including schema.test.ts, which imports
+   * "bun:test" and cannot be resolved by drizzle-kit's Node loader. The barrel
+   * re-exports every table, so generation sees exactly the same schema.
+   */
+  schema: "./src/schema/index.ts",
   out: "./migrations",
   dialect: "postgresql",
   dbCredentials: { url: databaseUrl },

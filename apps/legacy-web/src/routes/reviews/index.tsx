@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 import { reviewsQueryOptions } from "@/lib/api/reviews";
 import { PageHeader } from "@/components/common/page-header";
 import { PageSkeleton } from "@/components/common/page-skeleton";
@@ -11,6 +11,17 @@ import { ConfidenceMeter } from "@/components/common/confidence-meter";
 import { PersonAvatar } from "@/components/common/person-avatar";
 import { EmptyState } from "@/components/common/empty-state";
 import {
+  DataRow,
+  DataTable,
+  DeadlineCell,
+  RowCell,
+  RowSub,
+  RowTitle,
+  Td,
+  Th,
+  rowEmphasis,
+} from "@/components/common/data-table";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -18,8 +29,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { deadlineMeta } from "@/lib/dates";
 import { getPerson } from "@/lib/session";
-import { cn } from "@/lib/utils";
 import type { ReviewItem } from "@/types";
 
 export const Route = createFileRoute("/reviews/")({
@@ -61,13 +72,13 @@ function ReviewsQueue() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-lg border bg-muted/40 p-1">
+        <div className="inline-flex rounded-lg border border-border bg-surface-sunken p-0.5">
           {(["all", "mine"] as ScopeFilter[]).map((s) => (
             <Button
               key={s}
               size="sm"
               variant={scope === s ? "default" : "ghost"}
-              className="h-7 px-3 text-xs capitalize"
+              className="h-7 px-3 text-meta"
               onClick={() => setScope(s)}
             >
               {s === "mine" ? "Assigned to me" : "All reviews"}
@@ -90,72 +101,82 @@ function ReviewsQueue() {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState title="Nothing here" description="No reviews match your filters." />
+        <EmptyState
+          icon={<ClipboardCheck className="h-5 w-5" />}
+          title="Nothing in this queue"
+          description={
+            scope === "mine"
+              ? "No reviews are assigned to you right now."
+              : "No reviews match the selected status."
+          }
+          action={
+            scope === "mine" ? (
+              <Button variant="outline" size="sm" onClick={() => setScope("all")}>
+                View all reviews
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Requirement</th>
-                <th className="px-4 py-2.5 font-medium">RFP</th>
-                <th className="px-4 py-2.5 font-medium">Risk</th>
-                <th className="px-4 py-2.5 font-medium">Confidence</th>
-                <th className="px-4 py-2.5 font-medium">Reviewer</th>
-                <th className="px-4 py-2.5 font-medium">Due</th>
-                <th className="px-4 py-2.5 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filtered.map((review) => (
-                <tr key={review.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <Link
-                      to="/reviews/$reviewId"
-                      params={{ reviewId: review.id }}
-                      className="num font-medium text-foreground hover:underline"
-                    >
-                      {review.requirementCode}
-                    </Link>
-                    <p className="max-w-xs truncate text-xs text-muted-foreground">
-                      {review.requirementTitle}
-                    </p>
-                  </td>
-                  <td className="max-w-[12rem] truncate px-4 py-3 text-xs text-muted-foreground">
-                    {review.rfpTitle}
-                  </td>
-                  <td className="px-4 py-3">
-                    <RiskBadge risk={review.risk} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <ConfidenceMeter value={review.confidence} size="sm" />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <PersonAvatar personId={review.reviewerId} />
-                      <span className="text-xs text-muted-foreground">
-                        {getPerson(review.reviewerId)?.name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={cn(
-                        "num flex items-center gap-1 text-xs",
-                        review.overdue ? "font-medium text-danger" : "text-muted-foreground",
-                      )}
-                    >
-                      {review.overdue && <AlertTriangle className="h-3 w-3" />}
-                      {review.due}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={review.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          head={
+            <>
+              <Th>Requirement</Th>
+              <Th>RFP</Th>
+              <Th>Risk</Th>
+              <Th>Confidence</Th>
+              <Th>Reviewer</Th>
+              <Th>Due</Th>
+              <Th>Status</Th>
+            </>
+          }
+        >
+          {filtered.map((review) => {
+            const due = deadlineMeta(review.due);
+            return (
+              <DataRow
+                key={review.id}
+                emphasis={rowEmphasis({
+                  risk: review.risk,
+                  overdue: review.overdue,
+                  dueInDays: due.days,
+                })}
+              >
+                <Td>
+                  <Link
+                    to="/reviews/$reviewId"
+                    params={{ reviewId: review.id }}
+                    className="num hover:underline"
+                  >
+                    <RowTitle>{review.requirementCode}</RowTitle>
+                  </Link>
+                  <RowSub className="max-w-xs">{review.requirementTitle}</RowSub>
+                </Td>
+                <Td className="max-w-[12rem]">
+                  <RowCell className="block truncate">{review.rfpTitle}</RowCell>
+                </Td>
+                <Td>
+                  <RiskBadge risk={review.risk} />
+                </Td>
+                <Td>
+                  <ConfidenceMeter value={review.confidence} size="sm" />
+                </Td>
+                <Td>
+                  <span className="flex items-center gap-1.5">
+                    <PersonAvatar personId={review.reviewerId} />
+                    <RowCell>{getPerson(review.reviewerId)?.name}</RowCell>
+                  </span>
+                </Td>
+                <Td>
+                  <DeadlineCell meta={due} />
+                </Td>
+                <Td>
+                  <StatusBadge status={review.status} />
+                </Td>
+              </DataRow>
+            );
+          })}
+        </DataTable>
       )}
     </div>
   );

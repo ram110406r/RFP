@@ -194,7 +194,12 @@ export interface AnalyticsSnapshot {
   riskDistribution: { name: string; value: number }[];
   acceptance: { month: string; accepted: number; edited: number }[];
   completionTime: { month: string; days: number }[];
-  smePerformance: { team: string; hours: number; reviews: number }[];
+  /**
+   * Review counts per team. There is deliberately no `hours` field: the
+   * schema has no time-tracking entity, and a permanent zero is
+   * indistinguishable from missing data at the chart.
+   */
+  smePerformance: { team: string; reviews: number }[];
 }
 
 export interface OrgProfile {
