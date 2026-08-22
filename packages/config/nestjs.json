@@ -2,8 +2,10 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./base.json",
   "compilerOptions": {
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    // Module/moduleResolution are inherited from base.json (ESNext + Bundler).
+    // The API is an ESM package run under Bun, and its sources use
+    // extensionless relative imports, which "Node16"/"NodeNext" reject and the
+    // old "Node" (node10) algorithm — deprecated for TypeScript 7 — allowed.
     "target": "ES2022",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,

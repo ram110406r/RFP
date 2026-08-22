@@ -1,8 +1,8 @@
 {
   "extends": "@rfp-os/config/nestjs.json",
   "compilerOptions": {
+    "rootDir": "./src",
     "outDir": "./dist",
-    "baseUrl": "./",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
