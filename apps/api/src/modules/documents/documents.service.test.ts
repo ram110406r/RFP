@@ -14,12 +14,15 @@ import {
   rfps,
   users,
 } from "@rfp-os/db";
+import { DOCUMENT_JOBS, documentJobId, type DocumentJobName, type DocumentJobPayload } from "@rfp-os/jobs";
 import { ObjectStorage, type ObjectHead } from "@rfp-os/storage";
 import { permissionsForRole, type AuthContext, type OrgRole } from "@rfp-os/types";
 
 import { PolicyService } from "../../common/auth";
 import { AuditService } from "../../infrastructure/audit";
 import { EventPublisher } from "../../infrastructure/events";
+import { JobQueue, type EnqueueResult } from "../../infrastructure/queue";
+import { PinoLoggerService } from "../../common/logger/pino-logger.service";
 import type { DomainEvent } from "../../infrastructure/events";
 import { expectRejection } from "../rfp/test-support";
 import { DocumentsRepository } from "./documents.repository";
@@ -78,6 +81,37 @@ class FakeObjectStorage {
   }
 }
 
+/**
+ * Records what would have been enqueued, and reproduces the one behaviour the
+ * service depends on: a repeated job id is not new work. Without that, a test
+ * for double-submit would pass against a stub that queues twice.
+ */
+class RecordingJobQueue extends JobQueue {
+  readonly enqueued: { name: DocumentJobName; payload: DocumentJobPayload }[] = [];
+  private readonly seen = new Set<string>();
+  /** When set, the next enqueue throws — for asserting upload still succeeds. */
+  failNext = false;
+
+  async enqueueDocumentJob(
+    name: DocumentJobName,
+    payload: DocumentJobPayload,
+  ): Promise<EnqueueResult> {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("redis unavailable");
+    }
+    const jobId = documentJobId(name, payload.documentId, payload.version);
+    const fresh = !this.seen.has(jobId);
+    if (fresh) {
+      this.seen.add(jobId);
+      this.enqueued.push({ name, payload });
+    }
+    return { enqueued: fresh, jobId };
+  }
+
+  async close(): Promise<void> {}
+}
+
 const PDF = "application/pdf";
 
 describeDb("Document ingestion", () => {
@@ -87,6 +121,8 @@ describeDb("Document ingestion", () => {
   const storage = new FakeObjectStorage();
   const audit = new AuditService(db);
   const policy = new PolicyService(db);
+  const jobs = new RecordingJobQueue();
+  const logger = new PinoLoggerService();
 
   const env: Record<string, unknown> = {
     STORAGE_ENDPOINT: "http://localhost:59000",
@@ -101,8 +137,10 @@ describeDb("Document ingestion", () => {
     storage as unknown as ObjectStorage,
     audit,
     events,
+    jobs,
     policy,
     config,
+    logger,
   );
 
   const suffix = randomUUID().slice(0, 8);
@@ -317,6 +355,57 @@ describeDb("Document ingestion", () => {
       expect(completed.status).toBe("queued");
       const published = events.published.slice(before);
       expect(published.map((e) => e.name)).toContain("DOCUMENT_UPLOADED");
+    });
+
+    dbTest("enqueues DOCUMENT_PARSE with the bytes' location and type", async () => {
+      const before = jobs.enqueued.length;
+      const { intent } = await uploadDocument("Queued.pdf", 4_096);
+
+      const queued = jobs.enqueued.slice(before);
+      expect(queued).toHaveLength(1);
+      expect(queued[0]?.name).toBe(DOCUMENT_JOBS.PARSE);
+      expect(queued[0]?.payload).toMatchObject({
+        documentId: intent.documentId,
+        rfpId: rfpA,
+        objectKey: intent.objectKey,
+        mimeType: PDF,
+        version: 1,
+      });
+      // The tenant must travel on the payload: the worker runs outside any
+      // request context and cannot otherwise scope its queries safely.
+      expect(queued[0]?.payload.organizationId).toBe(orgA);
+    });
+
+    /**
+     * A retried or double-submitted completion must not parse the document
+     * twice — the job id is derived from documentId + version precisely so
+     * the second add is a no-op rather than duplicate work.
+     */
+    dbTest("does not queue the same document version twice", async () => {
+      const { intent } = await uploadDocument("Once.pdf", 2_048);
+      const after = jobs.enqueued.length;
+
+      await service.completeUpload(ownerAuth(), rfpA, intent.documentId);
+
+      expect(jobs.enqueued).toHaveLength(after);
+    });
+
+    /**
+     * The bytes are in storage and the row is committed by the time the job is
+     * queued, so a broken Redis must not turn a successful upload into a failed
+     * request. The document stays `queued` and is picked up on reprocessing.
+     */
+    dbTest("still succeeds when the queue is unavailable", async () => {
+      const intent = await service.createUploadIntent(ownerAuth(), rfpA, {
+        filename: "Queue-down.pdf",
+        mimeType: PDF,
+        sizeBytes: 1_500,
+      });
+      storage.put(intent.objectKey, 1_500);
+      jobs.failNext = true;
+
+      const completed = await service.completeUpload(ownerAuth(), rfpA, intent.documentId);
+      expect(completed.status).toBe("queued");
     });
 
     /**

@@ -5,10 +5,10 @@ Yes. Below is the **updated backend implementation plan as a single Markdown cop
 
 ## Project Status
 
-**Current Status:** Phases 1–4 Complete  
-**Next Phase:** Phase 5 — RFP Core & Lifecycle  
+**Current Status:** Phases 1–5 Complete  
+**Next Phase:** Phase 6 — Document Processing & Requirement Intelligence  
 **Total Phases:** 11  
-**Remaining Phases:** 7
+**Remaining Phases:** 6
 
 ---
 
@@ -196,8 +196,8 @@ rfp-os/
 | Phase 2  | NestJS API Foundation                          | COMPLETE |
 | Phase 3  | Database Foundation                            | COMPLETE |
 | Phase 4  | Authentication & Organization                  | COMPLETE |
-| Phase 5  | RFP Core & Lifecycle                           | NEXT     |
-| Phase 6  | Document Processing & Requirement Intelligence | PENDING  |
+| Phase 5  | RFP Core & Lifecycle                           | COMPLETE |
+| Phase 6  | Document Processing & Requirement Intelligence | NEXT     |
 | Phase 7  | Knowledge, Search & Evidence                   | PENDING  |
 | Phase 8  | AI Response & RFP Intelligence                 | PENDING  |
 | Phase 9  | Review, Validation & Submission                | PENDING  |
@@ -468,7 +468,7 @@ Do not rebuild or replace Phase 4.
 
 ## Status
 
-**NEXT**
+**COMPLETE**
 
 ## Objective
 
@@ -1215,6 +1215,34 @@ VALIDATION_FAILED → VALIDATION
 ---
 
 # PHASE 6 — Document Processing & Requirement Intelligence
+
+## Status
+
+**IN PROGRESS** — delivered in slices:
+
+| Slice | Scope                                                        | Status   |
+| ----- | ------------------------------------------------------------ | -------- |
+| 6A    | Queue infrastructure (producer, worker, retries, DLQ)          | COMPLETE |
+| 6B    | Extracted-content storage                                      | PENDING  |
+| 6C    | Text & table extraction                                        | PENDING  |
+| 6D    | Requirements schema alignment                                  | PENDING  |
+| 6E    | Requirement extraction + CRUD                                  | PENDING  |
+| 6F    | Requirement graph                                              | PENDING  |
+
+Document Management (uploads, storage, versioning, MIME/size/checksum) was
+already delivered ahead of this phase and is not repeated in the slices above.
+
+### Decisions taken
+
+- **Extraction stack:** `unpdf` (PDF), `mammoth` (DOCX), `exceljs` (XLSX),
+  `node-html-parser` (HTML). PPTX and OCR are explicitly unsupported for now
+  and fail with a clear reason rather than being half-built.
+- **Requirement extraction is deterministic** (structure + modal verbs),
+  behind an interface Phase 8 can swap for a model-backed implementation.
+- **Enums are extended additively.** `requirement_status` and
+  `requirement_category` have 35 references across legacy-api and legacy-web,
+  which are what the deployed demo runs on; renaming them is deferred to the
+  legacy-to-apps/web migration.
 
 ## Objective
 

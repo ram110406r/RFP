@@ -17,6 +17,7 @@ import { HealthModule } from "./health/health.module";
 import { DatabaseModule } from "./infrastructure/database";
 import { AuditModule } from "./infrastructure/audit";
 import { EventsModule } from "./infrastructure/events";
+import { QueueModule } from "./infrastructure/queue";
 import { StorageModule } from "./infrastructure/storage";
 import { AuthModule } from "./modules/auth";
 import { DocumentsModule } from "./modules/documents";
@@ -42,6 +43,7 @@ import { RfpModule } from "./modules/rfp";
     HealthModule,
     AuditModule,
     EventsModule,
+    QueueModule,
     StorageModule,
     AuthModule,
     OrganizationsModule,

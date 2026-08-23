@@ -3,13 +3,16 @@ import { randomUUID } from "node:crypto";
 import { ForbiddenException, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { withTransaction, type rfpDocuments } from "@rfp-os/db";
+import { DOCUMENT_JOBS } from "@rfp-os/jobs";
 import { ObjectStorage, documentObjectKey } from "@rfp-os/storage";
 import type { AuthContext } from "@rfp-os/types";
 
 import { PolicyService } from "../../common/auth";
+import { PinoLoggerService } from "../../common/logger/pino-logger.service";
 import type { Env } from "../../config/env.schema";
 import { AuditService, DOCUMENT_AUDIT_ACTIONS } from "../../infrastructure/audit";
 import { DOCUMENT_EVENTS, EventPublisher } from "../../infrastructure/events";
+import { JobQueue } from "../../infrastructure/queue";
 import { RfpNotFoundError } from "../rfp/domain/rfp.errors";
 import { DocumentsRepository } from "./documents.repository";
 import { bytesToSizeMb, documentTypeForMime } from "./domain/document-type";
@@ -60,8 +63,10 @@ export class DocumentsService {
     private readonly storage: ObjectStorage,
     private readonly audit: AuditService,
     private readonly events: EventPublisher,
+    private readonly jobs: JobQueue,
     private readonly policy: PolicyService,
     private readonly config: ConfigService<Env, true>,
+    private readonly logger: PinoLoggerService,
   ) {}
 
   async list(auth: AuthContext, rfpId: string, filters: ListDocumentsInput) {
@@ -257,6 +262,39 @@ export class DocumentsService {
         version: updated.currentVersion,
       },
     });
+
+    /*
+     * Queued last, after both the commit and the event.
+     *
+     * Enqueueing inside the transaction would let a worker pick the job up
+     * before the commit landed and read a document that does not exist yet;
+     * enqueueing before the storage check would queue work for bytes that
+     * were never uploaded. The job id is derived from documentId + version, so
+     * a client that calls complete twice produces one job, not two.
+     *
+     * A failure here must not fail the request: the upload genuinely
+     * succeeded and the row is committed. The document simply stays `queued`
+     * until it is reprocessed, which is exactly the state the status column
+     * already models.
+     */
+    try {
+      await this.jobs.enqueueDocumentJob(DOCUMENT_JOBS.PARSE, {
+        organizationId: auth.organizationId,
+        rfpId,
+        documentId,
+        fileId: file.id,
+        version: updated.currentVersion,
+        objectKey: file.objectKey,
+        mimeType: file.mimeType,
+        actorId: auth.userId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `failed to enqueue parse for document ${documentId}: ${(error as Error).message}`,
+        (error as Error).stack,
+        "DocumentsService",
+      );
+    }
 
     return serialize(updated);
   }

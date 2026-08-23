@@ -25,8 +25,7 @@ export function resolveApiBaseUrl(): string {
 
   if (typeof window === "undefined") {
     // `process` is not defined in every SSR target, so probe it defensively.
-    const internal =
-      typeof process !== "undefined" ? process.env?.["API_INTERNAL_URL"] : undefined;
+    const internal = typeof process !== "undefined" ? process.env?.["API_INTERNAL_URL"] : undefined;
     return internal || configured || "http://localhost:4000";
   }
 

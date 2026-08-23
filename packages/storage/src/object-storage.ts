@@ -133,6 +133,36 @@ export class ObjectStorage {
     }
   }
 
+  /**
+   * Reads the first `length` bytes of an object.
+   *
+   * A ranged GET rather than a full download because the only current caller
+   * sniffs magic bytes: pulling a 40MB PDF into worker memory to look at its
+   * first eight bytes would make ingestion throughput a function of document
+   * size for no benefit.
+   *
+   * Null when the object is absent, matching headObject — a document whose
+   * bytes vanished between completion and processing is a real state, and one
+   * the parse job must report as a failure rather than crash on.
+   */
+  async readObjectPrefix(objectKey: string, length: number): Promise<Uint8Array | null> {
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: objectKey,
+          // Range is inclusive at both ends, so the last index is length - 1.
+          Range: `bytes=0-${Math.max(length - 1, 0)}`,
+        }),
+      );
+      if (!result.Body) return null;
+      return await result.Body.transformToByteArray();
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
   async deleteObject(objectKey: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: objectKey }));
   }
