@@ -1,0 +1,15 @@
+# Build context excludes. Anything here is either regenerated inside the image
+# or must never reach it (secrets, local state).
+node_modules
+**/node_modules
+.git
+.turbo
+**/.turbo
+**/.output
+**/.next
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.lovable

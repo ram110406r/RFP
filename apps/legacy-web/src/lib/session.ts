@@ -14,8 +14,9 @@ import type { OrgProfile, Person } from "@/types";
  * `src/data/people.ts` synchronously can keep doing so unchanged.
  */
 
+import { resolveApiBaseUrl } from "@/lib/api-base";
+
 const DEV_LOGIN_EMAIL = import.meta.env["VITE_DEV_LOGIN_EMAIL"] ?? "priya.nair@halcyonsystems.com";
-const API_BASE_URL = import.meta.env["VITE_API_URL"] ?? "http://localhost:4000";
 
 export let authToken: string | null = null;
 export let CURRENT_USER_ID = "";
@@ -43,6 +44,7 @@ export function personName(id: string | null | undefined): string {
 let sessionPromise: Promise<void> | null = null;
 
 async function bootstrapSession(): Promise<void> {
+  const API_BASE_URL = resolveApiBaseUrl();
   const loginRes = await fetch(`${API_BASE_URL}/api/auth/dev-login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -1,0 +1,112 @@
+# Dokploy variant of docker-compose.prod.yml.
+#
+# Two differences from the standalone file, both forced by Dokploy owning the
+# host's ingress:
+#
+#   1. Nothing publishes ports. Dokploy's Traefik already holds 80/443, so a
+#      container binding them would fail to start. Traefik reaches us over the
+#      shared `dokploy-network` instead.
+#
+#   2. Caddy no longer terminates TLS — Traefik does that. Caddy stays in the
+#      stack as an internal proxy because it is what enforces the password gate
+#      and the /api-vs-/ split, and that arrangement is already tested. Set
+#      SITE_ADDRESS=:80 so it serves plain HTTP to Traefik.
+#
+# In Dokploy: create a Compose application, point it at this file, then add one
+# domain targeting the `caddy` service on port 80. Everything else stays
+# private on the internal network.
+
+networks:
+  # Created by Dokploy at install time. Only caddy joins it — that is what
+  # keeps postgres, the API, and the SSR server unreachable from outside.
+  dokploy-network:
+    external: true
+  internal:
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    networks: [internal]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - rfp_os_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/legacy-api/Dockerfile
+    working_dir: /repo/packages/db
+    command: ["bun", "run", "src/migrate.ts"]
+    networks: [internal]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/legacy-api/Dockerfile
+    restart: unless-stopped
+    networks: [internal]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PORT: 4000
+      CORS_ORIGIN: ${PUBLIC_URL}
+      DEV_AUTH_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/legacy-web/Dockerfile
+    restart: unless-stopped
+    networks: [internal]
+    environment:
+      PORT: 3000
+      # SSR must bypass the password gate, so it calls the API container
+      # directly rather than going back out through Traefik.
+      API_INTERNAL_URL: http://api:4000
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # Both networks: dokploy-network to receive traffic from Traefik,
+    # internal to reach web and api.
+    networks: [dokploy-network, internal]
+    environment:
+      SITE_ADDRESS: ":80"
+      # ACME_EMAIL is deliberately NOT set. Traefik terminates TLS here, so
+      # Caddy needs no ACME account — and setting it empty would override the
+      # Caddyfile's default and fail to parse. Leaving it unset is the fix.
+      DEMO_USER: ${DEMO_USER}
+      DEMO_PASSWORD_HASH: ${DEMO_PASSWORD_HASH}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - rfp_os_caddy_data:/data
+      - rfp_os_caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  rfp_os_postgres_data:
+  rfp_os_caddy_data:
+  rfp_os_caddy_config:

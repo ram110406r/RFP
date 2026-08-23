@@ -1,0 +1,99 @@
+# Production compose for the private demo.
+#
+# Deliberately smaller than docker-compose.yml (the local dev stack): the
+# legacy API talks to Postgres and nothing else — no Redis, no OpenSearch, no
+# object storage — so running those here would be cost and attack surface for
+# no benefit. Add them back when apps/api takes over.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Note that only caddy publishes ports. Postgres, the API, and the SSR server
+# are reachable only on the internal network, behind the password gate.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - rfp_os_prod_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: applies packages/db/migrations, then exits. The API waits for it
+  # to succeed, so a failed migration stops the deploy instead of booting an
+  # API against a half-migrated schema.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/legacy-api/Dockerfile
+    working_dir: /repo/packages/db
+    # migrate.ts passes a relative migrationsFolder, so cwd must be packages/db.
+    command: ["bun", "run", "src/migrate.ts"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/legacy-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PORT: 4000
+      # Requests reach the API same-origin through Caddy, so this is only a
+      # backstop for anything that does send an Origin header.
+      CORS_ORIGIN: ${PUBLIC_URL}
+      DEV_AUTH_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/legacy-web/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      # SSR runs ensureSession() during render. It must bypass Caddy — the
+      # password gate would 401 it — so it calls the API container directly.
+      API_INTERNAL_URL: http://api:4000
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+      ACME_EMAIL: ${ACME_EMAIL}
+      DEMO_USER: ${DEMO_USER}
+      DEMO_PASSWORD_HASH: ${DEMO_PASSWORD_HASH}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - rfp_os_prod_caddy_data:/data
+      - rfp_os_prod_caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  rfp_os_prod_postgres_data:
+  rfp_os_prod_caddy_data:
+  rfp_os_prod_caddy_config:

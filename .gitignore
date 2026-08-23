@@ -37,6 +37,7 @@ apps/api/dist/
 .env
 .env.*
 !.env.example
+!.env.production.example
 apps/legacy-web/.env
 apps/legacy-web/.env.*
 !apps/legacy-web/.env.example

@@ -1,6 +1,5 @@
 import { authToken, ensureSession } from "@/lib/session";
-
-const API_BASE_URL = import.meta.env["VITE_API_URL"] ?? "http://localhost:4000";
+import { resolveApiBaseUrl } from "@/lib/api-base";
 
 /** Thrown for any non-2xx API response. Carries the server's structured `{ error }` body. */
 export class ApiRequestError extends Error {
@@ -32,7 +31,7 @@ interface RequestOptions {
 }
 
 function buildUrl(path: string, query?: Query): string {
-  const url = new URL(path, API_BASE_URL);
+  const url = new URL(path, resolveApiBaseUrl());
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
