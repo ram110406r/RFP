@@ -25,15 +25,19 @@ const KIND_META: Record<ActivityEntry["kind"], { icon: typeof CheckCircle2; tone
 function formatTimestamp(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  // Fixed locale: the SSR host and a visiting browser can disagree on the
-  // default ICU locale (Node's process locale vs. navigator.language),
-  // which formats this differently server- vs client-side and trips a
-  // React hydration-mismatch warning on the text content.
+  // Fixed locale AND fixed timezone: the SSR host and a visiting browser can
+  // disagree on the default ICU locale (Node's process locale vs.
+  // navigator.language) and on the local timezone (the container runs UTC,
+  // the viewer may not). Either difference formats this text differently on
+  // each side and trips a React hydration mismatch (error #418). Pinning both
+  // is what makes the output deterministic; the cost is that timestamps read
+  // in UTC rather than the viewer's local time.
   return date.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "UTC",
   });
 }
 

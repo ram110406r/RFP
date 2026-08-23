@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -59,11 +60,22 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-function greeting() {
-  const hour = new Date().getHours();
+function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
   return "Good evening";
+}
+
+/**
+ * The server renders in UTC and the browser in the viewer's timezone, so
+ * deriving this during render produced different text on each side and React
+ * bailed out of hydrating the page (error #418). Render a stable string on the
+ * server and on the first client paint, then switch to local time after mount.
+ */
+function useGreeting() {
+  const [hour, setHour] = useState<number | null>(null);
+  useEffect(() => setHour(new Date().getHours()), []);
+  return hour === null ? "Welcome back" : greetingForHour(hour);
 }
 
 /** The highest risk level present on an RFP, or null when nothing is elevated. */
@@ -74,6 +86,7 @@ function worstRiskOf(rfp: Rfp): RiskLevel | null {
 }
 
 function Dashboard() {
+  const greeting = useGreeting();
   const { data: rfps } = useSuspenseQuery(rfpsQueryOptions());
   const { data: requirements } = useSuspenseQuery(allRequirementsQueryOptions());
   const { data: reviews } = useSuspenseQuery(reviewsQueryOptions());
@@ -143,7 +156,7 @@ function Dashboard() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Operating console"
-        title={`${greeting()}, ${me?.name.split(" ")[0]}`}
+        title={`${greeting}, ${me?.name.split(" ")[0]}`}
         description="Here's what needs your attention across the pipeline today."
         actions={
           <Button asChild>
