@@ -17,3 +17,4 @@ export * from "./membership";
 export * from "./knowledge";
 export * from "./rfp";
 export * from "./rfp-lifecycle";
+export * from "./extraction";

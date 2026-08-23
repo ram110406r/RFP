@@ -1223,7 +1223,7 @@ VALIDATION_FAILED → VALIDATION
 | Slice | Scope                                                        | Status   |
 | ----- | ------------------------------------------------------------ | -------- |
 | 6A    | Queue infrastructure (producer, worker, retries, DLQ)          | COMPLETE |
-| 6B    | Extracted-content storage                                      | PENDING  |
+| 6B    | Extracted-content storage                                      | COMPLETE |
 | 6C    | Text & table extraction                                        | PENDING  |
 | 6D    | Requirements schema alignment                                  | PENDING  |
 | 6E    | Requirement extraction + CRUD                                  | PENDING  |

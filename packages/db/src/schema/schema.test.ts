@@ -47,6 +47,10 @@ describe("schema barrel", () => {
     "rfpSubmissionChecklistItems",
     "rfpSubmissionArtifacts",
     "rfpOutcomes",
+    // extraction
+    "documentExtractions",
+    "documentPages",
+    "documentTables",
     // audit
     "activities",
     "auditLogs",
@@ -84,6 +88,9 @@ describe("multi-tenancy", () => {
     "documentVersions",
     "knowledgeSources",
     "rfps",
+    "documentExtractions",
+    "documentPages",
+    "documentTables",
     "activities",
     "auditLogs",
     "notifications",
