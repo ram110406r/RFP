@@ -54,7 +54,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     method: options.method ?? "GET",
     headers: {
       ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      // X-Auth-Token, not Authorization: the deployed demo is behind a basic-auth
+      // gate that owns Authorization. See apps/legacy-api/src/lib/auth.ts.
+      ...(authToken ? { "X-Auth-Token": authToken } : {}),
     },
   };
   if (options.body !== undefined) init.body = JSON.stringify(options.body);

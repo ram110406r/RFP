@@ -23,9 +23,19 @@ export interface AuthContext {
 export async function requireAuth(
   headers: Record<string, string | undefined>,
 ): Promise<AuthContext> {
+  /**
+   * X-Auth-Token takes precedence over Authorization because the deployed
+   * demo sits behind an HTTP basic-auth gate, which owns the Authorization
+   * header. A browser can only send one Authorization header, so if the app
+   * used `Bearer` there it would overwrite the gate credential and every
+   * request would be rejected by the proxy before reaching this code.
+   * Authorization stays supported for direct API use and the test suite.
+   */
   const authHeader = headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
-  if (!token) throw unauthorized("Missing Authorization header.");
+  const token =
+    headers["x-auth-token"] ||
+    (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined);
+  if (!token) throw unauthorized("Missing X-Auth-Token header.");
 
   const rows = await db
     .select({ id: users.id, organizationId: users.organizationId })

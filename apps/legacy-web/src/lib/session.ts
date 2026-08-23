@@ -57,8 +57,9 @@ async function bootstrapSession(): Promise<void> {
   authToken = token;
 
   const [peopleRes, orgRes] = await Promise.all([
-    fetch(`${API_BASE_URL}/api/people`, { headers: { Authorization: `Bearer ${token}` } }),
-    fetch(`${API_BASE_URL}/api/settings/org`, { headers: { Authorization: `Bearer ${token}` } }),
+    // X-Auth-Token, not Authorization — the basic-auth gate owns that header.
+    fetch(`${API_BASE_URL}/api/people`, { headers: { "X-Auth-Token": token } }),
+    fetch(`${API_BASE_URL}/api/settings/org`, { headers: { "X-Auth-Token": token } }),
   ]);
   if (!peopleRes.ok) {
     throw new Error(`Failed to load org members (${peopleRes.status}).`);
