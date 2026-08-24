@@ -21,6 +21,8 @@ import {
 import type { AuthContext, OrgRole } from "@rfp-os/types";
 
 import type { Env } from "../../config/env.schema";
+import { ActivityService } from "../../infrastructure/activity";
+import { AuditService } from "../../infrastructure/audit";
 import { DATABASE } from "../../infrastructure/database";
 import type {
   CreateOrganizationInput,
@@ -34,6 +36,8 @@ export class OrganizationsService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly config: ConfigService<Env, true>,
+    private readonly activity: ActivityService,
+    private readonly audit: AuditService,
   ) {}
 
   async getCurrent(organizationId: string) {
@@ -61,15 +65,41 @@ export class OrganizationsService {
   }
 
   async update(organizationId: string, input: UpdateOrganizationInput) {
+    const [existing] = await this.db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1);
+
+    if (!existing) {
+      throw new NotFoundException({ code: "NOT_FOUND", message: "Organization not found." });
+    }
+
     const [updated] = await this.db
       .update(organizations)
       .set({ ...input, updatedAt: new Date() })
       .where(eq(organizations.id, organizationId))
       .returning();
 
-    if (!updated) {
-      throw new NotFoundException({ code: "NOT_FOUND", message: "Organization not found." });
-    }
+    await this.audit.record({
+      organizationId,
+      action: "ORGANIZATION_UPDATED",
+      entityType: "organization",
+      entityId: organizationId,
+      previousValue: existing,
+      newValue: updated,
+    });
+    await this.activity.record({
+      organizationId,
+      action: "ORGANIZATION_UPDATED",
+      entityType: "organization",
+      entityId: organizationId,
+      actorType: "system",
+      actorLabel: "System",
+      label: `Organization updated: ${updated!.name}`,
+      summary: `Updated organization ${updated!.name}`,
+    });
+
     return updated;
   }
 
@@ -169,20 +199,50 @@ export class OrganizationsService {
       ((input.role !== undefined && input.role !== "OWNER") || input.status === "suspended");
     if (losesOwner) await this.assertNotLastOwner(auth.organizationId, targetUserId);
 
-    const [updated] = await this.db
-      .update(organizationMembers)
-      .set({
-        ...(input.role ? { role: input.role } : {}),
-        ...(input.status ? { status: input.status } : {}),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(organizationMembers.organizationId, auth.organizationId),
-          eq(organizationMembers.userId, targetUserId),
-        ),
-      )
-      .returning();
+    const [updated] = await withTransaction(async (tx) => {
+      const [next] = await tx
+        .update(organizationMembers)
+        .set({
+          ...(input.role ? { role: input.role } : {}),
+          ...(input.status ? { status: input.status } : {}),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(organizationMembers.organizationId, auth.organizationId),
+            eq(organizationMembers.userId, targetUserId),
+          ),
+        )
+        .returning();
+
+      await this.audit.record(
+        {
+          organizationId: auth.organizationId,
+          actorId: auth.userId,
+          action: "MEMBER_UPDATED",
+          entityType: "organization_member",
+          entityId: membership.id,
+          previousValue: membership,
+          newValue: next,
+        },
+        tx,
+      );
+      await this.activity.record(
+        {
+          organizationId: auth.organizationId,
+          actorId: auth.userId,
+          actorLabel: auth.userId,
+          action: "MEMBER_UPDATED",
+          entityType: "organization_member",
+          entityId: membership.id,
+          label: "Member updated",
+          summary: `Updated member ${targetUserId}`,
+        },
+        tx,
+      );
+
+      return [next!];
+    });
 
     return updated;
   }
@@ -207,15 +267,45 @@ export class OrganizationsService {
       await this.assertNotLastOwner(auth.organizationId, targetUserId);
     }
 
-    await this.db
-      .update(organizationMembers)
-      .set({ status: "removed", updatedAt: new Date() })
-      .where(
-        and(
-          eq(organizationMembers.organizationId, auth.organizationId),
-          eq(organizationMembers.userId, targetUserId),
-        ),
+    await withTransaction(async (tx) => {
+      const [updated] = await tx
+        .update(organizationMembers)
+        .set({ status: "removed", updatedAt: new Date() })
+        .where(
+          and(
+            eq(organizationMembers.organizationId, auth.organizationId),
+            eq(organizationMembers.userId, targetUserId),
+          ),
+        )
+        .returning();
+
+      await this.audit.record(
+        {
+          organizationId: auth.organizationId,
+          actorId: auth.userId,
+          action: "MEMBER_REMOVED",
+          entityType: "organization_member",
+          entityId: membership.id,
+          previousValue: membership,
+          newValue: updated,
+        },
+        tx,
       );
+      await this.activity.record(
+        {
+          organizationId: auth.organizationId,
+          actorId: auth.userId,
+          actorLabel: auth.userId,
+          action: "MEMBER_REMOVED",
+          entityType: "organization_member",
+          entityId: membership.id,
+          kind: "rejected",
+          label: "Member removed",
+          summary: `Removed member ${targetUserId}`,
+        },
+        tx,
+      );
+    });
 
     return { removed: true };
   }
@@ -287,17 +377,47 @@ export class OrganizationsService {
         ),
       );
 
-    const [invitation] = await this.db
-      .insert(invitations)
-      .values({
-        organizationId: auth.organizationId,
-        email: input.email,
-        role: input.role,
-        token: randomBytes(32).toString("base64url"),
-        invitedBy: auth.userId,
-        expiresAt,
-      })
-      .returning();
+    const [invitation] = await withTransaction(async (tx) => {
+      const [created] = await tx
+        .insert(invitations)
+        .values({
+          organizationId: auth.organizationId,
+          email: input.email,
+          role: input.role,
+          token: randomBytes(32).toString("base64url"),
+          invitedBy: auth.userId,
+          expiresAt,
+        })
+        .returning();
+
+      await this.audit.record(
+        {
+          organizationId: auth.organizationId,
+          actorId: auth.userId,
+          action: "MEMBER_INVITED",
+          entityType: "invitation",
+          entityId: created!.id,
+          newValue: created,
+        },
+        tx,
+      );
+      await this.activity.record(
+        {
+          organizationId: auth.organizationId,
+          actorId: auth.userId,
+          actorLabel: auth.userId,
+          action: "MEMBER_INVITED",
+          entityType: "invitation",
+          entityId: created!.id,
+          kind: "assigned",
+          label: "Member invited",
+          summary: `Invited ${input.email} to join the organization`,
+        },
+        tx,
+      );
+
+      return [created!];
+    });
 
     return invitation;
   }
@@ -376,6 +496,7 @@ export class OrganizationsService {
         });
       }
 
+      let membershipId = "";
       await tx
         .insert(organizationMembers)
         .values({
@@ -390,6 +511,18 @@ export class OrganizationsService {
           set: { role: invitation.role, status: "active", updatedAt: new Date() },
         });
 
+      const [membership] = await tx
+        .select({ id: organizationMembers.id })
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.organizationId, invitation.organizationId),
+            eq(organizationMembers.userId, userId),
+          ),
+        )
+        .limit(1);
+      membershipId = membership?.id ?? "";
+
       await tx
         .update(invitations)
         .set({
@@ -399,6 +532,33 @@ export class OrganizationsService {
           updatedAt: new Date(),
         })
         .where(eq(invitations.id, invitation.id));
+
+      await this.audit.record(
+        {
+          organizationId: invitation.organizationId,
+          actorId: userId,
+          action: "MEMBER_ACCEPTED",
+          entityType: "invitation",
+          entityId: invitation.id,
+          previousValue: { status: "pending" },
+          newValue: { status: "accepted", membershipId },
+        },
+        tx,
+      );
+      await this.activity.record(
+        {
+          organizationId: invitation.organizationId,
+          actorId: userId,
+          actorLabel: user.email,
+          action: "MEMBER_ACCEPTED",
+          entityType: "invitation",
+          entityId: invitation.id,
+          kind: "approved",
+          label: "Member accepted invitation",
+          summary: `${user.email} joined the organization`,
+        },
+        tx,
+      );
 
       if (!user.organizationId) {
         await tx
