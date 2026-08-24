@@ -13,6 +13,15 @@ import * as tables from "./schema";
  */
 export const schema = { ...tables, ...relations };
 
+type DatabaseEnv = Partial<{
+  DATABASE_URL?: string;
+  POSTGRES_USER?: string;
+  POSTGRES_PASSWORD?: string;
+  POSTGRES_DB?: string;
+  POSTGRES_HOST?: string;
+  POSTGRES_PORT?: string;
+}>;
+
 let queryClient: ReturnType<typeof postgres> | undefined;
 let db: ReturnType<typeof drizzle<typeof schema>> | undefined;
 
@@ -23,14 +32,42 @@ let db: ReturnType<typeof drizzle<typeof schema>> | undefined;
  */
 export function getDb() {
   if (!db) {
-    const databaseUrl = process.env.DATABASE_URL;
+    const databaseUrl = resolveDatabaseUrl();
     if (!databaseUrl) {
-      throw new Error("DATABASE_URL is required to connect to the database.");
+      throw new Error(
+        "DATABASE_URL or POSTGRES_* env vars are required to connect to the database.",
+      );
     }
     queryClient = postgres(databaseUrl);
     db = drizzle(queryClient, { schema });
   }
   return db;
+}
+
+/**
+ * Resolves the database connection string for the runtime path.
+ *
+ * Local dev and test environments still prefer DATABASE_URL directly. The
+ * deployment compose files fall back to the individual Postgres parts so
+ * credentials do not have to survive URL interpolation rules.
+ */
+export function resolveDatabaseUrl(env: DatabaseEnv = process.env as DatabaseEnv) {
+  const directUrl = env.DATABASE_URL?.trim();
+  if (directUrl) {
+    return directUrl;
+  }
+
+  const user = env.POSTGRES_USER?.trim();
+  const password = env.POSTGRES_PASSWORD ?? "";
+  const database = env.POSTGRES_DB?.trim();
+  if (!user || !database) {
+    return undefined;
+  }
+
+  const host = env.POSTGRES_HOST?.trim() || "postgres";
+  const port = env.POSTGRES_PORT?.trim() || "5432";
+
+  return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}`;
 }
 
 export type Database = ReturnType<typeof getDb>;

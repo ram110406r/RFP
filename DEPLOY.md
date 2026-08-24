@@ -70,7 +70,7 @@ PUBLIC_URL=https://demo.example.com
 DEMO_USER=demo
 DEMO_PASSWORD_HASH=<bcrypt hash, see below>
 POSTGRES_USER=rfpos
-POSTGRES_PASSWORD=<40 alphanumeric chars, see below>
+POSTGRES_PASSWORD=<strong secret, see below>
 POSTGRES_DB=rfpos
 ```
 
@@ -128,10 +128,9 @@ cp .env.production.example .env.production
 Generate the two secrets and put them in `.env.production`:
 
 ```bash
-# Database password. Alphanumeric ONLY — it is interpolated into a postgres://
-# URL, and base64's / + = characters produce an invalid connection string that
-# stops both migrate and api from connecting.
-LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40; echo
+# Database password. The deploy stack passes it as a separate environment
+# variable, so normal special characters are fine.
+docker run --rm alpine sh -lc "tr -dc 'A-Za-z0-9!@#$%^&*()_+-=' </dev/urandom | head -c 40; echo"
 
 # Password-gate hash. Double any $ characters in the output before pasting,
 # so docker compose doesn't interpolate them.

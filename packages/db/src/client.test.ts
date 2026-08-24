@@ -1,8 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 
-import { getDb, orgScope, withTransaction } from "./client";
+import { getDb, orgScope, resolveDatabaseUrl, withTransaction } from "./client";
 import { organizations, rfps } from "./schema";
+
+describe("resolveDatabaseUrl", () => {
+  test("prefers DATABASE_URL when present", () => {
+    expect(resolveDatabaseUrl({ DATABASE_URL: "postgres://direct" })).toBe("postgres://direct");
+  });
+
+  test("builds a safe URL from postgres parts", () => {
+    expect(
+      resolveDatabaseUrl({
+        POSTGRES_USER: "demo user",
+        POSTGRES_PASSWORD: "p@ss:word/with#chars",
+        POSTGRES_DB: "rfp db",
+      }),
+    ).toBe("postgres://demo%20user:p%40ss%3Aword%2Fwith%23chars@postgres:5432/rfp%20db");
+  });
+});
 
 describe("orgScope", () => {
   test("builds an equality predicate on the table's organizationId", () => {
