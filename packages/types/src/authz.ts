@@ -44,12 +44,69 @@ export const PERMISSIONS = [
   "member:invite",
   "member:update",
   "member:remove",
+  "workspace:create",
+  "workspace:read",
+  "workspace:update",
+  "workspace:archive",
+  "workspace:member:read",
+  "workspace:member:manage",
+  "team:create",
+  "team:read",
+  "team:update",
+  "team:archive",
+  "team:member:manage",
+  "role:read",
+  "role:create",
+  "role:update",
+  "role:assign",
+  "role:revoke",
+  "policy:read",
+  "policy:create",
+  "policy:update",
+  "policy:toggle",
+  "assignment:create",
+  "assignment:read",
+  "assignment:update",
+  "assignment:complete",
+  "assignment:cancel",
+  "activity:read",
+  "audit:read",
   "document:read",
   "document:upload",
   "document:delete",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
+
+/**
+ * Permissions that act on workspace-owned resources and therefore should flow
+ * through workspace membership for non-admin roles. OWNER / ADMIN still hold
+ * them organization-wide; other roles receive them only in workspaces they
+ * actually belong to.
+ */
+export const WORKSPACE_SCOPED_PERMISSIONS: readonly Permission[] = [
+  "workspace:read",
+  "workspace:update",
+  "workspace:archive",
+  "workspace:member:read",
+  "workspace:member:manage",
+  "team:create",
+  "team:read",
+  "team:update",
+  "team:archive",
+  "team:member:manage",
+  "policy:read",
+  "policy:create",
+  "policy:update",
+  "policy:toggle",
+  "assignment:create",
+  "assignment:read",
+  "assignment:update",
+  "assignment:complete",
+  "assignment:cancel",
+  "activity:read",
+  "audit:read",
+] as const;
 
 const ALL_RFP: Permission[] = [
   "rfp:create",
@@ -74,6 +131,41 @@ const ALL_RFP: Permission[] = [
  */
 const ALL_DOCUMENT: Permission[] = ["document:read", "document:upload", "document:delete"];
 
+const ALL_WORKSPACE: Permission[] = [
+  "workspace:create",
+  "workspace:read",
+  "workspace:update",
+  "workspace:archive",
+  "workspace:member:read",
+  "workspace:member:manage",
+];
+
+const ALL_TEAM: Permission[] = [
+  "team:create",
+  "team:read",
+  "team:update",
+  "team:archive",
+  "team:member:manage",
+];
+
+const ALL_ROLE: Permission[] = [
+  "role:read",
+  "role:create",
+  "role:update",
+  "role:assign",
+  "role:revoke",
+];
+
+const ALL_POLICY: Permission[] = ["policy:read", "policy:create", "policy:update", "policy:toggle"];
+
+const ALL_ASSIGNMENT: Permission[] = [
+  "assignment:create",
+  "assignment:read",
+  "assignment:update",
+  "assignment:complete",
+  "assignment:cancel",
+];
+
 /**
  * The role matrix. Deliberately a static, code-owned table rather than rows in
  * the database: it is a security invariant, it must be reviewable in a diff,
@@ -91,22 +183,36 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
   OWNER: [
     ...ALL_RFP,
     ...ALL_DOCUMENT,
+    ...ALL_WORKSPACE,
+    ...ALL_TEAM,
+    ...ALL_ROLE,
+    ...ALL_POLICY,
+    ...ALL_ASSIGNMENT,
     "org:read",
     "org:update",
     "member:read",
     "member:invite",
     "member:update",
     "member:remove",
+    "activity:read",
+    "audit:read",
   ],
   ADMIN: [
     ...ALL_RFP,
     ...ALL_DOCUMENT,
+    ...ALL_WORKSPACE,
+    ...ALL_TEAM,
+    ...ALL_ROLE,
+    ...ALL_POLICY,
+    ...ALL_ASSIGNMENT,
     "org:read",
     "org:update",
     "member:read",
     "member:invite",
     "member:update",
     "member:remove",
+    "activity:read",
+    "audit:read",
   ],
   /** Runs the RFP pipeline. No rfp:delete and no org administration. */
   RFP_MANAGER: [
@@ -120,6 +226,18 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "rfp:export",
     "rfp:manage",
     ...ALL_DOCUMENT,
+    "workspace:create",
+    "workspace:read",
+    "workspace:update",
+    "workspace:member:read",
+    "workspace:member:manage",
+    ...ALL_TEAM,
+    "assignment:create",
+    "assignment:read",
+    "assignment:update",
+    "assignment:complete",
+    "policy:read",
+    "activity:read",
     "org:read",
     "member:read",
   ],
@@ -130,14 +248,44 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "rfp:export",
     "document:read",
     "document:upload",
+    "workspace:read",
+    "workspace:member:read",
+    "team:read",
+    "assignment:read",
+    "assignment:update",
+    "activity:read",
     "org:read",
     "member:read",
   ],
   /** Judges answers. Can review and approve, but not author or submit. */
-  REVIEWER: ["rfp:read", "rfp:review", "rfp:approve", "document:read", "org:read", "member:read"],
+  REVIEWER: [
+    "rfp:read",
+    "rfp:review",
+    "rfp:approve",
+    "document:read",
+    "workspace:read",
+    "workspace:member:read",
+    "team:read",
+    "assignment:read",
+    "assignment:complete",
+    "activity:read",
+    "org:read",
+    "member:read",
+  ],
   /** Domain specialist: reviews and may correct answers in their area. */
-  SME: ["rfp:read", "rfp:update", "rfp:review", "document:read", "org:read", "member:read"],
-  VIEWER: ["rfp:read", "document:read", "org:read"],
+  SME: [
+    "rfp:read",
+    "rfp:update",
+    "rfp:review",
+    "document:read",
+    "workspace:read",
+    "team:read",
+    "assignment:read",
+    "activity:read",
+    "org:read",
+    "member:read",
+  ],
+  VIEWER: ["rfp:read", "document:read", "workspace:read", "team:read", "activity:read", "org:read"],
 };
 
 /** Roles that may act on membership, used to protect privilege escalation. */
@@ -159,7 +307,33 @@ export function isOrgRole(value: unknown): value is OrgRole {
 export interface AuthContext {
   userId: string;
   organizationId: string;
+  organizationMemberId?: string;
   role: OrgRole;
+  organizationPermissions?: readonly Permission[];
   permissions: readonly Permission[];
   sessionId: string;
+  workspaceIds?: readonly string[];
+  workspacePermissions?: Readonly<Record<string, readonly Permission[]>>;
+  workspaceMemberIds?: Readonly<Record<string, string>>;
+}
+
+export function hasPermission(auth: AuthContext, permission: Permission): boolean {
+  return auth.permissions.includes(permission);
+}
+
+export function hasOrganizationPermission(auth: AuthContext, permission: Permission): boolean {
+  const organizationPermissions = auth.organizationPermissions ?? auth.permissions;
+  return organizationPermissions.includes(permission);
+}
+
+export function hasWorkspacePermission(
+  auth: AuthContext,
+  workspaceId: string | null | undefined,
+  permission: Permission,
+): boolean {
+  if (hasOrganizationPermission(auth, permission)) return true;
+  if (!workspaceId) return false;
+
+  const workspacePermissions = auth.workspacePermissions?.[workspaceId] ?? [];
+  return workspacePermissions.includes(permission);
 }
