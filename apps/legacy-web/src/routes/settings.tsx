@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  accessSummaryQueryOptions,
   aiSettingsQueryOptions,
   apiKeysQueryOptions,
   integrationsQueryOptions,
@@ -51,6 +52,7 @@ export const Route = createFileRoute("/settings")({
       context.queryClient.ensureQueryData(notificationPreferencesQueryOptions()),
       context.queryClient.ensureQueryData(apiKeysQueryOptions()),
       context.queryClient.ensureQueryData(mcpConnectionsQueryOptions()),
+      context.queryClient.ensureQueryData(accessSummaryQueryOptions()),
     ]),
   pendingComponent: PageSkeleton,
   component: Settings,

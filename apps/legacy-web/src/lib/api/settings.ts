@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { apiRequest } from "./http";
 import type {
+  AccessSummary,
   AiSetting,
   ApiKeySetting,
   IntegrationSetting,
@@ -48,6 +49,9 @@ export async function fetchMcpConnections(): Promise<McpConnection[]> {
   const { items } = await apiRequest<{ items: McpConnection[] }>("/api/settings/mcp");
   return items;
 }
+export async function fetchAccessSummary(): Promise<AccessSummary> {
+  return apiRequest<AccessSummary>("/api/settings/access-summary");
+}
 
 export const orgProfileQueryOptions = () =>
   queryOptions({ queryKey: ["settings", "org"], queryFn: fetchOrgProfile });
@@ -70,3 +74,5 @@ export const apiKeysQueryOptions = () =>
   queryOptions({ queryKey: ["settings", "apiKeys"], queryFn: fetchApiKeys });
 export const mcpConnectionsQueryOptions = () =>
   queryOptions({ queryKey: ["settings", "mcp"], queryFn: fetchMcpConnections });
+export const accessSummaryQueryOptions = () =>
+  queryOptions({ queryKey: ["settings", "accessSummary"], queryFn: fetchAccessSummary });

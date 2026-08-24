@@ -34,6 +34,12 @@ export function MembersTab() {
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{m.role}</td>
                 <td className="px-4 py-3">
+                  <div className="space-y-1">
+                    {m.customRoles && m.customRoles.length > 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        Custom: {m.customRoles.join(", ")}
+                      </p>
+                    ) : null}
                   <Badge
                     variant="secondary"
                     className={cn(
@@ -45,6 +51,7 @@ export function MembersTab() {
                   >
                     {m.status}
                   </Badge>
+                  </div>
                 </td>
                 <td className="num px-4 py-3 text-xs text-muted-foreground">
                   {new Date(m.lastActive).toLocaleDateString("en-US")}

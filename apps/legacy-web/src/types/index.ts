@@ -216,9 +216,10 @@ export interface MemberSetting {
   id: string;
   personId: string;
   email: string;
-  role: "Admin" | "Proposal Manager" | "Contributor" | "Reviewer" | "Viewer";
+  role: string;
   status: "active" | "invited" | "suspended";
   lastActive: string;
+  customRoles?: string[];
 }
 
 export interface RoleSetting {
@@ -227,6 +228,18 @@ export interface RoleSetting {
   description: string;
   memberCount: number;
   permissions: string[];
+  organizationAssignmentCount?: number;
+  workspaceAssignmentCount?: number;
+  isSystem?: boolean;
+}
+
+export interface AccessSummary {
+  workspaces: number;
+  customRoles: number;
+  policies: number;
+  openAssignments: number;
+  activityEvents: number;
+  auditEvents: number;
 }
 
 export interface AiSetting {

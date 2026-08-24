@@ -1,15 +1,25 @@
 import { Elysia, t, type TSchema } from "elysia";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import {
+  accessPolicies,
+  activities,
   apiKeys,
+  assignments,
+  auditLogs,
   configToggles,
   integrations,
   mcpConnections,
   notificationPreferences,
+  organizationMemberRoles,
+  organizationMembers,
   organizations,
+  permissions,
+  rolePermissions,
   roles,
   users,
+  workspaceMemberRoles,
+  workspaces,
 } from "../db/schema";
 import { requireAuth } from "../lib/auth";
 import { badRequest, notFound } from "../lib/errors";
@@ -61,15 +71,52 @@ export const settingsModule = new Elysia({ prefix: "/api/settings" })
   )
   .get("/members", async ({ headers }) => {
     const auth = await requireAuth(headers);
-    const rows = await db.select().from(users).where(eq(users.organizationId, auth.organizationId));
+    const rows = await db
+      .select({
+        membershipId: organizationMembers.id,
+        userId: users.id,
+        email: users.email,
+        role: organizationMembers.role,
+        status: organizationMembers.status,
+        lastActiveAt: users.lastActiveAt,
+        createdAt: users.createdAt,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(eq(organizationMembers.organizationId, auth.organizationId));
+
+    const customRoleRows = rows.length
+      ? await db
+          .select({
+            organizationMemberId: organizationMemberRoles.organizationMemberId,
+            roleName: roles.name,
+          })
+          .from(organizationMemberRoles)
+          .innerJoin(roles, eq(roles.id, organizationMemberRoles.roleId))
+          .where(
+            inArray(
+              organizationMemberRoles.organizationMemberId,
+              rows.map((row) => row.membershipId),
+            ),
+          )
+      : [];
+
+    const customRolesByMember = new Map<string, string[]>();
+    for (const row of customRoleRows) {
+      const bucket = customRolesByMember.get(row.organizationMemberId) ?? [];
+      bucket.push(row.roleName);
+      customRolesByMember.set(row.organizationMemberId, bucket);
+    }
+
     return {
-      items: rows.map((u) => ({
-        id: u.id,
-        personId: u.id,
-        email: u.email,
-        role: u.memberRole,
-        status: u.status,
-        lastActive: (u.lastActiveAt ?? u.createdAt).toISOString(),
+      items: rows.map((row) => ({
+        id: row.membershipId,
+        personId: row.userId,
+        email: row.email,
+        role: row.role,
+        status: row.status,
+        lastActive: (row.lastActiveAt ?? row.createdAt).toISOString(),
+        customRoles: customRolesByMember.get(row.membershipId) ?? [],
       })),
     };
   })
@@ -107,18 +154,96 @@ export const settingsModule = new Elysia({ prefix: "/api/settings" })
       .select()
       .from(roles)
       .where(eq(roles.organizationId, auth.organizationId));
-    const memberRows = await db
-      .select()
-      .from(users)
-      .where(eq(users.organizationId, auth.organizationId));
+    const permissionRows = roleRows.length
+      ? await db
+          .select({
+            roleId: rolePermissions.roleId,
+            key: permissions.key,
+          })
+          .from(rolePermissions)
+          .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+          .where(inArray(rolePermissions.roleId, roleRows.map((role) => role.id)))
+      : [];
+    const orgAssignmentCounts = await db
+      .select({
+        roleId: organizationMemberRoles.roleId,
+        count: sql<number>`count(*)`.mapWith(Number),
+      })
+      .from(organizationMemberRoles)
+      .groupBy(organizationMemberRoles.roleId);
+    const workspaceAssignmentCounts = await db
+      .select({
+        roleId: workspaceMemberRoles.roleId,
+        count: sql<number>`count(*)`.mapWith(Number),
+      })
+      .from(workspaceMemberRoles)
+      .groupBy(workspaceMemberRoles.roleId);
+
+    const permissionsByRole = new Map<string, string[]>();
+    for (const row of permissionRows) {
+      const bucket = permissionsByRole.get(row.roleId) ?? [];
+      bucket.push(row.key);
+      permissionsByRole.set(row.roleId, bucket);
+    }
+    const orgCountByRole = new Map(orgAssignmentCounts.map((row) => [row.roleId, row.count]));
+    const workspaceCountByRole = new Map(
+      workspaceAssignmentCounts.map((row) => [row.roleId, row.count]),
+    );
+
     return {
       items: roleRows.map((r) => ({
         id: r.id,
         name: r.name,
         description: r.description,
-        memberCount: memberRows.filter((m) => m.roleId === r.id).length,
-        permissions: [] as string[],
+        memberCount: (orgCountByRole.get(r.id) ?? 0) + (workspaceCountByRole.get(r.id) ?? 0),
+        organizationAssignmentCount: orgCountByRole.get(r.id) ?? 0,
+        workspaceAssignmentCount: workspaceCountByRole.get(r.id) ?? 0,
+        permissions: permissionsByRole.get(r.id) ?? [],
       })),
+    };
+  })
+  .get("/access-summary", async ({ headers }) => {
+    const auth = await requireAuth(headers);
+    const [
+      workspaceRows,
+      customRoleRows,
+      policyRows,
+      openAssignmentRows,
+      activityRows,
+      auditRows,
+    ] = await Promise.all([
+      db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.organizationId, auth.organizationId)),
+      db.select({ id: roles.id }).from(roles).where(eq(roles.organizationId, auth.organizationId)),
+      db
+        .select({ id: accessPolicies.id })
+        .from(accessPolicies)
+        .where(eq(accessPolicies.organizationId, auth.organizationId)),
+      db
+        .select({ id: assignments.id })
+        .from(assignments)
+        .where(
+          and(
+            eq(assignments.organizationId, auth.organizationId),
+            inArray(assignments.status, ["pending", "in_progress"]),
+          ),
+        ),
+      db
+        .select({ id: activities.id })
+        .from(activities)
+        .where(eq(activities.organizationId, auth.organizationId)),
+      db
+        .select({ id: auditLogs.id })
+        .from(auditLogs)
+        .where(eq(auditLogs.organizationId, auth.organizationId)),
+    ]);
+
+    return {
+      workspaces: workspaceRows.length,
+      customRoles: customRoleRows.length,
+      policies: policyRows.length,
+      openAssignments: openAssignmentRows.length,
+      activityEvents: activityRows.length,
+      auditEvents: auditRows.length,
     };
   })
   .get("/api-keys", async ({ headers }) => {
