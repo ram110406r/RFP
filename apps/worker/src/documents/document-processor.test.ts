@@ -1,7 +1,10 @@
-import { beforeAll, afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import {
   customers,
+  documentExtractions,
+  documentPages,
+  documentVersions,
   files,
   getDb,
   organizations,
@@ -11,42 +14,19 @@ import {
 } from "@rfp-os/db";
 import { DOCUMENT_JOBS, type DocumentJobPayload } from "@rfp-os/jobs";
 import type { ObjectStorage } from "@rfp-os/storage";
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, and } from "drizzle-orm";
 
 import { DocumentProcessor, isPermanent } from "./document-processor";
 
 /**
- * Integration coverage against a real database, matching the API suites: what
- * these tests are about is which rows the worker reads and writes under a
- * tenant scope, which is a property of the SQL rather than of the types.
+ * Integration coverage against a real database.
  *
- * Storage is faked. The bytes only matter as far as the sniffer reads them,
- * and that logic has its own unit tests.
+ * The worker has to preserve tenant scope, version scope and idempotency even
+ * when the same document is processed twice or a newer version exists while
+ * an older job is still running.
  */
 const dbTest = process.env.DATABASE_URL ? test : test.skip;
 const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
-
-const PDF_BYTES = new TextEncoder().encode("%PDF-1.7\ntrailer");
-const HTML_BYTES = new TextEncoder().encode("<!DOCTYPE html><html></html>");
-
-class FakeStorage {
-  private readonly objects = new Map<string, Uint8Array>();
-  /** When set, the next read throws — a transient outage, not a missing file. */
-  failNext = false;
-
-  put(objectKey: string, bytes: Uint8Array) {
-    this.objects.set(objectKey, bytes);
-  }
-
-  async readObjectPrefix(objectKey: string, length: number): Promise<Uint8Array | null> {
-    if (this.failNext) {
-      this.failNext = false;
-      throw new Error("connection reset");
-    }
-    const bytes = this.objects.get(objectKey);
-    return bytes ? bytes.subarray(0, length) : null;
-  }
-}
 
 describeDb("Document processing", () => {
   const db = getDb();
@@ -61,6 +41,7 @@ describeDb("Document processing", () => {
   const rfpId = randomUUID();
   const documentIds: string[] = [];
   const fileIds: string[] = [];
+  const versionIds: string[] = [];
 
   beforeAll(async () => {
     await db.insert(organizations).values([
@@ -91,6 +72,9 @@ describeDb("Document processing", () => {
     if (documentIds.length) {
       await db.delete(rfpDocuments).where(inArray(rfpDocuments.id, documentIds));
     }
+    if (versionIds.length) {
+      await db.delete(documentVersions).where(inArray(documentVersions.id, versionIds));
+    }
     if (fileIds.length) await db.delete(files).where(inArray(files.id, fileIds));
     await db.delete(rfps).where(eq(rfps.id, rfpId));
     await db.delete(customers).where(eq(customers.id, customerId));
@@ -98,16 +82,17 @@ describeDb("Document processing", () => {
     await db.delete(organizations).where(inArray(organizations.id, [orgA, orgB]));
   });
 
-  /** Registers a document in `queued`, with bytes in the fake storage. */
   async function givenQueuedDocument(
-    content: Uint8Array | null = PDF_BYTES,
+    content: Uint8Array = buildPdf(["Current document"]),
     mimeType = "application/pdf",
   ): Promise<DocumentJobPayload> {
     const documentId = randomUUID();
     const fileId = randomUUID();
+    const versionId = randomUUID();
     const objectKey = `${orgA}/${rfpId}/${fileId}/doc.pdf`;
     documentIds.push(documentId);
     fileIds.push(fileId);
+    versionIds.push(versionId);
 
     await db.insert(files).values({
       id: fileId,
@@ -116,7 +101,7 @@ describeDb("Document processing", () => {
       objectKey,
       filename: "doc.pdf",
       mimeType,
-      sizeBytes: 1_024,
+      sizeBytes: content.length,
       uploadedBy: userId,
     });
     await db.insert(rfpDocuments).values({
@@ -127,10 +112,20 @@ describeDb("Document processing", () => {
       filename: "doc.pdf",
       type: "PDF",
       status: "queued",
+      currentVersion: 1,
       storageKey: objectKey,
       uploadedBy: userId,
     });
-    if (content) storage.put(objectKey, content);
+    await db.insert(documentVersions).values({
+      id: versionId,
+      organizationId: orgA,
+      documentId,
+      fileId,
+      version: 1,
+      note: "Initial upload.",
+      createdBy: userId,
+    });
+    storage.put(objectKey, content);
 
     return {
       organizationId: orgA,
@@ -144,42 +139,141 @@ describeDb("Document processing", () => {
     };
   }
 
+  async function addVersion(
+    documentId: string,
+    version: number,
+    content: Uint8Array,
+    filename = `doc-v${version}.pdf`,
+  ): Promise<DocumentJobPayload> {
+    const fileId = randomUUID();
+    const versionId = randomUUID();
+    const objectKey = `${orgA}/${rfpId}/${fileId}/${filename}`;
+    fileIds.push(fileId);
+    versionIds.push(versionId);
+
+    await db.insert(files).values({
+      id: fileId,
+      organizationId: orgA,
+      bucket: "test-bucket",
+      objectKey,
+      filename,
+      mimeType: "application/pdf",
+      sizeBytes: content.length,
+      uploadedBy: userId,
+    });
+    await db.insert(documentVersions).values({
+      id: versionId,
+      organizationId: orgA,
+      documentId,
+      fileId,
+      version,
+      note: `Version ${version}.`,
+      createdBy: userId,
+    });
+    storage.put(objectKey, content);
+
+    return {
+      organizationId: orgA,
+      rfpId,
+      documentId,
+      fileId,
+      version,
+      objectKey,
+      mimeType: "application/pdf",
+      actorId: userId,
+    };
+  }
+
+  async function promoteToCurrentVersion(
+    documentId: string,
+    payload: DocumentJobPayload,
+  ): Promise<void> {
+    await db
+      .update(rfpDocuments)
+      .set({
+        fileId: payload.fileId,
+        filename: "doc-v2.pdf",
+        status: "queued",
+        currentVersion: payload.version,
+        pageCount: null,
+        failureReason: null,
+        storageKey: payload.objectKey,
+        updatedAt: new Date(),
+      })
+      .where(eq(rfpDocuments.id, documentId));
+  }
+
   async function statusOf(documentId: string) {
     const [row] = await db
-      .select({ status: rfpDocuments.status, failureReason: rfpDocuments.failureReason })
+      .select({
+        status: rfpDocuments.status,
+        failureReason: rfpDocuments.failureReason,
+        currentVersion: rfpDocuments.currentVersion,
+        fileId: rfpDocuments.fileId,
+        pageCount: rfpDocuments.pageCount,
+        archivedAt: rfpDocuments.archivedAt,
+      })
       .from(rfpDocuments)
       .where(eq(rfpDocuments.id, documentId))
       .limit(1);
     return row;
   }
 
+  async function extractionOf(documentId: string, version: number) {
+    const [row] = await db
+      .select()
+      .from(documentExtractions)
+      .where(
+        and(
+          eq(documentExtractions.documentId, documentId),
+          eq(documentExtractions.version, version),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
   describe("parse", () => {
-    dbTest("drives a valid document to parsed", async () => {
-      const payload = await givenQueuedDocument();
+    dbTest("drives a valid document to parsed and stores the extraction", async () => {
+      const payload = await givenQueuedDocument(buildPdf(["First page text", "Second page text"]));
       const result = await processor.process(DOCUMENT_JOBS.PARSE, payload);
 
       expect(result).toEqual({ processed: true, status: "parsed" });
       expect((await statusOf(payload.documentId))?.status).toBe("parsed");
+
+      const extraction = await extractionOf(payload.documentId, 1);
+      expect(extraction?.status).toBe("succeeded");
+      expect(extraction?.pageCount).toBe(2);
+      const pages = await db
+        .select()
+        .from(documentPages)
+        .where(eq(documentPages.extractionId, extraction?.id ?? ""))
+        .orderBy(asc(documentPages.pageNumber));
+      expect(pages.map((page) => page.text)).toEqual(["First page text", "Second page text"]);
     });
 
-    /**
-     * `ready` is earned by requirement extraction in Phase 6C. Claiming it
-     * here would tell the UI a document is usable when nothing has been read
-     * out of it yet.
-     */
+    dbTest("keeps page ordering stable", async () => {
+      const payload = await givenQueuedDocument(buildPdf(["alpha", "beta", "gamma"]));
+      await processor.process(DOCUMENT_JOBS.PARSE, payload);
+
+      const extraction = await extractionOf(payload.documentId, 1);
+      const pages = await db
+        .select()
+        .from(documentPages)
+        .where(eq(documentPages.extractionId, extraction?.id ?? ""))
+        .orderBy(asc(documentPages.pageNumber));
+      expect(pages.map((page) => page.pageNumber)).toEqual([1, 2, 3]);
+      expect(pages.map((page) => page.text)).toEqual(["alpha", "beta", "gamma"]);
+    });
+
     dbTest("stops at parsed rather than claiming ready", async () => {
-      const payload = await givenQueuedDocument();
+      const payload = await givenQueuedDocument(buildPdf(["Current document"]));
       await processor.process(DOCUMENT_JOBS.PARSE, payload);
       expect((await statusOf(payload.documentId))?.status).not.toBe("ready");
     });
 
-    /**
-     * BullMQ redelivers a job whose worker died after committing side effects,
-     * so the processor must be safe to run twice — the queue's stable job id
-     * only prevents duplicate *enqueues*.
-     */
-    dbTest("is a no-op when the document is already parsed", async () => {
-      const payload = await givenQueuedDocument();
+    dbTest("is a no-op when the current document is already parsed", async () => {
+      const payload = await givenQueuedDocument(buildPdf(["Current document"]));
       await processor.process(DOCUMENT_JOBS.PARSE, payload);
 
       const second = await processor.process(DOCUMENT_JOBS.PARSE, payload);
@@ -187,31 +281,83 @@ describeDb("Document processing", () => {
     });
   });
 
+  describe("persistence", () => {
+    dbTest("does not mark parsed until extraction persistence succeeds", async () => {
+      const payload = await givenQueuedDocument(buildPdf(["Pending persistence"]));
+      const failingProcessor = new DocumentProcessor(
+        storage as unknown as ObjectStorage,
+        {
+          parse: async () => ({
+            extractor: "stub@1.0",
+            pageCount: 1,
+            pages: [{ pageNumber: 1, text: "Pending persistence" }],
+            tables: [],
+          }),
+        } as never,
+        {
+          saveSuccess: async () => {
+            throw new Error("database unavailable");
+          },
+          saveFailure: async () => {},
+          find: async () => null,
+          listPages: async () => [],
+          listTables: async () => [],
+        } as never,
+      );
+
+      const error = await failingProcessor.process(DOCUMENT_JOBS.PARSE, payload).catch(
+        (caught: unknown) => caught,
+      );
+
+      expect(error).toBeInstanceOf(Error);
+      expect(isPermanent(error)).toBe(false);
+      expect((await statusOf(payload.documentId))?.status).toBe("processing");
+      expect(await extractionOf(payload.documentId, 1)).toBeNull();
+    });
+  });
+
   describe("permanent failures", () => {
-    dbTest("refuses content that contradicts the declared type", async () => {
-      const payload = await givenQueuedDocument(HTML_BYTES, "application/pdf");
-      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch((e: unknown) => e);
+    dbTest("rejects corrupt PDFs as permanent failures", async () => {
+      const payload = await givenQueuedDocument(new TextEncoder().encode("%PDF-1.7\nnot a pdf"));
+      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch(
+        (caught: unknown) => caught,
+      );
 
       expect(isPermanent(error)).toBe(true);
-      expect((error as Error).message).toContain("HTML");
+      expect((await statusOf(payload.documentId))?.status).toBe("processing");
+    });
+
+    dbTest("rejects password-protected PDFs as permanent failures", async () => {
+      const payload = await givenQueuedDocument(buildPdf(["Secret"], { encrypted: true }));
+      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch(
+        (caught: unknown) => caught,
+      );
+
+      expect(isPermanent(error)).toBe(true);
     });
 
     dbTest("fails when the object is gone from storage", async () => {
-      const payload = await givenQueuedDocument(null);
-      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch((e: unknown) => e);
+      const payload = await givenQueuedDocument();
+      storage.delete(payload.objectKey);
+
+      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch(
+        (caught: unknown) => caught,
+      );
 
       expect(isPermanent(error)).toBe(true);
-      expect((error as Error).message).toContain("missing from storage");
+      expect((await statusOf(payload.documentId))?.status).toBe("processing");
     });
 
     dbTest("refuses a document archived before processing ran", async () => {
       const payload = await givenQueuedDocument();
       await db
         .update(rfpDocuments)
-        .set({ archivedAt: new Date() })
+        .set({ archivedAt: new Date(), status: "archived" })
         .where(eq(rfpDocuments.id, payload.documentId));
 
-      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch((e: unknown) => e);
+      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch(
+        (caught: unknown) => caught,
+      );
       expect(isPermanent(error)).toBe(true);
     });
 
@@ -222,28 +368,25 @@ describeDb("Document processing", () => {
         DOCUMENT_JOBS.TABLE_EXTRACTION,
         DOCUMENT_JOBS.NORMALIZATION,
       ] as const) {
-        const error = await processor.process(job, payload).catch((e: unknown) => e);
+        const error = await processor.process(job, payload).catch((caught: unknown) => caught);
         expect(isPermanent(error)).toBe(true);
       }
     });
   });
 
   describe("transient failures", () => {
-    /**
-     * A storage outage must stay retryable. Marking it permanent would burn
-     * the document on a blip that the next attempt would have survived.
-     */
     dbTest("a storage outage is not permanent", async () => {
       const payload = await givenQueuedDocument();
       storage.failNext = true;
 
-      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch((e: unknown) => e);
+      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch(
+        (caught: unknown) => caught,
+      );
       expect(isPermanent(error)).toBe(false);
-      // Still mid-flight, not failed: BullMQ has attempts left.
       expect((await statusOf(payload.documentId))?.status).toBe("processing");
     });
 
-    dbTest("recordFailure is what writes the terminal state and its reason", async () => {
+    dbTest("recordFailure writes the terminal state and its reason", async () => {
       const payload = await givenQueuedDocument();
       await processor.recordFailure(payload, "exhausted after 3 attempts");
 
@@ -253,21 +396,203 @@ describeDb("Document processing", () => {
     });
   });
 
-  describe("tenant scoping", () => {
-    /**
-     * The worker runs with no guard above it, so the organizationId on the
-     * payload is the only thing scoping these queries. A job naming the wrong
-     * tenant must find nothing rather than process another org's document.
-     */
+  describe("version safety", () => {
+    dbTest("an older version does not overwrite the current document state", async () => {
+      const v1 = buildPdf(["Version 1"]);
+      const current = await givenQueuedDocument(v1);
+      const v2 = await addVersion(current.documentId, 2, buildPdf(["Version 2"]));
+      await promoteToCurrentVersion(current.documentId, v2);
+
+      const staleResult = await processor.process(DOCUMENT_JOBS.PARSE, current);
+      expect(staleResult).toEqual({ processed: true, status: "parsed" });
+      expect((await statusOf(current.documentId))?.status).toBe("queued");
+      expect((await statusOf(current.documentId))?.currentVersion).toBe(2);
+
+      const staleExtraction = await extractionOf(current.documentId, 1);
+      expect(staleExtraction?.status).toBe("succeeded");
+
+      const liveResult = await processor.process(DOCUMENT_JOBS.PARSE, v2);
+      expect(liveResult).toEqual({ processed: true, status: "parsed" });
+      expect((await statusOf(current.documentId))?.status).toBe("parsed");
+      expect((await statusOf(current.documentId))?.pageCount).toBe(1);
+      expect((await extractionOf(current.documentId, 2))?.status).toBe("succeeded");
+    });
+
     dbTest("a job carrying the wrong organization cannot touch the document", async () => {
       const payload = await givenQueuedDocument();
       const error = await processor
         .process(DOCUMENT_JOBS.PARSE, { ...payload, organizationId: orgB })
-        .catch((e: unknown) => e);
+        .catch((caught: unknown) => caught);
 
       expect(isPermanent(error)).toBe(true);
-      // Untouched by the cross-tenant attempt.
       expect((await statusOf(payload.documentId))?.status).toBe("queued");
     });
   });
+
+  describe("archive safety", () => {
+    dbTest("an archived document cannot be changed back to parsed", async () => {
+      const payload = await givenQueuedDocument(buildPdf(["Archive race"]));
+      const archivingProcessor = new DocumentProcessor(
+        storage as unknown as ObjectStorage,
+        {
+          parse: async () => {
+            await db
+              .update(rfpDocuments)
+              .set({ archivedAt: new Date(), status: "archived" })
+              .where(eq(rfpDocuments.id, payload.documentId));
+            return {
+              extractor: "stub@1.0",
+              pageCount: 1,
+              pages: [{ pageNumber: 1, text: "Archive race" }],
+              tables: [],
+            };
+          },
+        } as never,
+        {
+          saveSuccess: async () => ({
+            id: randomUUID(),
+            status: "succeeded",
+            pageCount: 1,
+            characterCount: 12,
+            tableCount: 0,
+          }),
+          saveFailure: async () => {},
+          find: async () => null,
+          listPages: async () => [],
+          listTables: async () => [],
+        } as never,
+      );
+
+      const result = await archivingProcessor.process(DOCUMENT_JOBS.PARSE, payload);
+      expect(result).toEqual({ processed: true, status: "parsed" });
+
+      const row = await statusOf(payload.documentId);
+      expect(row?.status).toBe("archived");
+      expect(row?.archivedAt).not.toBeNull();
+      expect(row?.pageCount).toBeNull();
+    });
+
+    dbTest("an archived document cannot be changed back to failed", async () => {
+      const payload = await givenQueuedDocument();
+      await db
+        .update(rfpDocuments)
+        .set({ archivedAt: new Date(), status: "archived" })
+        .where(eq(rfpDocuments.id, payload.documentId));
+
+      await processor.recordFailure(payload, "parser failed");
+
+      const row = await statusOf(payload.documentId);
+      expect(row?.status).toBe("archived");
+      expect(row?.archivedAt).not.toBeNull();
+      expect(row?.failureReason).toBeNull();
+    });
+  });
 });
+
+class FakeStorage {
+  private readonly objects = new Map<string, Uint8Array>();
+  failNext = false;
+
+  put(objectKey: string, bytes: Uint8Array) {
+    this.objects.set(objectKey, bytes);
+  }
+
+  delete(objectKey: string) {
+    this.objects.delete(objectKey);
+  }
+
+  async readObjectPrefix(objectKey: string, length: number): Promise<Uint8Array | null> {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("connection reset");
+    }
+    const bytes = this.objects.get(objectKey);
+    return bytes ? bytes.subarray(0, length) : null;
+  }
+
+  async readObject(objectKey: string): Promise<Uint8Array | null> {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("connection reset");
+    }
+    const bytes = this.objects.get(objectKey);
+    return bytes ?? null;
+  }
+}
+
+function buildPdf(
+  pageTexts: string[],
+  options: { encrypted?: boolean } = {},
+): Uint8Array {
+  const encoder = new TextEncoder();
+  const parts: string[] = ["%PDF-1.4\n"];
+  const offsets: number[] = [0];
+  let currentLength = encoder.encode(parts[0]).length;
+
+  const push = (body: string, objectNumber: number) => {
+    const object = `${objectNumber} 0 obj\n${body}\nendobj\n`;
+    offsets[objectNumber] = currentLength;
+    parts.push(object);
+    currentLength += encoder.encode(object).length;
+  };
+
+  push("<< /Type /Catalog /Pages 2 0 R >>", 1);
+
+  const pageNumbers = pageTexts.map((_, index) => 5 + index * 2);
+  push(`<< /Type /Pages /Kids [${pageNumbers.map((page) => `${page} 0 R`).join(" ")}] /Count ${pageTexts.length} >>`, 2);
+  push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", 3);
+
+  pageTexts.forEach((text, index) => {
+    const contentNumber = 4 + index * 2;
+    const pageNumber = 5 + index * 2;
+    const stream = makeTextStream(text);
+    const contentBody =
+      stream.length === 0
+        ? "<< /Length 0 >>\nstream\n\nendstream"
+        : `<< /Length ${encoder.encode(stream).length} >>\nstream\n${stream}\nendstream`;
+
+    push(contentBody, contentNumber);
+    push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentNumber} 0 R >>`,
+      pageNumber,
+    );
+  });
+
+  const encryptNumber = 4 + pageTexts.length * 2;
+  if (options.encrypted) {
+    push(
+      "<< /Filter /Standard /V 1 /R 2 /O <00000000000000000000000000000000> /U <00000000000000000000000000000000> /P -4 >>",
+      encryptNumber,
+    );
+  }
+
+  const body = parts.join("");
+  const size = options.encrypted ? encryptNumber + 1 : encryptNumber;
+  const xrefOffset = encoder.encode(body).length;
+  const xrefLines = [
+    "xref",
+    `0 ${size}`,
+    "0000000000 65535 f ",
+    ...Array.from({ length: size - 1 }, (_, index) => {
+      const objectNumber = index + 1;
+      const offset = offsets[objectNumber] ?? 0;
+      return `${String(offset).padStart(10, "0")} 00000 n `;
+    }),
+    "trailer",
+    `<< /Size ${size}${options.encrypted ? ` /Encrypt ${encryptNumber} 0 R` : ""} /Root 1 0 R >>`,
+    "startxref",
+    String(xrefOffset),
+    "%%EOF",
+  ];
+
+  return encoder.encode(`${body}${xrefLines.join("\n")}\n`);
+}
+
+function makeTextStream(text: string): string {
+  if (!text) return "";
+  return `BT /F1 24 Tf 72 720 Td (${escapePdfString(text)}) Tj ET`;
+}
+
+function escapePdfString(text: string): string {
+  return text.replace(/[\\()]/g, "\\$&");
+}

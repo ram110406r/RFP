@@ -20,7 +20,8 @@
     "@rfp-os/types": "workspace:*",
     "bullmq": "^5.34.0",
     "drizzle-orm": "^0.44.7",
-    "ioredis": "^5.4.1"
+    "ioredis": "^5.4.1",
+    "pdfjs-dist": "6.2.108"
   },
   "devDependencies": {
     "@rfp-os/config": "workspace:*",

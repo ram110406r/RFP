@@ -1,9 +1,11 @@
-import { getDb, rfpDocuments } from "@rfp-os/db";
-import { and, eq } from "drizzle-orm";
+import { getDb, rfpDocuments, withTransaction } from "@rfp-os/db";
+import { and, eq, isNull } from "drizzle-orm";
 import { DOCUMENT_JOBS, type DocumentJobName, type DocumentJobPayload } from "@rfp-os/jobs";
 import type { ObjectStorage } from "@rfp-os/storage";
 
+import { ExtractionRepository } from "./extraction.repository";
 import { contradictsDeclaredType, SNIFF_LENGTH, sniffFormat } from "./magic-bytes";
+import { PdfDocumentParser } from "./pdf-document-parser";
 
 /**
  * Raised for a failure that retrying cannot fix — a missing object, a file
@@ -43,7 +45,11 @@ export interface ProcessResult {
  * tenant boundary is not enforced.
  */
 export class DocumentProcessor {
-  constructor(private readonly storage: ObjectStorage) {}
+  constructor(
+    private readonly storage: ObjectStorage,
+    private readonly parser: PdfDocumentParser = new PdfDocumentParser(),
+    private readonly extractions: ExtractionRepository = new ExtractionRepository(),
+  ) {}
 
   async process(name: DocumentJobName, payload: DocumentJobPayload): Promise<ProcessResult> {
     switch (name) {
@@ -84,14 +90,17 @@ export class DocumentProcessor {
      * committed its side effects. Re-reading the row and skipping work that is
      * already done is what makes that redelivery harmless.
      */
-    if (document.status === "parsed" || document.status === "ready") {
+    const currentPayload = this.matchesCurrentVersion(document, payload);
+    if (currentPayload && (document.status === "parsed" || document.status === "ready" || document.status === "failed")) {
       return { processed: false, status: document.status };
     }
     if (document.archivedAt) {
       throw new PermanentJobError(`Document ${documentId} was archived before processing.`);
     }
 
-    await this.setStatus(organizationId, documentId, "processing", null);
+    if (currentPayload) {
+      await this.setStatusIfCurrent(payload, "processing", null);
+    }
 
     const prefix = await this.storage.readObjectPrefix(payload.objectKey, SNIFF_LENGTH);
     if (!prefix) {
@@ -107,12 +116,60 @@ export class DocumentProcessor {
       );
     }
 
+    const bytes = await this.storage.readObject(payload.objectKey);
+    if (!bytes) {
+      throw new PermanentJobError(
+        `Object ${payload.objectKey} is missing from storage; the upload did not survive.`,
+      );
+    }
+
+    let parsed;
+    try {
+      parsed = await this.parser.parse(bytes);
+    } catch (error) {
+      throw new PermanentJobError(
+        `Failed to parse PDF ${payload.objectKey}: ${(error as Error).message}`,
+      );
+    }
+
     /*
      * `parsed`, not `ready`. The status enum separates the two, and Phase 6C's
-     * requirement extraction is what earns `ready` — claiming it here would
+     * requirement extraction is what earns `ready` - claiming it here would
      * tell the UI a document is usable when nothing has been read out of it.
      */
-    await this.setStatus(organizationId, documentId, "parsed", null);
+    await withTransaction(async (tx) => {
+      await this.extractions.saveSuccess(
+        {
+          organizationId,
+          documentId,
+          version: payload.version,
+        },
+        {
+          extractor: parsed.extractor,
+          pages: parsed.pages,
+          tables: parsed.tables,
+        },
+        tx,
+      );
+
+      await tx
+        .update(rfpDocuments)
+        .set({
+          status: "parsed",
+          pageCount: parsed.pageCount,
+          failureReason: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(rfpDocuments.organizationId, organizationId),
+            eq(rfpDocuments.id, documentId),
+            eq(rfpDocuments.currentVersion, payload.version),
+            eq(rfpDocuments.fileId, payload.fileId),
+            isNull(rfpDocuments.archivedAt),
+          ),
+        );
+    });
     return { processed: true, status: "parsed" };
   }
 
@@ -124,18 +181,29 @@ export class DocumentProcessor {
    * queue was about to retry successfully.
    */
   async recordFailure(payload: DocumentJobPayload, reason: string): Promise<void> {
-    await this.setStatus(payload.organizationId, payload.documentId, "failed", reason);
+    await this.setStatusIfCurrent(payload, "failed", reason);
   }
 
-  private async setStatus(
-    organizationId: string,
-    documentId: string,
-    status: "processing" | "parsed" | "failed",
+  private matchesCurrentVersion(document: typeof rfpDocuments.$inferSelect, payload: DocumentJobPayload) {
+    return document.currentVersion === payload.version && document.fileId === payload.fileId;
+  }
+
+  private async setStatusIfCurrent(
+    payload: DocumentJobPayload,
+    status: "processing" | "failed",
     failureReason: string | null,
   ): Promise<void> {
     await getDb()
       .update(rfpDocuments)
       .set({ status, failureReason, updatedAt: new Date() })
-      .where(and(eq(rfpDocuments.organizationId, organizationId), eq(rfpDocuments.id, documentId)));
+      .where(
+        and(
+          eq(rfpDocuments.organizationId, payload.organizationId),
+          eq(rfpDocuments.id, payload.documentId),
+          eq(rfpDocuments.currentVersion, payload.version),
+          eq(rfpDocuments.fileId, payload.fileId),
+          isNull(rfpDocuments.archivedAt),
+        ),
+      );
   }
 }

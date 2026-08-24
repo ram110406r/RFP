@@ -4,6 +4,8 @@ import {
   documentTables,
   getDb,
   withTransaction,
+  type Database,
+  type Transaction,
 } from "@rfp-os/db";
 import { and, asc, eq } from "drizzle-orm";
 
@@ -42,6 +44,8 @@ export interface StoredExtraction {
   tableCount: number;
 }
 
+type Executor = Database | Transaction;
+
 /**
  * Persistence for extracted document content.
  *
@@ -71,17 +75,43 @@ export class ExtractionRepository {
       version: number;
     },
     result: ExtractionResult,
+    tx?: Executor,
+  ): Promise<StoredExtraction> {
+    if (tx) {
+      return this.saveSuccessInTransaction(tx, input, result);
+    }
+    return withTransaction((managed) => this.saveSuccessInTransaction(managed, input, result));
+  }
+
+  private async saveSuccessInTransaction(
+    tx: Executor,
+    input: {
+      organizationId: string;
+      documentId: string;
+      version: number;
+    },
+    result: ExtractionResult,
   ): Promise<StoredExtraction> {
     const { organizationId, documentId, version } = input;
     const characterCount = result.pages.reduce((sum, page) => sum + page.text.length, 0);
 
-    return withTransaction(async (tx) => {
-      const [extraction] = await tx
-        .insert(documentExtractions)
-        .values({
-          organizationId,
-          documentId,
-          version,
+    const [extraction] = await tx
+      .insert(documentExtractions)
+      .values({
+        organizationId,
+        documentId,
+        version,
+        extractor: result.extractor,
+        status: "succeeded",
+        pageCount: result.pages.length,
+        characterCount,
+        tableCount: result.tables.length,
+        failureReason: null,
+        completedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [documentExtractions.documentId, documentExtractions.version],
+        set: {
           extractor: result.extractor,
           status: "succeeded",
           pageCount: result.pages.length,
@@ -89,74 +119,62 @@ export class ExtractionRepository {
           tableCount: result.tables.length,
           failureReason: null,
           completedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: [documentExtractions.documentId, documentExtractions.version],
-          set: {
-            extractor: result.extractor,
-            status: "succeeded",
-            pageCount: result.pages.length,
-            characterCount,
-            tableCount: result.tables.length,
-            failureReason: null,
-            completedAt: new Date(),
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
 
-      if (!extraction) throw new Error("Failed to record extraction.");
+    if (!extraction) throw new Error("Failed to record extraction.");
 
-      /*
-       * Children are keyed by extraction id, so clearing them here is scoped
-       * to this document version — a sibling version's content is untouched.
-       */
-      await tx.delete(documentPages).where(eq(documentPages.extractionId, extraction.id));
-      await tx.delete(documentTables).where(eq(documentTables.extractionId, extraction.id));
+    /*
+     * Children are keyed by extraction id, so clearing them here is scoped
+     * to this document version - a sibling version's content is untouched.
+     */
+    await tx.delete(documentPages).where(eq(documentPages.extractionId, extraction.id));
+    await tx.delete(documentTables).where(eq(documentTables.extractionId, extraction.id));
 
-      if (result.pages.length) {
-        await tx.insert(documentPages).values(
-          result.pages.map((page) => ({
-            organizationId,
-            extractionId: extraction.id,
-            documentId,
-            pageNumber: page.pageNumber,
-            label: page.label ?? "",
-            text: page.text,
-            characterCount: page.text.length,
-          })),
-        );
-      }
+    if (result.pages.length) {
+      await tx.insert(documentPages).values(
+        result.pages.map((page) => ({
+          organizationId,
+          extractionId: extraction.id,
+          documentId,
+          pageNumber: page.pageNumber,
+          label: page.label ?? "",
+          text: page.text,
+          characterCount: page.text.length,
+        })),
+      );
+    }
 
-      if (result.tables.length) {
-        await tx.insert(documentTables).values(
-          result.tables.map((table, index) => ({
-            organizationId,
-            extractionId: extraction.id,
-            documentId,
-            /*
-             * Sequential across the extraction rather than per page: the
-             * uniqueness constraint has to hold for formats where pageNumber
-             * is null, and Postgres treats nulls as distinct.
-             */
-            tableIndex: index,
-            pageNumber: table.pageNumber ?? null,
-            caption: table.caption ?? "",
-            rowCount: table.cells.length,
-            columnCount: table.cells[0]?.length ?? 0,
-            cells: table.cells,
-          })),
-        );
-      }
+    if (result.tables.length) {
+      await tx.insert(documentTables).values(
+        result.tables.map((table, index) => ({
+          organizationId,
+          extractionId: extraction.id,
+          documentId,
+          /*
+           * Sequential across the extraction rather than per page: the
+           * uniqueness constraint has to hold for formats where pageNumber
+           * is null, and Postgres treats nulls as distinct.
+           */
+          tableIndex: index,
+          pageNumber: table.pageNumber ?? null,
+          caption: table.caption ?? "",
+          rowCount: table.cells.length,
+          columnCount: table.cells[0]?.length ?? 0,
+          cells: table.cells,
+        })),
+      );
+    }
 
-      return {
-        id: extraction.id,
-        status: extraction.status,
-        pageCount: extraction.pageCount,
-        characterCount: extraction.characterCount,
-        tableCount: extraction.tableCount,
-      };
-    });
+    return {
+      id: extraction.id,
+      status: extraction.status,
+      pageCount: extraction.pageCount,
+      characterCount: extraction.characterCount,
+      tableCount: extraction.tableCount,
+    };
   }
 
   /**
@@ -170,40 +188,52 @@ export class ExtractionRepository {
     input: { organizationId: string; documentId: string; version: number },
     extractor: string,
     reason: string,
+    tx?: Executor,
+  ): Promise<void> {
+    if (tx) {
+      await this.saveFailureInTransaction(tx, input, extractor, reason);
+      return;
+    }
+    await withTransaction((managed) => this.saveFailureInTransaction(managed, input, extractor, reason));
+  }
+
+  private async saveFailureInTransaction(
+    tx: Executor,
+    input: { organizationId: string; documentId: string; version: number },
+    extractor: string,
+    reason: string,
   ): Promise<void> {
     const { organizationId, documentId, version } = input;
 
-    await withTransaction(async (tx) => {
-      const [extraction] = await tx
-        .insert(documentExtractions)
-        .values({
-          organizationId,
-          documentId,
-          version,
+    const [extraction] = await tx
+      .insert(documentExtractions)
+      .values({
+        organizationId,
+        documentId,
+        version,
+        extractor,
+        status: "failed",
+        failureReason: reason,
+        completedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [documentExtractions.documentId, documentExtractions.version],
+        set: {
           extractor,
           status: "failed",
+          pageCount: null,
+          characterCount: 0,
+          tableCount: 0,
           failureReason: reason,
           completedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: [documentExtractions.documentId, documentExtractions.version],
-          set: {
-            extractor,
-            status: "failed",
-            pageCount: null,
-            characterCount: 0,
-            tableCount: 0,
-            failureReason: reason,
-            completedAt: new Date(),
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
 
-      if (!extraction) return;
-      await tx.delete(documentPages).where(eq(documentPages.extractionId, extraction.id));
-      await tx.delete(documentTables).where(eq(documentTables.extractionId, extraction.id));
-    });
+    if (!extraction) return;
+    await tx.delete(documentPages).where(eq(documentPages.extractionId, extraction.id));
+    await tx.delete(documentTables).where(eq(documentTables.extractionId, extraction.id));
   }
 
   /** The extraction for one document version, or null. Org-scoped. */

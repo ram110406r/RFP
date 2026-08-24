@@ -163,6 +163,26 @@ export class ObjectStorage {
     }
   }
 
+  /**
+   * Reads the full object into memory.
+   *
+   * Phase 6A needs the whole PDF because pdfjs-dist parses from bytes, not
+   * from a range request. The worker still owns the memory tradeoff; this
+   * just keeps the read behind the existing storage abstraction.
+   */
+  async readObject(objectKey: string): Promise<Uint8Array | null> {
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }),
+      );
+      if (!result.Body) return null;
+      return await result.Body.transformToByteArray();
+    } catch (error) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
   async deleteObject(objectKey: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: objectKey }));
   }
