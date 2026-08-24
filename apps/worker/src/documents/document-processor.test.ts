@@ -17,6 +17,14 @@ import type { ObjectStorage } from "@rfp-os/storage";
 import { asc, eq, inArray, and } from "drizzle-orm";
 
 import { DocumentProcessor, isPermanent } from "./document-processor";
+import { DocxDocumentParser } from "./docx-document-parser";
+import {
+  DOCX_MIME,
+  buildDocx,
+  docxHeading,
+  docxParagraph,
+  docxTable,
+} from "./docx-test-fixtures";
 
 /**
  * Integration coverage against a real database.
@@ -84,12 +92,15 @@ describeDb("Document processing", () => {
 
   async function givenQueuedDocument(
     content: Uint8Array = buildPdf(["Current document"]),
-    mimeType = "application/pdf",
+    options: { mimeType?: string; documentType?: "PDF" | "DOCX"; filename?: string } = {},
   ): Promise<DocumentJobPayload> {
+    const documentType = options.documentType ?? "PDF";
+    const mimeType = options.mimeType ?? (documentType === "DOCX" ? DOCX_MIME : "application/pdf");
+    const filename = options.filename ?? (documentType === "DOCX" ? "doc.docx" : "doc.pdf");
     const documentId = randomUUID();
     const fileId = randomUUID();
     const versionId = randomUUID();
-    const objectKey = `${orgA}/${rfpId}/${fileId}/doc.pdf`;
+    const objectKey = `${orgA}/${rfpId}/${fileId}/${filename}`;
     documentIds.push(documentId);
     fileIds.push(fileId);
     versionIds.push(versionId);
@@ -99,7 +110,7 @@ describeDb("Document processing", () => {
       organizationId: orgA,
       bucket: "test-bucket",
       objectKey,
-      filename: "doc.pdf",
+      filename,
       mimeType,
       sizeBytes: content.length,
       uploadedBy: userId,
@@ -109,8 +120,8 @@ describeDb("Document processing", () => {
       organizationId: orgA,
       rfpId,
       fileId,
-      filename: "doc.pdf",
-      type: "PDF",
+      filename,
+      type: documentType,
       status: "queued",
       currentVersion: 1,
       storageKey: objectKey,
@@ -139,12 +150,25 @@ describeDb("Document processing", () => {
     };
   }
 
+  async function givenQueuedDocxDocument(
+    content: Uint8Array = buildDocx([docxParagraph("Current document")]),
+  ): Promise<DocumentJobPayload> {
+    return givenQueuedDocument(content, {
+      documentType: "DOCX",
+      mimeType: DOCX_MIME,
+      filename: "doc.docx",
+    });
+  }
+
   async function addVersion(
     documentId: string,
     version: number,
     content: Uint8Array,
-    filename = `doc-v${version}.pdf`,
+    options: { documentType?: "PDF" | "DOCX"; filename?: string; mimeType?: string } = {},
   ): Promise<DocumentJobPayload> {
+    const documentType = options.documentType ?? "PDF";
+    const filename = options.filename ?? `doc-v${version}.${documentType === "DOCX" ? "docx" : "pdf"}`;
+    const mimeType = options.mimeType ?? (documentType === "DOCX" ? DOCX_MIME : "application/pdf");
     const fileId = randomUUID();
     const versionId = randomUUID();
     const objectKey = `${orgA}/${rfpId}/${fileId}/${filename}`;
@@ -157,7 +181,7 @@ describeDb("Document processing", () => {
       bucket: "test-bucket",
       objectKey,
       filename,
-      mimeType: "application/pdf",
+      mimeType,
       sizeBytes: content.length,
       uploadedBy: userId,
     });
@@ -179,7 +203,7 @@ describeDb("Document processing", () => {
       fileId,
       version,
       objectKey,
-      mimeType: "application/pdf",
+      mimeType,
       actorId: userId,
     };
   }
@@ -187,12 +211,13 @@ describeDb("Document processing", () => {
   async function promoteToCurrentVersion(
     documentId: string,
     payload: DocumentJobPayload,
+    filename = "doc-v2.pdf",
   ): Promise<void> {
     await db
       .update(rfpDocuments)
       .set({
         fileId: payload.fileId,
-        filename: "doc-v2.pdf",
+        filename,
         status: "queued",
         currentVersion: payload.version,
         pageCount: null,
@@ -279,6 +304,26 @@ describeDb("Document processing", () => {
       const second = await processor.process(DOCUMENT_JOBS.PARSE, payload);
       expect(second).toEqual({ processed: false, status: "parsed" });
     });
+
+    dbTest("drives a DOCX document to parsed and stores the extraction", async () => {
+      const payload = await givenQueuedDocxDocument(
+        buildDocx([docxHeading(1, "DOCX Section"), docxParagraph("Paragraph"), docxTable([["A", "B"]])]),
+      );
+      const result = await processor.process(DOCUMENT_JOBS.PARSE, payload);
+
+      expect(result).toEqual({ processed: true, status: "parsed" });
+      expect((await statusOf(payload.documentId))?.status).toBe("parsed");
+
+      const extraction = await extractionOf(payload.documentId, 1);
+      expect(extraction?.status).toBe("succeeded");
+      expect(extraction?.pageCount).toBe(3);
+      const pages = await db
+        .select()
+        .from(documentPages)
+        .where(eq(documentPages.extractionId, extraction?.id ?? ""))
+        .orderBy(asc(documentPages.pageNumber));
+      expect(pages.map((page) => page.text)).toEqual(["DOCX Section", "Paragraph", "A\tB"]);
+    });
   });
 
   describe("persistence", () => {
@@ -294,6 +339,7 @@ describeDb("Document processing", () => {
             tables: [],
           }),
         } as never,
+        new DocxDocumentParser(),
         {
           saveSuccess: async () => {
             throw new Error("database unavailable");
@@ -418,8 +464,40 @@ describeDb("Document processing", () => {
       expect((await extractionOf(current.documentId, 2))?.status).toBe("succeeded");
     });
 
+    dbTest("an older DOCX version does not overwrite the current document state", async () => {
+      const v1 = buildDocx([docxHeading(1, "Version 1"), docxParagraph("Body 1")]);
+      const current = await givenQueuedDocxDocument(v1);
+      const v2 = await addVersion(current.documentId, 2, buildDocx([docxHeading(1, "Version 2")]), {
+        documentType: "DOCX",
+        filename: "doc-v2.docx",
+        mimeType: DOCX_MIME,
+      });
+      await promoteToCurrentVersion(current.documentId, v2, "doc-v2.docx");
+
+      const staleResult = await processor.process(DOCUMENT_JOBS.PARSE, current);
+      expect(staleResult).toEqual({ processed: true, status: "parsed" });
+      expect((await statusOf(current.documentId))?.status).toBe("queued");
+      expect((await statusOf(current.documentId))?.currentVersion).toBe(2);
+
+      const liveResult = await processor.process(DOCUMENT_JOBS.PARSE, v2);
+      expect(liveResult).toEqual({ processed: true, status: "parsed" });
+      expect((await statusOf(current.documentId))?.status).toBe("parsed");
+      expect((await statusOf(current.documentId))?.pageCount).toBeGreaterThan(0);
+      expect((await extractionOf(current.documentId, 2))?.status).toBe("succeeded");
+    });
+
     dbTest("a job carrying the wrong organization cannot touch the document", async () => {
       const payload = await givenQueuedDocument();
+      const error = await processor
+        .process(DOCUMENT_JOBS.PARSE, { ...payload, organizationId: orgB })
+        .catch((caught: unknown) => caught);
+
+      expect(isPermanent(error)).toBe(true);
+      expect((await statusOf(payload.documentId))?.status).toBe("queued");
+    });
+
+    dbTest("a job carrying the wrong organization cannot touch a DOCX document", async () => {
+      const payload = await givenQueuedDocxDocument();
       const error = await processor
         .process(DOCUMENT_JOBS.PARSE, { ...payload, organizationId: orgB })
         .catch((caught: unknown) => caught);
@@ -448,6 +526,7 @@ describeDb("Document processing", () => {
             };
           },
         } as never,
+        new DocxDocumentParser(),
         {
           saveSuccess: async () => ({
             id: randomUUID(),
@@ -474,6 +553,21 @@ describeDb("Document processing", () => {
 
     dbTest("an archived document cannot be changed back to failed", async () => {
       const payload = await givenQueuedDocument();
+      await db
+        .update(rfpDocuments)
+        .set({ archivedAt: new Date(), status: "archived" })
+        .where(eq(rfpDocuments.id, payload.documentId));
+
+      await processor.recordFailure(payload, "parser failed");
+
+      const row = await statusOf(payload.documentId);
+      expect(row?.status).toBe("archived");
+      expect(row?.archivedAt).not.toBeNull();
+      expect(row?.failureReason).toBeNull();
+    });
+
+    dbTest("an archived DOCX document cannot be changed back to parsed", async () => {
+      const payload = await givenQueuedDocxDocument(buildDocx([docxParagraph("Archive race")]));
       await db
         .update(rfpDocuments)
         .set({ archivedAt: new Date(), status: "archived" })

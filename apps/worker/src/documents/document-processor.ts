@@ -5,6 +5,7 @@ import type { ObjectStorage } from "@rfp-os/storage";
 
 import { ExtractionRepository } from "./extraction.repository";
 import { contradictsDeclaredType, SNIFF_LENGTH, sniffFormat } from "./magic-bytes";
+import { DocxDocumentParser } from "./docx-document-parser";
 import { PdfDocumentParser } from "./pdf-document-parser";
 
 /**
@@ -48,6 +49,7 @@ export class DocumentProcessor {
   constructor(
     private readonly storage: ObjectStorage,
     private readonly parser: PdfDocumentParser = new PdfDocumentParser(),
+    private readonly docxParser: DocxDocumentParser = new DocxDocumentParser(),
     private readonly extractions: ExtractionRepository = new ExtractionRepository(),
   ) {}
 
@@ -123,12 +125,17 @@ export class DocumentProcessor {
       );
     }
 
+    const parser = this.selectParser(document.type);
+    if (!parser) {
+      throw new PermanentJobError(`Document type ${document.type} is not supported for extraction yet.`);
+    }
+
     let parsed;
     try {
-      parsed = await this.parser.parse(bytes);
+      parsed = await parser.parse(bytes);
     } catch (error) {
       throw new PermanentJobError(
-        `Failed to parse PDF ${payload.objectKey}: ${(error as Error).message}`,
+        `Failed to parse ${document.type} ${payload.objectKey}: ${(error as Error).message}`,
       );
     }
 
@@ -171,6 +178,17 @@ export class DocumentProcessor {
         );
     });
     return { processed: true, status: "parsed" };
+  }
+
+  private selectParser(documentType: string): PdfDocumentParser | DocxDocumentParser | null {
+    switch (documentType) {
+      case "PDF":
+        return this.parser;
+      case "DOCX":
+        return this.docxParser;
+      default:
+        return null;
+    }
   }
 
   /**
