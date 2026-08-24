@@ -8,7 +8,11 @@
  */
 
 export { DOCUMENT_JOBS, documentJobId } from "./document-jobs";
-export type { DocumentJobName, DocumentJobPayload } from "./document-jobs";
+export type {
+  DocumentJobName,
+  DocumentJobPayload,
+  RequirementExtractionJobPayload,
+} from "./document-jobs";
 
 export { DEFAULT_JOB_OPTIONS, QUEUES } from "./queues";
 export type { QueueJobMap, QueueName, QueueWithJobs } from "./queues";

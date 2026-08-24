@@ -1,9 +1,11 @@
 import {
+  boolean,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  numeric,
   text,
   timestamp,
   uniqueIndex,
@@ -12,7 +14,8 @@ import {
 
 import { timestamps } from "./_shared";
 import { organizations } from "./organization";
-import { rfpDocuments } from "./rfp";
+import { requirementCategoryEnum } from "./_shared";
+import { rfpDocuments, rfpRequirements, rfps } from "./rfp";
 
 /**
  * Extracted document content — the output of Phase 6 parsing, and the input
@@ -33,6 +36,45 @@ export const extractionStatusEnum = pgEnum("extraction_status", [
   "pending",
   "succeeded",
   "failed",
+]);
+
+export const requirementExtractionStatusEnum = pgEnum("requirement_extraction_status", [
+  "pending",
+  "processing",
+  "succeeded",
+  "failed",
+]);
+
+export const requirementCandidateStatusEnum = pgEnum("requirement_candidate_status", [
+  "extracted",
+  "accepted",
+  "rejected",
+  "projected",
+  "superseded",
+]);
+
+export const requirementCandidateTypeEnum = pgEnum("requirement_candidate_type", [
+  "explicit_requirement",
+  "acceptance_criteria",
+  "deliverable",
+  "deadline",
+  "constraint",
+  "qualification",
+  "evaluation_criterion",
+  "question",
+]);
+
+export const documentBlockKindEnum = pgEnum("document_block_kind", [
+  "heading",
+  "paragraph",
+  "listItem",
+  "table",
+]);
+
+export const requirementSourceKindEnum = pgEnum("requirement_source_kind", [
+  "page",
+  "table",
+  "block",
 ]);
 
 /**
@@ -167,5 +209,150 @@ export const documentTables = pgTable(
     uniqueIndex("document_tables_extraction_index_uq").on(t.extractionId, t.tableIndex),
     index("document_tables_org_idx").on(t.organizationId),
     index("document_tables_document_idx").on(t.documentId),
+  ],
+);
+
+/**
+ * Logical DOCX blocks preserved for downstream provenance.
+ *
+ * DOCX has no physical pages in the parser's model, so provenance must cite
+ * the actual logical block and its XML source reference rather than fake
+ * page numbers.
+ */
+export const documentBlocks = pgTable(
+  "document_blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    extractionId: uuid("extraction_id")
+      .notNull()
+      .references(() => documentExtractions.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => rfpDocuments.id, { onDelete: "cascade" }),
+    blockNumber: integer("block_number").notNull(),
+    kind: documentBlockKindEnum("kind").notNull(),
+    text: text("text").notNull().default(""),
+    headingPath: jsonb("heading_path").$type<string[]>().notNull().default([]),
+    sourceRef: jsonb("source_ref").$type<{ xmlKind: "w:p" | "w:tbl"; index: number }>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("document_blocks_extraction_block_uq").on(t.extractionId, t.blockNumber),
+    index("document_blocks_org_idx").on(t.organizationId),
+    index("document_blocks_document_idx").on(t.documentId),
+  ],
+);
+
+/**
+ * One requirement extraction run over one document extraction/version.
+ *
+ * The unique constraint on `document_extraction_id` is the idempotency
+ * boundary: a document version only gets one extraction run row, and the row
+ * records whether the run is pending, processing, succeeded or failed.
+ */
+export const requirementExtractions = pgTable(
+  "requirement_extractions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    rfpId: uuid("rfp_id")
+      .notNull()
+      .references(() => rfps.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => rfpDocuments.id, { onDelete: "cascade" }),
+    documentExtractionId: uuid("document_extraction_id")
+      .notNull()
+      .references(() => documentExtractions.id, { onDelete: "cascade" }),
+    status: requirementExtractionStatusEnum("status").notNull().default("pending"),
+    extractor: text("extractor").notNull().default("deterministic@1"),
+    failureReason: text("failure_reason"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("requirement_extractions_document_extraction_uq").on(t.documentExtractionId),
+    index("requirement_extractions_org_idx").on(t.organizationId),
+    index("requirement_extractions_org_status_idx").on(t.organizationId, t.status),
+    index("requirement_extractions_document_idx").on(t.documentId),
+  ],
+);
+
+/**
+ * Immutable extracted requirement evidence.
+ */
+export const requirementCandidates = pgTable(
+  "requirement_candidates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    extractionId: uuid("extraction_id")
+      .notNull()
+      .references(() => requirementExtractions.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    rfpId: uuid("rfp_id")
+      .notNull()
+      .references(() => rfps.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => rfpDocuments.id, { onDelete: "cascade" }),
+    documentVersion: integer("document_version").notNull(),
+    candidateIndex: integer("candidate_index").notNull(),
+    candidateType: requirementCandidateTypeEnum("candidate_type").notNull(),
+    category: requirementCategoryEnum("category"),
+    mandatory: boolean("mandatory").notNull().default(false),
+    title: text("title").notNull().default(""),
+    originalText: text("original_text").notNull(),
+    normalizedText: text("normalized_text").notNull(),
+    confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull().default("0"),
+    extractionMethod: text("extraction_method").notNull().default("deterministic"),
+    status: requirementCandidateStatusEnum("status").notNull().default("extracted"),
+    projectedRequirementId: uuid("projected_requirement_id")
+      .references(() => rfpRequirements.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("requirement_candidates_extraction_index_uq").on(t.extractionId, t.candidateIndex),
+    index("requirement_candidates_org_idx").on(t.organizationId),
+    index("requirement_candidates_org_status_idx").on(t.organizationId, t.status),
+    index("requirement_candidates_document_idx").on(t.documentId),
+    index("requirement_candidates_projection_idx").on(t.projectedRequirementId),
+  ],
+);
+
+/**
+ * Normalized provenance rows for a candidate.
+ */
+export const requirementCandidateSources = pgTable(
+  "requirement_candidate_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    candidateId: uuid("candidate_id")
+      .notNull()
+      .references(() => requirementCandidates.id, { onDelete: "cascade" }),
+    sourceIndex: integer("source_index").notNull(),
+    sourceKind: requirementSourceKindEnum("source_kind").notNull(),
+    documentPageId: uuid("document_page_id").references(() => documentPages.id, { onDelete: "set null" }),
+    documentTableId: uuid("document_table_id").references(() => documentTables.id, { onDelete: "set null" }),
+    documentBlockId: uuid("document_block_id").references(() => documentBlocks.id, { onDelete: "set null" }),
+    excerpt: text("excerpt").notNull().default(""),
+    rowIndex: integer("row_index"),
+    columnIndex: integer("column_index"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("requirement_candidate_sources_candidate_source_uq").on(t.candidateId, t.sourceIndex),
+    index("requirement_candidate_sources_candidate_idx").on(t.candidateId),
+    index("requirement_candidate_sources_page_idx").on(t.documentPageId),
+    index("requirement_candidate_sources_table_idx").on(t.documentTableId),
+    index("requirement_candidate_sources_block_idx").on(t.documentBlockId),
   ],
 );

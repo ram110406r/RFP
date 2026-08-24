@@ -67,6 +67,8 @@ export class DocumentProcessor {
       case DOCUMENT_JOBS.TABLE_EXTRACTION:
       case DOCUMENT_JOBS.NORMALIZATION:
         throw new PermanentJobError(`${name} is not implemented until Phase 6C.`);
+      default:
+        throw new PermanentJobError(`Unknown document job ${name}.`);
     }
   }
 
@@ -145,6 +147,7 @@ export class DocumentProcessor {
      * tell the UI a document is usable when nothing has been read out of it.
      */
     await withTransaction(async (tx) => {
+      const blocks = normalizeBlocks(parsed.blocks);
       await this.extractions.saveSuccess(
         {
           organizationId,
@@ -155,6 +158,7 @@ export class DocumentProcessor {
           extractor: parsed.extractor,
           pages: parsed.pages,
           tables: parsed.tables,
+          blocks,
         },
         tx,
       );
@@ -224,4 +228,34 @@ export class DocumentProcessor {
         ),
       );
   }
+}
+
+function normalizeBlocks(
+  blocks:
+    | Array<{
+        kind: "heading" | "paragraph" | "listItem" | "table";
+        text?: string;
+        cells?: string[][];
+        headingPath: string[];
+        sourceRef: { xmlKind: "w:p" | "w:tbl"; index: number };
+      }>
+    | undefined,
+): Array<{
+  kind: "heading" | "paragraph" | "listItem" | "table";
+  text: string;
+  headingPath: string[];
+  sourceRef: { xmlKind: "w:p" | "w:tbl"; index: number };
+}> | undefined {
+  if (!blocks) return undefined;
+
+  return blocks.map((block) => ({
+    kind: block.kind,
+    text: block.kind === "table" ? serializeTable(block.cells ?? []) : block.text ?? "",
+    headingPath: block.headingPath,
+    sourceRef: block.sourceRef,
+  }));
+}
+
+function serializeTable(cells: string[][]): string {
+  return cells.map((row) => row.join("\t")).join("\n");
 }

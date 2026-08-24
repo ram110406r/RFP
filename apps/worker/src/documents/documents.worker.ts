@@ -2,14 +2,20 @@ import { createLogger } from "@rfp-os/observability";
 import {
   DEFAULT_JOB_OPTIONS,
   QUEUES,
+  documentJobId,
+  DOCUMENT_JOBS,
   type DocumentJobName,
   type DocumentJobPayload,
+  type RequirementExtractionJobPayload,
 } from "@rfp-os/jobs";
 import { ObjectStorage } from "@rfp-os/storage";
-import { UnrecoverableError, Worker, type Job } from "bullmq";
+import { Queue, UnrecoverableError, Worker, type Job } from "bullmq";
 import type IORedis from "ioredis";
 
 import { DocumentProcessor, isPermanent } from "./document-processor";
+import { ExtractionRepository } from "./extraction.repository";
+import { RequirementExtractionProcessor } from "./requirement-extraction.processor";
+import { RequirementExtractionRepository } from "./requirement-extraction.repository";
 
 const logger = createLogger("worker:documents");
 
@@ -33,12 +39,33 @@ function storageFromEnv(): ObjectStorage {
 
 export function createDocumentsWorker(connection: IORedis): Worker {
   const processor = new DocumentProcessor(storageFromEnv());
+  const documentExtractions = new ExtractionRepository();
+  const requirementRepo = new RequirementExtractionRepository();
+  const requirementProcessor = new RequirementExtractionProcessor(documentExtractions, requirementRepo);
+  const queue = new Queue(QUEUES.DOCUMENTS, { connection });
 
   const worker = new Worker<DocumentJobPayload>(
     QUEUES.DOCUMENTS,
     async (job: Job<DocumentJobPayload>) => {
       const name = job.name as DocumentJobName;
       try {
+        if (name === DOCUMENT_JOBS.REQUIREMENT_EXTRACT) {
+          const result = await requirementProcessor.process(job.data as RequirementExtractionJobPayload);
+          logger.info(
+            {
+              jobId: job.id,
+              name,
+              documentId: job.data.documentId,
+              organizationId: job.data.organizationId,
+              ...result,
+            },
+            result.processed
+              ? "requirement extraction job complete"
+              : "requirement extraction job skipped, already processed",
+          );
+          return result;
+        }
+
         const result = await processor.process(name, job.data);
         logger.info(
           {
@@ -50,6 +77,9 @@ export function createDocumentsWorker(connection: IORedis): Worker {
           },
           result.processed ? "document job complete" : "document job skipped, already processed",
         );
+        if (name === DOCUMENT_JOBS.PARSE) {
+          await enqueueRequirementExtractionIfReady(queue, documentExtractions, requirementRepo, job.data);
+        }
         return result;
       } catch (error) {
         /*
@@ -59,7 +89,14 @@ export function createDocumentsWorker(connection: IORedis): Worker {
          * already known on the first read.
          */
         if (isPermanent(error)) {
-          await processor.recordFailure(job.data, (error as Error).message);
+          if (name === DOCUMENT_JOBS.REQUIREMENT_EXTRACT) {
+            await requirementProcessor.recordFailure(
+              job.data as RequirementExtractionJobPayload,
+              (error as Error).message,
+            );
+          } else {
+            await processor.recordFailure(job.data, (error as Error).message);
+          }
           throw new UnrecoverableError((error as Error).message);
         }
         throw error;
@@ -96,22 +133,44 @@ export function createDocumentsWorker(connection: IORedis): Worker {
     );
 
     if (!exhausted || !job.data) return;
-    /*
-     * Permanent failures already recorded their reason before throwing. This
-     * covers the other path: a transient error that never recovered, where the
-     * document would otherwise sit in `processing` forever.
-     */
-    void processor
-      .recordFailure(job.data, error.message)
-      .catch((err: unknown) =>
-        logger.error({ jobId: job.id, err }, "could not record document failure"),
-      );
+    const record = job.name === DOCUMENT_JOBS.REQUIREMENT_EXTRACT
+      ? requirementProcessor.recordFailure(job.data as RequirementExtractionJobPayload, error.message)
+      : processor.recordFailure(job.data, error.message);
+    void record.catch((err: unknown) =>
+      logger.error({ jobId: job.id, err }, "could not record document failure"),
+    );
   });
 
   worker.on("ready", () => logger.info(`listening on queue '${QUEUES.DOCUMENTS}'`));
   worker.on("error", (err) => logger.error({ err }, "worker connection error"));
 
   return worker;
+}
+
+async function enqueueRequirementExtractionIfReady(
+  queue: Queue,
+  documentExtractionsRepo: ExtractionRepository,
+  requirementRepo: RequirementExtractionRepository,
+  payload: DocumentJobPayload,
+): Promise<void> {
+  const extraction = await documentExtractionsRepo.find(payload.organizationId, payload.documentId, payload.version);
+  if (!extraction || extraction.status !== "succeeded") return;
+
+  const existing = await requirementRepo.findByDocumentExtraction(payload.organizationId, extraction.id);
+  if (existing?.status === "succeeded") return;
+
+  const jobId = documentJobId(DOCUMENT_JOBS.REQUIREMENT_EXTRACT, payload.documentId, payload.version);
+  const existingJob = await queue.getJob(jobId);
+  if (existingJob) return;
+
+  await queue.add(
+    DOCUMENT_JOBS.REQUIREMENT_EXTRACT,
+    {
+      ...payload,
+      documentExtractionId: extraction.id,
+    } satisfies RequirementExtractionJobPayload,
+    { ...jobDefaults(), jobId },
+  );
 }
 
 /**

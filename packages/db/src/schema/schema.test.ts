@@ -51,9 +51,12 @@ describe("schema barrel", () => {
     "documentExtractions",
     "documentPages",
     "documentTables",
-    // audit
-    "activities",
-    "auditLogs",
+  "documentBlocks",
+  "requirementExtractions",
+  "requirementCandidates",
+  // audit
+  "activities",
+  "auditLogs",
     // platform
     "notifications",
     "apiKeys",
@@ -91,6 +94,9 @@ describe("multi-tenancy", () => {
     "documentExtractions",
     "documentPages",
     "documentTables",
+    "documentBlocks",
+    "requirementExtractions",
+    "requirementCandidates",
     "activities",
     "auditLogs",
     "notifications",
@@ -103,5 +109,14 @@ describe("multi-tenancy", () => {
 
   test.each(ORG_SCOPED)("%s has an organizationId column", (name) => {
     expect(tableNamed(name).organizationId).toBeDefined();
+  });
+
+  test("requirementCandidateSources is lineage-scoped through its candidate", () => {
+    const table = tableNamed("requirementCandidateSources");
+    expect(table.organizationId).toBeUndefined();
+    expect(table.candidateId).toBeDefined();
+    expect(table.documentPageId).toBeDefined();
+    expect(table.documentTableId).toBeDefined();
+    expect(table.documentBlockId).toBeDefined();
   });
 });

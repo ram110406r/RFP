@@ -10,6 +10,7 @@
 
 export const DOCUMENT_JOBS = {
   PARSE: "DOCUMENT_PARSE",
+  REQUIREMENT_EXTRACT: "DOCUMENT_REQUIREMENT_EXTRACT",
   OCR: "DOCUMENT_OCR",
   TABLE_EXTRACTION: "TABLE_EXTRACTION",
   NORMALIZATION: "DOCUMENT_NORMALIZATION",
@@ -40,6 +41,12 @@ export interface DocumentJobPayload {
   mimeType: string;
   /** Who caused the work. Null for system-initiated reprocessing. */
   actorId: string | null;
+  /** Present for requirement extraction jobs, where the document extraction is the lineage anchor. */
+  documentExtractionId?: string;
+}
+
+export interface RequirementExtractionJobPayload extends DocumentJobPayload {
+  documentExtractionId: string;
 }
 
 /**

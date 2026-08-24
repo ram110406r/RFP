@@ -18,6 +18,7 @@
     "@rfp-os/observability": "workspace:*",
     "@rfp-os/storage": "workspace:*",
     "@rfp-os/types": "workspace:*",
+    "@rfp-os/validation": "workspace:*",
     "bullmq": "^5.34.0",
     "drizzle-orm": "^0.44.7",
     "ioredis": "^5.4.1",

@@ -1,4 +1,5 @@
 import {
+  documentBlocks,
   documentExtractions,
   documentPages,
   documentTables,
@@ -25,8 +26,15 @@ export interface ExtractedTable {
   /** Null when the format has no pages, or the table spans several. */
   pageNumber?: number | null;
   caption?: string;
-  /** Rows of cells, all text — see the schema comment for why. */
+  /** Rows of cells, all text - see the schema comment for why. */
   cells: string[][];
+}
+
+export interface ExtractedBlock {
+  kind: "heading" | "paragraph" | "listItem" | "table";
+  text: string;
+  headingPath: string[];
+  sourceRef: { xmlKind: "w:p" | "w:tbl"; index: number };
 }
 
 export interface ExtractionResult {
@@ -34,6 +42,7 @@ export interface ExtractionResult {
   extractor: string;
   pages: ExtractedPage[];
   tables: ExtractedTable[];
+  blocks?: ExtractedBlock[];
 }
 
 export interface StoredExtraction {
@@ -132,6 +141,7 @@ export class ExtractionRepository {
      */
     await tx.delete(documentPages).where(eq(documentPages.extractionId, extraction.id));
     await tx.delete(documentTables).where(eq(documentTables.extractionId, extraction.id));
+    await tx.delete(documentBlocks).where(eq(documentBlocks.extractionId, extraction.id));
 
     if (result.pages.length) {
       await tx.insert(documentPages).values(
@@ -164,6 +174,21 @@ export class ExtractionRepository {
           rowCount: table.cells.length,
           columnCount: table.cells[0]?.length ?? 0,
           cells: table.cells,
+        })),
+      );
+    }
+
+    if (result.blocks?.length) {
+      await tx.insert(documentBlocks).values(
+        result.blocks.map((block, index) => ({
+          organizationId,
+          extractionId: extraction.id,
+          documentId,
+          blockNumber: index + 1,
+          kind: block.kind,
+          text: block.text,
+          headingPath: block.headingPath,
+          sourceRef: block.sourceRef,
         })),
       );
     }
@@ -234,6 +259,7 @@ export class ExtractionRepository {
     if (!extraction) return;
     await tx.delete(documentPages).where(eq(documentPages.extractionId, extraction.id));
     await tx.delete(documentTables).where(eq(documentTables.extractionId, extraction.id));
+    await tx.delete(documentBlocks).where(eq(documentBlocks.extractionId, extraction.id));
   }
 
   /** The extraction for one document version, or null. Org-scoped. */
@@ -278,5 +304,19 @@ export class ExtractionRepository {
         ),
       )
       .orderBy(asc(documentTables.tableIndex));
+  }
+
+  /** Logical blocks in reading order. Org-scoped. */
+  async listBlocks(organizationId: string, extractionId: string) {
+    return getDb()
+      .select()
+      .from(documentBlocks)
+      .where(
+        and(
+          eq(documentBlocks.organizationId, organizationId),
+          eq(documentBlocks.extractionId, extractionId),
+        ),
+      )
+      .orderBy(asc(documentBlocks.blockNumber));
   }
 }
