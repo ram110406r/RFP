@@ -13,15 +13,21 @@ import { DATABASE } from "../database";
  */
 export interface AuditEntry {
   organizationId: string;
+  workspaceId?: string | null;
   actorId?: string | null;
+  actorType?: "user" | "ai_agent" | "system" | "integration";
   action: string;
   entityType: string;
   entityId: string;
   previousValue?: unknown;
   newValue?: unknown;
+  beforeState?: unknown;
+  afterState?: unknown;
   metadata?: Record<string, unknown>;
   ipAddress?: string | null;
   userAgent?: string | null;
+  requestId?: string | null;
+  correlationId?: string | null;
 }
 
 /**
@@ -42,15 +48,21 @@ export class AuditService {
     const executor = tx ?? this.db;
     await executor.insert(auditLogs).values({
       organizationId: entry.organizationId,
+      workspaceId: entry.workspaceId ?? null,
       actorId: entry.actorId ?? null,
+      actorType: entry.actorType ?? "user",
       action: entry.action,
       entityType: entry.entityType,
       entityId: entry.entityId,
       previousValue: entry.previousValue ?? null,
       newValue: entry.newValue ?? null,
+      beforeState: entry.beforeState ?? entry.previousValue ?? null,
+      afterState: entry.afterState ?? entry.newValue ?? null,
       metadata: entry.metadata ?? null,
       ipAddress: entry.ipAddress ?? null,
       userAgent: entry.userAgent ?? null,
+      requestId: entry.requestId ?? null,
+      correlationId: entry.correlationId ?? null,
     });
   }
 }
