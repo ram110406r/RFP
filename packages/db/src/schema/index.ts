@@ -13,6 +13,7 @@ export * from "./organization";
 export * from "./identity";
 export * from "./auth";
 export * from "./membership";
+export * from "./foundation";
 export * from "./files";
 export * from "./knowledge";
 export * from "./rfp";

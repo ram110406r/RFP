@@ -24,6 +24,18 @@ describe("schema barrel", () => {
     "projects",
     // identity
     "users",
+    // membership / foundation
+    "organizationMembers",
+    "invitations",
+    "workspaceMembers",
+    "teamMembers",
+    "organizationMemberRoles",
+    "workspaceMemberRoles",
+    "accessPolicies",
+    "policyConditions",
+    "workspaces",
+    "teams",
+    "assignments",
     // files
     "files",
     "documentVersions",
@@ -54,6 +66,7 @@ describe("schema barrel", () => {
   "documentBlocks",
   "requirementExtractions",
   "requirementCandidates",
+  "assignments",
   // audit
   "activities",
   "auditLogs",
@@ -97,6 +110,9 @@ describe("multi-tenancy", () => {
     "documentBlocks",
     "requirementExtractions",
     "requirementCandidates",
+    "workspaces",
+    "teams",
+    "assignments",
     "activities",
     "auditLogs",
     "notifications",
@@ -118,5 +134,14 @@ describe("multi-tenancy", () => {
     expect(table.documentPageId).toBeDefined();
     expect(table.documentTableId).toBeDefined();
     expect(table.documentBlockId).toBeDefined();
+  });
+
+  test("workspace and team membership tables scope indirectly through their parents", () => {
+    expect(tableNamed("workspaceMembers").organizationId).toBeUndefined();
+    expect(tableNamed("workspaceMembers").workspaceId).toBeDefined();
+    expect(tableNamed("workspaceMembers").organizationMemberId).toBeDefined();
+    expect(tableNamed("teamMembers").organizationId).toBeUndefined();
+    expect(tableNamed("teamMembers").teamId).toBeDefined();
+    expect(tableNamed("teamMembers").organizationMemberId).toBeDefined();
   });
 });
