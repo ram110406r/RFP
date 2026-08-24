@@ -5,7 +5,7 @@ import { getDb, orgScope, resolveDatabaseUrl, withTransaction } from "./client";
 import { organizations, rfps } from "./schema";
 
 describe("resolveDatabaseUrl", () => {
-  test("prefers DATABASE_URL when present", () => {
+  test("uses DATABASE_URL when postgres parts are absent", () => {
     expect(resolveDatabaseUrl({ DATABASE_URL: "postgres://direct" })).toBe("postgres://direct");
   });
 
@@ -17,6 +17,19 @@ describe("resolveDatabaseUrl", () => {
         POSTGRES_DB: "rfp db",
       }),
     ).toBe("postgres://demo%20user:p%40ss%3Aword%2Fwith%23chars@postgres:5432/rfp%20db");
+  });
+
+  test("prefers explicit postgres parts over DATABASE_URL", () => {
+    expect(
+      resolveDatabaseUrl({
+        DATABASE_URL: "postgres://wrong:wrong@localhost:55432/wrong",
+        POSTGRES_USER: "rfpos",
+        POSTGRES_PASSWORD: "secret",
+        POSTGRES_DB: "rfpos",
+        POSTGRES_HOST: "postgres",
+        POSTGRES_PORT: "5432",
+      }),
+    ).toBe("postgres://rfpos:secret@postgres:5432/rfpos");
   });
 });
 

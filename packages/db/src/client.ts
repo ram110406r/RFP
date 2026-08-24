@@ -47,27 +47,23 @@ export function getDb() {
 /**
  * Resolves the database connection string for the runtime path.
  *
- * Local dev and test environments still prefer DATABASE_URL directly. The
- * deployment compose files fall back to the individual Postgres parts so
- * credentials do not have to survive URL interpolation rules.
+ * Deployment compose files pass POSTGRES_* explicitly, and those values must
+ * win over any inherited DATABASE_URL so containers do not accidentally keep
+ * pointing at a developer localhost. Local dev and tests still work with a
+ * bare DATABASE_URL when the individual parts are absent.
  */
 export function resolveDatabaseUrl(env: DatabaseEnv = process.env as DatabaseEnv) {
-  const directUrl = env.DATABASE_URL?.trim();
-  if (directUrl) {
-    return directUrl;
-  }
-
   const user = env.POSTGRES_USER?.trim();
   const password = env.POSTGRES_PASSWORD ?? "";
   const database = env.POSTGRES_DB?.trim();
-  if (!user || !database) {
-    return undefined;
+  if (user && database) {
+    const host = env.POSTGRES_HOST?.trim() || "postgres";
+    const port = env.POSTGRES_PORT?.trim() || "5432";
+
+    return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}`;
   }
 
-  const host = env.POSTGRES_HOST?.trim() || "postgres";
-  const port = env.POSTGRES_PORT?.trim() || "5432";
-
-  return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(database)}`;
+  return env.DATABASE_URL?.trim();
 }
 
 export type Database = ReturnType<typeof getDb>;
