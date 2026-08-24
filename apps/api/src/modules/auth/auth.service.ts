@@ -1,8 +1,27 @@
 import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { and, eq } from "drizzle-orm";
-import { organizationMembers, organizations, sessions, users, type Database } from "@rfp-os/db";
-import { permissionsForRole, type AuthContext, type OrgRole } from "@rfp-os/types";
+import { and, eq, isNull, or } from "drizzle-orm";
+import {
+  organizationMemberRoles,
+  organizationMembers,
+  organizations,
+  permissions,
+  rolePermissions,
+  roles,
+  sessions,
+  users,
+  workspaceMemberRoles,
+  workspaceMembers,
+  workspaces,
+  type Database,
+} from "@rfp-os/db";
+import {
+  permissionsForRole,
+  type AuthContext,
+  type OrgRole,
+  type Permission,
+  WORKSPACE_SCOPED_PERMISSIONS,
+} from "@rfp-os/types";
 
 import { DATABASE } from "../../infrastructure/database";
 import type { Env } from "../../config/env.schema";
@@ -75,12 +94,31 @@ export class AuthService {
     if (!membership) return null;
 
     const role = membership.role as OrgRole;
+    const basePermissions = permissionsForRole(role);
+    const organizationPermissions = uniquePermissions([
+      ...organizationScopedPermissions(role, basePermissions),
+      ...(await this.loadOrganizationRolePermissions(membership.id, membership.organizationId)),
+    ]);
+    const workspaceAccess = await this.loadWorkspaceAccess(
+      membership.id,
+      membership.organizationId,
+      workspaceScopedPermissions(role, basePermissions),
+    );
+
     return {
       userId: session.userId,
       organizationId: membership.organizationId,
+      organizationMemberId: membership.id,
       role,
-      permissions: permissionsForRole(role),
+      organizationPermissions,
+      permissions: uniquePermissions([
+        ...organizationPermissions,
+        ...Object.values(workspaceAccess.workspacePermissions).flat(),
+      ]),
       sessionId: session.sessionId,
+      workspaceIds: Object.keys(workspaceAccess.workspaceMemberIds),
+      workspacePermissions: workspaceAccess.workspacePermissions,
+      workspaceMemberIds: workspaceAccess.workspaceMemberIds,
     };
   }
 
@@ -201,4 +239,116 @@ export class AuthService {
 
     return { ...membership, role: membership.role as OrgRole };
   }
+
+  private async loadOrganizationRolePermissions(
+    organizationMemberId: string,
+    organizationId: string,
+  ): Promise<readonly Permission[]> {
+    const rows = await this.db
+      .select({ key: permissions.key })
+      .from(organizationMemberRoles)
+      .innerJoin(roles, eq(roles.id, organizationMemberRoles.roleId))
+      .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+      .where(
+        and(
+          eq(organizationMemberRoles.organizationMemberId, organizationMemberId),
+          or(eq(roles.organizationId, organizationId), isNull(roles.organizationId)),
+        ),
+      );
+
+    return rows.map((row) => row.key as Permission);
+  }
+
+  private async loadWorkspaceAccess(
+    organizationMemberId: string,
+    organizationId: string,
+    inheritedPermissions: readonly Permission[],
+  ) {
+    const memberships = await this.db
+      .select({
+        workspaceId: workspaceMembers.workspaceId,
+        workspaceMemberId: workspaceMembers.id,
+      })
+      .from(workspaceMembers)
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+      .where(
+        and(
+          eq(workspaceMembers.organizationMemberId, organizationMemberId),
+          eq(workspaceMembers.status, "active"),
+          eq(workspaces.organizationId, organizationId),
+          eq(workspaces.status, "active"),
+        ),
+      );
+
+    const workspaceMemberIds: Record<string, string> = Object.fromEntries(
+      memberships.map((membership) => [membership.workspaceId, membership.workspaceMemberId]),
+    );
+    const workspacePermissions: Record<string, readonly Permission[]> = Object.fromEntries(
+      memberships.map((membership) => [
+        membership.workspaceId,
+        uniquePermissions(inheritedPermissions),
+      ]),
+    );
+
+    if (memberships.length === 0) {
+      return { workspaceMemberIds, workspacePermissions };
+    }
+
+    const rows = await this.db
+      .select({
+        workspaceId: workspaceMembers.workspaceId,
+        key: permissions.key,
+      })
+      .from(workspaceMembers)
+      .innerJoin(workspaceMemberRoles, eq(workspaceMemberRoles.workspaceMemberId, workspaceMembers.id))
+      .innerJoin(roles, eq(roles.id, workspaceMemberRoles.roleId))
+      .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+      .where(
+        and(
+          eq(workspaceMembers.organizationMemberId, organizationMemberId),
+          eq(workspaceMembers.status, "active"),
+          eq(workspaces.organizationId, organizationId),
+          eq(workspaces.status, "active"),
+          or(eq(roles.organizationId, organizationId), isNull(roles.organizationId)),
+        ),
+      );
+
+    for (const row of rows) {
+      workspacePermissions[row.workspaceId] = uniquePermissions([
+        ...(workspacePermissions[row.workspaceId] ?? []),
+        row.key as Permission,
+      ]);
+    }
+
+    return { workspaceMemberIds, workspacePermissions };
+  }
+}
+
+function uniquePermissions<T extends string>(permissions: readonly T[]): readonly T[] {
+  return [...new Set(permissions)];
+}
+
+function organizationScopedPermissions(
+  role: OrgRole,
+  permissions: readonly Permission[],
+): readonly Permission[] {
+  if (role === "OWNER" || role === "ADMIN") {
+    return permissions;
+  }
+
+  return permissions.filter((permission) => !WORKSPACE_SCOPED_PERMISSIONS.includes(permission));
+}
+
+function workspaceScopedPermissions(
+  role: OrgRole,
+  permissions: readonly Permission[],
+): readonly Permission[] {
+  if (role === "OWNER" || role === "ADMIN") {
+    return [];
+  }
+
+  return permissions.filter((permission) => WORKSPACE_SCOPED_PERMISSIONS.includes(permission));
 }
