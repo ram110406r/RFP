@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, eq, or, isNull } from "drizzle-orm";
-import { accessPolicies, type Database } from "@rfp-os/db";
+import { evaluatePolicies } from "@rfp-os/authorization";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { accessPolicies, policyConditions, type Database } from "@rfp-os/db";
 import type { AuthContext } from "@rfp-os/types";
 
 import { DATABASE } from "../../infrastructure/database";
@@ -10,15 +11,6 @@ import { DATABASE } from "../../infrastructure/database";
  * Values are compared literally against a policy's condition.
  */
 export type ResourceAttributes = Record<string, string | number | boolean | null | undefined>;
-
-/**
- * A stored condition, e.g. `{ "risk": "critical", "assigneeId": "$subject.userId" }`.
- *
- * Every key must match for the condition to hold. The `$subject.` prefix
- * resolves against the caller, which is what expresses relationship rules
- * ("only the assigned reviewer") without a bespoke query per rule.
- */
-type Condition = Record<string, unknown>;
 
 export interface PolicyDecision {
   allowed: boolean;
@@ -60,51 +52,72 @@ export class PolicyService {
           eq(accessPolicies.resource, resource),
           or(eq(accessPolicies.action, action), eq(accessPolicies.action, "*")),
           or(isNull(accessPolicies.role), eq(accessPolicies.role, auth.role)),
+          eq(accessPolicies.status, "active"),
         ),
       );
 
     if (policies.length === 0) return { allowed: true };
 
-    const matching = policies
-      .filter((policy) =>
-        this.conditionHolds(policy.condition as Condition | null, auth, attributes),
-      )
-      .sort((a, b) => b.priority - a.priority);
+    const conditionRows = await this.db
+      .select()
+      .from(policyConditions)
+      .where(inArray(policyConditions.policyId, policies.map((policy) => policy.id)));
+    const conditions = conditionRows.filter(
+      (condition): condition is typeof policyConditions.$inferSelect =>
+        typeof (condition as { attribute?: unknown }).attribute === "string",
+    );
 
-    const denied = matching.find((policy) => policy.effect === "deny");
-    if (denied) {
-      return {
-        allowed: false,
-        reason: denied.description || `Denied by policy on ${resource}:${action}.`,
-      };
-    }
+    const decision = evaluatePolicies(
+      {
+        userId: auth.userId,
+        organizationId: auth.organizationId,
+        role: auth.role,
+        permissions: auth.permissions,
+      },
+      {
+        type: resource,
+        organizationId: auth.organizationId,
+        attributes,
+      },
+      action,
+      policies.map((policy) => ({
+        effect: policy.effect,
+        action: policy.action,
+        resource: policy.resource,
+        priority: policy.priority,
+        conditions: [
+          ...this.conditionsFromLegacyJson(policy.condition as Record<string, unknown> | null),
+          ...conditions
+            .filter((condition) => condition.policyId === policy.id)
+            .map((condition) => ({
+              attribute: condition.attribute,
+              operator: condition.operator,
+              value: condition.value,
+              logicalGroup: condition.logicalGroup,
+            })),
+        ],
+      })),
+    );
 
-    /**
-     * If policies exist for this resource/action but none matched, RBAC still
-     * governs — these rules narrow access, they are not an allowlist.
-     */
-    return { allowed: true };
+    return decision.allowed
+      ? { allowed: true }
+      : {
+          allowed: false,
+          reason:
+            policies.find((policy) => policy.effect === "deny")?.description ||
+            `Denied by policy on ${resource}:${action}.`,
+        };
   }
 
-  private conditionHolds(
-    condition: Condition | null,
-    auth: AuthContext,
-    attributes: ResourceAttributes,
-  ): boolean {
-    if (!condition || Object.keys(condition).length === 0) return true;
-
-    return Object.entries(condition).every(([key, expected]) => {
-      const resolved = this.resolveExpected(expected, auth);
-      return attributes[key] === resolved;
-    });
-  }
-
-  private resolveExpected(expected: unknown, auth: AuthContext): unknown {
-    if (typeof expected !== "string" || !expected.startsWith("$subject.")) return expected;
-    const field = expected.slice("$subject.".length);
-    if (field === "userId") return auth.userId;
-    if (field === "organizationId") return auth.organizationId;
-    if (field === "role") return auth.role;
-    return undefined;
+  private conditionsFromLegacyJson(condition: Record<string, unknown> | null) {
+    if (!condition || Object.keys(condition).length === 0) return [];
+    return Object.entries(condition).map(([attribute, value]) => ({
+      attribute: `resource.${attribute}`,
+      operator: "eq" as const,
+      value: typeof value === "string" && value.startsWith("$subject.")
+        ? `$actor.${value.slice("$subject.".length)}`
+        : value,
+      logicalGroup: "legacy",
+    }));
   }
 }
