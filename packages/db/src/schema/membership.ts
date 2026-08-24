@@ -11,8 +11,10 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { timestamps } from "./_shared";
+import { teams, workspaces } from "./foundation";
 import { users } from "./identity";
 import { organizations } from "./organization";
+import { roles } from "./organization";
 
 /**
  * The seven platform roles from the implementation plan.
@@ -33,7 +35,12 @@ export const orgRoleEnum = pgEnum("org_role", [
   "VIEWER",
 ]);
 
-export const membershipStatusEnum = pgEnum("membership_status", ["active", "suspended", "removed"]);
+export const membershipStatusEnum = pgEnum("membership_status", [
+  "invited",
+  "active",
+  "suspended",
+  "removed",
+]);
 
 /**
  * The authoritative answer to "may this user act in this organization, and as
@@ -94,6 +101,7 @@ export const invitations = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
     email: text("email").notNull(),
     role: orgRoleEnum("role").notNull().default("VIEWER"),
     token: text("token").notNull(),
@@ -107,12 +115,87 @@ export const invitations = pgTable(
   (t) => [
     uniqueIndex("invitations_token_uq").on(t.token),
     index("invitations_org_idx").on(t.organizationId),
+    index("invitations_workspace_idx").on(t.workspaceId),
     index("invitations_email_idx").on(t.email),
     index("invitations_org_status_idx").on(t.organizationId, t.status),
   ],
 );
 
+export const workspaceMembershipStatusEnum = pgEnum("workspace_membership_status", [
+  "active",
+  "removed",
+]);
+
+export const workspaceMembers = pgTable(
+  "workspace_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    organizationMemberId: uuid("organization_member_id")
+      .notNull()
+      .references(() => organizationMembers.id, { onDelete: "cascade" }),
+    status: workspaceMembershipStatusEnum("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("workspace_members_workspace_member_uq").on(
+      t.workspaceId,
+      t.organizationMemberId,
+    ),
+    index("workspace_members_workspace_idx").on(t.workspaceId),
+    index("workspace_members_org_member_idx").on(t.organizationMemberId),
+  ],
+);
+
+export const teamMembers = pgTable(
+  "team_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    organizationMemberId: uuid("organization_member_id")
+      .notNull()
+      .references(() => organizationMembers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("team_members_team_member_uq").on(t.teamId, t.organizationMemberId),
+    index("team_members_team_idx").on(t.teamId),
+    index("team_members_org_member_idx").on(t.organizationMemberId),
+  ],
+);
+
+export const organizationMemberRoles = pgTable(
+  "organization_member_roles",
+  {
+    organizationMemberId: uuid("organization_member_id")
+      .notNull()
+      .references(() => organizationMembers.id, { onDelete: "cascade" }),
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+  },
+  (t) => [uniqueIndex("organization_member_roles_uq").on(t.organizationMemberId, t.roleId)],
+);
+
+export const workspaceMemberRoles = pgTable(
+  "workspace_member_roles",
+  {
+    workspaceMemberId: uuid("workspace_member_id")
+      .notNull()
+      .references(() => workspaceMembers.id, { onDelete: "cascade" }),
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+  },
+  (t) => [uniqueIndex("workspace_member_roles_uq").on(t.workspaceMemberId, t.roleId)],
+);
+
 export const policyEffectEnum = pgEnum("policy_effect", ["allow", "deny"]);
+export const policyStatusEnum = pgEnum("policy_status", ["active", "disabled"]);
 
 /**
  * ABAC foundation.
@@ -136,6 +219,8 @@ export const accessPolicies = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
+    name: text("name").notNull().default(""),
     description: text("description").notNull().default(""),
     /** Null means the policy applies to every role in the organization. */
     role: orgRoleEnum("role"),
@@ -146,10 +231,36 @@ export const accessPolicies = pgTable(
     effect: policyEffectEnum("effect").notNull().default("allow"),
     condition: jsonb("condition"),
     priority: integer("priority").notNull().default(0),
+    status: policyStatusEnum("status").notNull().default("active"),
     ...timestamps,
   },
   (t) => [
     index("access_policies_org_idx").on(t.organizationId),
-    index("access_policies_lookup_idx").on(t.organizationId, t.resource, t.action),
+    index("access_policies_lookup_idx").on(t.organizationId, t.workspaceId, t.resource, t.action),
   ],
+);
+
+export const policyConditionOperatorEnum = pgEnum("policy_condition_operator", [
+  "eq",
+  "neq",
+  "in",
+  "not_in",
+  "exists",
+  "not_exists",
+]);
+
+export const policyConditions = pgTable(
+  "policy_conditions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    policyId: uuid("policy_id")
+      .notNull()
+      .references(() => accessPolicies.id, { onDelete: "cascade" }),
+    attribute: text("attribute").notNull(),
+    operator: policyConditionOperatorEnum("operator").notNull(),
+    value: jsonb("value"),
+    logicalGroup: text("logical_group").notNull().default("default"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("policy_conditions_policy_idx").on(t.policyId)],
 );

@@ -1,6 +1,22 @@
-import { index, integer, pgTable, primaryKey, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 import { timestamps } from "./_shared";
+
+export const organizationStatusEnum = pgEnum("organization_status", [
+  "active",
+  "suspended",
+  "archived",
+]);
 
 /**
  * Tenancy root. Every org-scoped table carries `organization_id` with a
@@ -10,6 +26,8 @@ import { timestamps } from "./_shared";
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  slug: text("slug"),
+  status: organizationStatusEnum("status").notNull().default("active"),
   domain: text("domain").notNull(),
   plan: text("plan").notNull().default("Starter"),
   seats: integer("seats").notNull().default(10),
@@ -22,11 +40,12 @@ export const roles = pgTable(
   "roles",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "cascade",
+    }),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
+    isSystem: boolean("is_system").notNull().default(false),
     ...timestamps,
   },
   (t) => [uniqueIndex("roles_org_name_uq").on(t.organizationId, t.name)],
@@ -37,6 +56,10 @@ export const permissions = pgTable("permissions", {
   id: uuid("id").primaryKey().defaultRandom(),
   key: text("key").notNull().unique(),
   label: text("label").notNull(),
+  description: text("description").notNull().default(""),
+  resource: text("resource").notNull().default(""),
+  action: text("action").notNull().default(""),
+  ...timestamps,
 });
 
 export const rolePermissions = pgTable(
