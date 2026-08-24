@@ -1,0 +1,33 @@
+import { Controller, Get, Query } from "@nestjs/common";
+import type { AuthContext } from "@rfp-os/types";
+
+import { CurrentAuth, RequirePermissions } from "../../common/auth";
+import { ActivitiesService } from "./activities.service";
+
+@Controller({ path: "activities", version: "1" })
+export class ActivitiesController {
+  constructor(private readonly activities: ActivitiesService) {}
+
+  @Get()
+  @RequirePermissions("activity:read")
+  async search(
+    @CurrentAuth() auth: AuthContext,
+    @Query("workspaceId") workspaceId?: string,
+    @Query("q") q?: string,
+    @Query("action") action?: string,
+    @Query("entityType") entityType?: string,
+    @Query("rfpId") rfpId?: string,
+    @Query("actorId") actorId?: string,
+  ) {
+    return {
+      items: await this.activities.search(auth, {
+        workspaceId,
+        q,
+        action,
+        entityType,
+        rfpId,
+        actorId,
+      }),
+    };
+  }
+}
