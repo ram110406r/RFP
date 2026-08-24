@@ -18,6 +18,7 @@
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/throttler": "^6.4.0",
     "@rfp-os/ai": "workspace:*",
+    "@rfp-os/authorization": "workspace:*",
     "@rfp-os/db": "workspace:*",
     "@rfp-os/jobs": "workspace:*",
     "@rfp-os/observability": "workspace:*",

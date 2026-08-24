@@ -16,13 +16,21 @@ import type { Env } from "./config/env.schema";
 import { HealthModule } from "./health/health.module";
 import { DatabaseModule } from "./infrastructure/database";
 import { AuditModule } from "./infrastructure/audit";
+import { ActivityModule } from "./infrastructure/activity";
 import { EventsModule } from "./infrastructure/events";
 import { QueueModule } from "./infrastructure/queue";
 import { StorageModule } from "./infrastructure/storage";
 import { AuthModule } from "./modules/auth";
+import { ActivitiesModule } from "./modules/activities";
+import { AssignmentsModule } from "./modules/assignments";
+import { AuditsModule } from "./modules/audits";
 import { DocumentsModule } from "./modules/documents";
 import { OrganizationsModule } from "./modules/organizations";
+import { PoliciesModule } from "./modules/policies";
 import { RfpModule } from "./modules/rfp";
+import { RolesModule } from "./modules/roles";
+import { TeamsModule } from "./modules/teams";
+import { WorkspacesModule } from "./modules/workspaces";
 
 @Module({
   imports: [
@@ -41,12 +49,20 @@ import { RfpModule } from "./modules/rfp";
       }),
     }),
     HealthModule,
+    ActivityModule,
     AuditModule,
     EventsModule,
     QueueModule,
     StorageModule,
     AuthModule,
     OrganizationsModule,
+    RolesModule,
+    PoliciesModule,
+    WorkspacesModule,
+    TeamsModule,
+    AssignmentsModule,
+    ActivitiesModule,
+    AuditsModule,
     RfpModule,
     DocumentsModule,
   ],
