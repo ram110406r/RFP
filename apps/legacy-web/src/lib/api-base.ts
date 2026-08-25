@@ -21,13 +21,23 @@
  * against a locally running API keeps working with no configuration.
  */
 export function resolveApiBaseUrl(): string {
-  const configured = import.meta.env["VITE_API_URL"];
-
   if (typeof window === "undefined") {
     // `process` is not defined in every SSR target, so probe it defensively.
     const internal = typeof process !== "undefined" ? process.env?.["API_INTERNAL_URL"] : undefined;
+    const configured = typeof process !== "undefined" ? process.env?.["VITE_API_URL"] : undefined;
     return internal || configured || "http://localhost:4000";
   }
 
-  return configured || window.location.origin;
+  const configured = import.meta.env["VITE_API_URL"];
+  /**
+   * Browser requests must stay on the public origin in production so they hit
+   * the reverse proxy that serves the app. Local dev keeps using the explicit
+   * Vite override when one is configured, which preserves the existing
+   * localhost:3000 -> localhost:4000 workflow.
+   */
+  const isLocalDevOrigin =
+    window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+  if (isLocalDevOrigin && configured) return configured;
+  return window.location.origin;
 }
