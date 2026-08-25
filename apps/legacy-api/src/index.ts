@@ -1,5 +1,10 @@
 import { app } from "./app";
 
-app.listen(Number(process.env.PORT ?? 4000));
+const port = Number(process.env.PORT ?? 4000);
+const hostname = process.env.HOST ?? "0.0.0.0";
 
-console.log(`RFP OS API listening on http://localhost:${app.server?.port}`);
+app.listen({ port, hostname });
+
+console.log(
+  `RFP OS API listening on http://${app.server?.hostname ?? hostname}:${app.server?.port ?? port}`,
+);
