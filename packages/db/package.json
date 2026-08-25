@@ -12,10 +12,10 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "bun run src/migrate.ts",
+    "db:migrate": "bun src/migrate.ts",
     "db:push": "drizzle-kit push",
-    "db:seed": "bun run src/seed/index.ts",
-    "db:reset": "bun run src/reset.ts"
+    "db:seed": "bun src/seed/index.ts",
+    "db:reset": "bun src/reset.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.2",
