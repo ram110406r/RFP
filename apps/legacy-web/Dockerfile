@@ -3,7 +3,7 @@
 # the build produces .output/server/index.mjs, which we can run in a container.
 #
 # Built from the monorepo root as context (see docker-compose.prod.yml).
-FROM oven/bun:1.3.14-slim AS build
+FROM oven/bun:1.3.13-slim AS build
 
 WORKDIR /repo
 COPY . .

@@ -1,7 +1,7 @@
 # The API is Bun + Elysia and imports @rfp-os/db from the workspace, so the
 # image is built from the monorepo root as context (see docker-compose.prod.yml).
 # Bun executes TypeScript directly — there is no compile step to stage.
-FROM oven/bun:1.3.14-slim
+FROM oven/bun:1.3.13-slim
 
 WORKDIR /repo
 
