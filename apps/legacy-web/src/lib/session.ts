@@ -43,15 +43,53 @@ export function personName(id: string | null | undefined): string {
 
 let sessionPromise: Promise<void> | null = null;
 
+function maskEmail(email: string): string {
+  const [local = "", domain] = email.split("@");
+  if (!domain || local.length < 3) return "***";
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+function sanitizeLogText(text: string): string {
+  return text
+    .replace(/"token"\s*:\s*"[^"]*"/gi, '"token":"[redacted]"')
+    .replace(/"password"\s*:\s*"[^"]*"/gi, '"password":"[redacted]"')
+    .replace(/"cookie"\s*:\s*"[^"]*"/gi, '"cookie":"[redacted]"')
+    .replace(/authorization:\s*bearer\s+[^\s"]+/gi, "authorization: bearer [redacted]")
+    .slice(0, 500);
+}
+
 async function bootstrapSession(): Promise<void> {
   const API_BASE_URL = resolveApiBaseUrl();
+  const loginUrl = new URL("/api/auth/dev-login", API_BASE_URL).toString();
+  const apiHost = new URL(API_BASE_URL).host;
+
+  console.info("[session] dev-login request", {
+    apiBaseUrl: API_BASE_URL,
+    apiHost,
+    method: "POST",
+    url: loginUrl,
+    email: maskEmail(DEV_LOGIN_EMAIL),
+    runtime: typeof window === "undefined" ? "ssr" : "browser",
+    apiInternalUrlSet:
+      typeof process !== "undefined" ? Boolean(process.env?.["API_INTERNAL_URL"]) : false,
+  });
+
   const loginRes = await fetch(`${API_BASE_URL}/api/auth/dev-login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: DEV_LOGIN_EMAIL }),
   });
   if (!loginRes.ok) {
-    throw new Error(`Dev login failed (${loginRes.status}). Is the API server running?`);
+    const contentType = loginRes.headers.get("content-type") ?? "";
+    const rawBody = await loginRes.text();
+    console.warn("[session] dev-login response", {
+      url: loginUrl,
+      method: "POST",
+      status: loginRes.status,
+      contentType,
+      body: sanitizeLogText(rawBody),
+    });
+    throw new Error(`Dev login failed (${loginRes.status}).`);
   }
   const { token } = (await loginRes.json()) as { token: string };
   authToken = token;

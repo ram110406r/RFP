@@ -18,6 +18,12 @@ function toPublicUser(user: typeof users.$inferSelect) {
   };
 }
 
+function maskEmail(email: string): string {
+  const [local = "", domain] = email.split("@");
+  if (!domain || local.length < 3) return "***";
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
 /**
  * DEV-ONLY auth endpoints — see src/lib/auth.ts for the full rationale.
  * dev-login exchanges a seeded user's email for a bearer token (their user
@@ -31,7 +37,12 @@ export const authModule = new Elysia({ prefix: "/api/auth" })
     async ({ body }) => {
       const rows = await db.select().from(users).where(eq(users.email, body.email)).limit(1);
       const user = rows[0];
-      if (!user) throw unauthorized(`No user found for ${body.email}.`);
+      if (!user) {
+        console.warn("[auth] dev-login rejected: seeded user not found", {
+          email: maskEmail(body.email),
+        });
+        throw unauthorized(`No user found for ${body.email}.`);
+      }
       return { token: user.id, user: toPublicUser(user) };
     },
     { body: t.Object({ email: t.String() }) },
