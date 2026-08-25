@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { getDb } from "./client";
+import { closeDb, getDb } from "./client";
 
 const migrationsFolder = join(import.meta.dir, "..", "migrations");
 
@@ -16,13 +16,17 @@ async function main() {
   console.log(`[migrate] connecting to database`);
 
   const db = getDb();
-  await db.execute(sql`select 1`);
+  try {
+    await db.execute(sql`select 1`);
 
-  console.log(`[migrate] database connection successful`);
-  console.log(`[migrate] running migrations`);
-  await migrate(db, { migrationsFolder });
-  console.log(`[migrate] migrations completed successfully`);
-  console.log(`[migrate] exiting 0`);
+    console.log(`[migrate] database connection successful`);
+    console.log(`[migrate] running migrations`);
+    await migrate(db, { migrationsFolder });
+    console.log(`[migrate] migrations completed successfully`);
+    console.log(`[migrate] exiting 0`);
+  } finally {
+    await closeDb();
+  }
 }
 
 main().catch((error: unknown) => {

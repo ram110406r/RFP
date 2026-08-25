@@ -45,6 +45,21 @@ export function getDb() {
 }
 
 /**
+ * Closes the shared database pool for one-shot scripts.
+ *
+ * App servers should keep the pool open for the lifetime of the process, but
+ * standalone commands such as migrations and seed jobs need to release their
+ * handles so Bun can exit cleanly without Dokploy eventually sending SIGTERM.
+ */
+export async function closeDb() {
+  if (queryClient) {
+    await queryClient.end();
+    queryClient = undefined;
+    db = undefined;
+  }
+}
+
+/**
  * Resolves the database connection string for the runtime path.
  *
  * Deployment compose files pass POSTGRES_* explicitly, and those values must
