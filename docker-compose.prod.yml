@@ -67,6 +67,12 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"fetch('http://127.0.0.1:4000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   web:
     build:
@@ -79,7 +85,14 @@ services:
       # password gate would 401 it — so it calls the API container directly.
       API_INTERNAL_URL: http://api:4000
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   caddy:
     image: caddy:2-alpine
@@ -97,8 +110,10 @@ services:
       - rfp_os_prod_caddy_data:/data
       - rfp_os_prod_caddy_config:/config
     depends_on:
-      - web
-      - api
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
 
 volumes:
   rfp_os_prod_postgres_data:
