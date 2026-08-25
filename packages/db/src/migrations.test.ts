@@ -58,4 +58,15 @@ describe("migration history", () => {
       .join("\n");
     expect(sql).toContain("CREATE EXTENSION IF NOT EXISTS vector");
   });
+
+  test("0011 repairs missing 0010 extraction tables before referencing them", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0011_overjoyed_mauler.sql"), "utf8");
+    const repairIndex = sql.indexOf('CREATE TABLE IF NOT EXISTS "document_extractions"');
+    const fkIndex = sql.indexOf(
+      'ALTER TABLE "document_blocks" ADD CONSTRAINT "document_blocks_extraction_id_document_extractions_id_fk"',
+    );
+
+    expect(repairIndex).toBeGreaterThanOrEqual(0);
+    expect(fkIndex).toBeGreaterThan(repairIndex);
+  });
 });
