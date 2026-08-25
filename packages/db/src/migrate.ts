@@ -1,4 +1,5 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { sql } from "drizzle-orm";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -15,6 +16,7 @@ async function main() {
   console.log(`[migrate] connecting to database`);
 
   const db = getDb();
+  await db.execute(sql`select 1`);
 
   console.log(`[migrate] database connection successful`);
   console.log(`[migrate] running migrations`);
@@ -25,14 +27,7 @@ async function main() {
 
 main().catch((error: unknown) => {
   console.error(`[migrate] FAILED`);
-  if (error instanceof Error) {
-    console.error(`[migrate] error: ${error.message}`);
-    if (error.stack) {
-      console.error(`[migrate] stack: ${error.stack}`);
-    }
-  } else {
-    console.error(`[migrate] error:`, error);
-  }
+  logError(error);
   process.exit(1);
 });
 
@@ -58,4 +53,29 @@ function describeDatabaseTarget(env: NodeJS.ProcessEnv = process.env) {
   }
 
   return "<unconfigured>";
+}
+
+function logError(error: unknown, depth = 0) {
+  const label = depth === 0 ? "error" : `cause ${depth}`;
+
+  if (!(error instanceof Error)) {
+    console.error(`[migrate] ${label}:`, error);
+    return;
+  }
+
+  console.error(`[migrate] ${label}: ${error.message}`);
+
+  const details = error as Error & {
+    code?: string;
+    severity?: string;
+    detail?: string;
+    hint?: string;
+    cause?: unknown;
+  };
+  if (details.code) console.error(`[migrate] ${label} code: ${details.code}`);
+  if (details.severity) console.error(`[migrate] ${label} severity: ${details.severity}`);
+  if (details.detail) console.error(`[migrate] ${label} detail: ${details.detail}`);
+  if (details.hint) console.error(`[migrate] ${label} hint: ${details.hint}`);
+  if (error.stack) console.error(`[migrate] ${label} stack: ${error.stack}`);
+  if (details.cause && depth < 5) logError(details.cause, depth + 1);
 }
