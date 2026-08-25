@@ -29,13 +29,13 @@ services:
     restart: unless-stopped
     networks: [internal]
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     volumes:
       - rfp_os_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -50,9 +50,9 @@ services:
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,11 +67,11 @@ services:
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       PORT: 4000
-      CORS_ORIGIN: ${PUBLIC_URL}
+      CORS_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL is required}
       DEV_AUTH_ENABLED: "true"
     depends_on:
       postgres:
@@ -104,8 +104,8 @@ services:
       # ACME_EMAIL is deliberately NOT set. Traefik terminates TLS here, so
       # Caddy needs no ACME account — and setting it empty would override the
       # Caddyfile's default and fail to parse. Leaving it unset is the fix.
-      DEMO_USER: ${DEMO_USER}
-      DEMO_PASSWORD_HASH: ${DEMO_PASSWORD_HASH}
+      DEMO_USER: ${DEMO_USER:?DEMO_USER is required}
+      DEMO_PASSWORD_HASH: ${DEMO_PASSWORD_HASH:?DEMO_PASSWORD_HASH is required}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - rfp_os_caddy_data:/data
