@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { closeDb, getDb } from "./client";
+import { seedDevelopmentData } from "./seed/index";
 import { users } from "./schema";
 
 const DEMO_LOGIN_EMAIL = process.env.VITE_DEV_LOGIN_EMAIL ?? "priya.nair@halcyonsystems.com";
@@ -26,7 +27,7 @@ async function main() {
     }
 
     console.log(`[seed] demo user missing (${maskEmail(DEMO_LOGIN_EMAIL)}), seeding dataset`);
-    await import("./seed/index");
+    await seedDevelopmentData();
   } finally {
     await closeDb();
   }

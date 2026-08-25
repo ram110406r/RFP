@@ -36,7 +36,7 @@ import {
   users,
 } from "../schema";
 
-async function main() {
+export async function seedDevelopmentData() {
   const db = getDb();
 
   try {
@@ -947,9 +947,11 @@ async function main() {
   }
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+if (import.meta.main) {
+  seedDevelopmentData()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
+}
