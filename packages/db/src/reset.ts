@@ -7,6 +7,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+import { join } from "node:path";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -18,6 +19,7 @@ if (!databaseUrl) {
 // share a pool with anything else.
 const client = postgres(databaseUrl, { max: 1 });
 const db = drizzle(client);
+const migrationsFolder = join(import.meta.dir, "..", "migrations");
 
 console.log("Dropping schemas...");
 // Also drop the `drizzle` schema (migration tracking table) — otherwise
@@ -28,7 +30,7 @@ await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`);
 await db.execute(sql`CREATE SCHEMA public`);
 
 console.log("Reapplying migrations...");
-await migrate(db, { migrationsFolder: "./migrations" });
+await migrate(db, { migrationsFolder });
 
 console.log("Database reset. Run `bun run db:seed` to repopulate development data.");
 await client.end();

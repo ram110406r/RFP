@@ -45,7 +45,7 @@ services:
       context: .
       dockerfile: apps/legacy-api/Dockerfile
     working_dir: /repo/packages/db
-    command: ["bun", "run", "src/migrate.ts"]
+    command: ["bun", "run", "db:migrate"]
     networks: [internal]
     environment:
       POSTGRES_HOST: postgres

@@ -34,8 +34,7 @@ services:
       context: .
       dockerfile: apps/legacy-api/Dockerfile
     working_dir: /repo/packages/db
-    # migrate.ts passes a relative migrationsFolder, so cwd must be packages/db.
-    command: ["bun", "run", "src/migrate.ts"]
+    command: ["bun", "run", "db:migrate"]
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
