@@ -1,7 +1,10 @@
 import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { randomUUID } from "node:crypto";
 import { and, eq, isNull, or } from "drizzle-orm";
+import { hashPassword } from "better-auth/crypto";
 import {
+  accounts,
   organizationMemberRoles,
   organizationMembers,
   organizations,
@@ -42,11 +45,13 @@ export interface MembershipSummary {
 @Injectable()
 export class AuthService {
   readonly auth: Auth;
+  private readonly firebaseProjectId: string;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     config: ConfigService<Env, true>,
   ) {
+    this.firebaseProjectId = config.get("FIREBASE_PROJECT_ID", { infer: true }) ?? "tendyy";
     this.auth = createAuth(db, {
       NODE_ENV: config.get("NODE_ENV", { infer: true }),
       API_PORT: config.get("API_PORT", { infer: true }),
@@ -64,7 +69,7 @@ export class AuthService {
   /** Reads the session cookie. Returns null when there is no valid session. */
   async resolveSession(headers: Headers): Promise<ResolvedSession | null> {
     const result = await this.auth.api.getSession({ headers });
-    if (!result?.session || !result.user) return null;
+    if (!result?.session || !result.user) return this.resolveFirebaseSession(headers);
 
     const session = result.session as typeof result.session & {
       activeOrganizationId?: string | null;
@@ -75,6 +80,76 @@ export class AuthService {
       sessionId: session.id,
       activeOrganizationId: session.activeOrganizationId ?? null,
     };
+  }
+
+  /** Verify Firebase identity tokens and reuse the existing DB membership model. */
+  private async resolveFirebaseSession(headers: Headers): Promise<ResolvedSession | null> {
+    const authorization = headers.get("authorization");
+    if (!authorization?.startsWith("Bearer ")) return null;
+
+    try {
+      // Load Firebase Admin lazily: Bun cannot initialize its CommonJS jose
+      // dependency during application bootstrap, but can load it on demand.
+      const [{ getApps, initializeApp }, { getAuth: getFirebaseAdminAuth }] = await Promise.all([
+        import("firebase-admin/app"),
+        import("firebase-admin/auth"),
+      ]);
+      const app = getApps()[0] ?? initializeApp({ projectId: this.firebaseProjectId });
+      const decoded = await getFirebaseAdminAuth(app).verifyIdToken(authorization.slice("Bearer ".length));
+      const email = decoded.email?.toLowerCase();
+      if (!email) return null;
+
+      let [user] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+      if (!user) {
+        user = await this.provisionFirebaseUser({
+          email,
+          name: decoded.name?.trim() || email.split("@")[0] || "Firebase user",
+          emailVerified: decoded.email_verified === true,
+          uid: decoded.uid,
+        });
+      }
+
+      return {
+        userId: user.id,
+        sessionId: `firebase:${decoded.uid}`,
+        activeOrganizationId: null,
+      };
+    } catch (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[firebase-auth] ID token verification failed: ${
+            error instanceof Error ? error.message : "unknown verification error"
+          }`,
+        );
+      }
+      return null;
+    }
+  }
+
+  /** Creates only the application identity; onboarding creates its tenant later. */
+  private async provisionFirebaseUser(input: {
+    email: string;
+    name: string;
+    emailVerified: boolean;
+    uid: string;
+  }) {
+    const [user] = await this.db.transaction(async (tx) => {
+      const [createdUser] = await tx
+        .insert(users)
+        .values({
+          name: input.name,
+          email: input.email,
+          memberRole: "Admin",
+          status: "active",
+          emailVerified: input.emailVerified,
+          lastActiveAt: new Date(),
+        })
+        .returning({ id: users.id });
+      if (!createdUser) throw new Error("Failed to provision Firebase user.");
+      return [createdUser];
+    });
+    if (!user) throw new Error("Firebase user provisioning returned no user.");
+    return user;
   }
 
   /**
@@ -238,6 +313,52 @@ export class AuthService {
       .where(eq(sessions.id, session.sessionId));
 
     return { ...membership, role: membership.role as OrgRole };
+  }
+
+  /**
+   * Keeps localhost usable by ensuring the seeded demo user has a credential
+   * account with a known password. This is dev-only bootstrap, not a public
+   * auth flow.
+   */
+  async ensureDevelopmentCredential(email: string, password: string): Promise<void> {
+    const normalizedEmail = email.toLowerCase();
+    const [user] = await this.db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+    if (!user) {
+      throw new ForbiddenException({
+        code: "DEMO_USER_MISSING",
+        message: `No seeded user exists for ${normalizedEmail}. Run the seed first.`,
+      });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const [existingAccount] = await this.db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(
+        and(
+          eq(accounts.userId, user.id),
+          eq(accounts.providerId, "credential"),
+          eq(accounts.issuer, "local:credential"),
+        ),
+      )
+      .limit(1);
+
+    if (existingAccount) {
+      await this.db
+        .update(accounts)
+        .set({ password: passwordHash, updatedAt: new Date() })
+        .where(eq(accounts.id, existingAccount.id));
+      return;
+    }
+
+    await this.db.insert(accounts).values({
+      id: randomUUID(),
+      accountId: user.id,
+      providerId: "credential",
+      issuer: "local:credential",
+      userId: user.id,
+      password: passwordHash,
+    });
   }
 
   private async loadOrganizationRolePermissions(

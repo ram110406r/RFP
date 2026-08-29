@@ -1,4 +1,4 @@
-import { All, Controller, Get, Post, Req, Res, VERSION_NEUTRAL } from "@nestjs/common";
+import { All, Body, Controller, ForbiddenException, Get, Post, Req, Res, VERSION_NEUTRAL } from "@nestjs/common";
 import type { Request, Response } from "express";
 
 import { AllowWithoutOrg, CurrentAuth, Public, toFetchHeaders } from "../../common/auth";
@@ -80,6 +80,51 @@ export class AuthSessionController {
       organizationId,
     );
     return { activated: membership };
+  }
+
+  /**
+   * Local-development helper that creates the demo credential if needed and
+   * then signs in through Better Auth so the browser gets the real cookie.
+   */
+  @Public()
+  @Post("dev-login")
+  async devLogin(
+    @Req() request: Request,
+    @Res() response: Response,
+    @Body()
+    body: {
+      email?: string;
+      password?: string;
+    } = {},
+  ): Promise<void> {
+    if (process.env.NODE_ENV === "production") {
+      throw new ForbiddenException("Development login is disabled in production.");
+    }
+
+    const email = body.email ?? "priya.nair@halcyonsystems.com";
+    const password = body.password ?? "PriyaDemo!2026";
+
+    try {
+      await this.authService.ensureDevelopmentCredential(email, password);
+    } catch (error) {
+      console.warn(
+        `[AuthController] dev-login credential bootstrap failed for ${email}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const origin = `${request.protocol}://${request.get("host")}`;
+    const signInRequest = new globalThis.Request(new URL("/api/auth/sign-in/email", origin).toString(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ email, password, rememberMe: true }),
+    });
+    const signInResponse = await this.authService.auth.handler(signInRequest);
+
+    await writeWebResponse(signInResponse, response);
   }
 }
 
