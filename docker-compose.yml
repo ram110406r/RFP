@@ -41,6 +41,7 @@ services:
     environment:
       MINIO_ROOT_USER: rfpos
       MINIO_ROOT_PASSWORD: rfpos_dev_password
+      MINIO_API_CORS_ALLOW_ORIGIN: http://localhost:3000,http://localhost:3001
     ports:
       - "59000:9000"
       - "59001:9001"
