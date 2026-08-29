@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/client";
-import { users } from "../db/schema";
+import { organizationMembers, users } from "../db/schema";
 import { unauthorized } from "./errors";
 
 export interface AuthContext {
@@ -10,13 +10,13 @@ export interface AuthContext {
 
 /**
  * DEV-ONLY auth boundary. The bearer token is just the user's id, issued by
- * POST /api/auth/dev-login. There is no password hashing or JWT signing —
+ * POST /api/auth/dev-login. There is no password hashing or JWT signing -
  * this is intentionally NOT a production authentication system (see
  * server/README.md and the migration report for why, and how to swap in a
  * real provider like better-auth later).
  *
  * What IS real and enforced: organizationId is always derived here,
- * server-side, from the authenticated user's row in the database — every
+ * server-side, from the authenticated user's row in the database - every
  * route handler receives it from this function and never from a
  * client-supplied field, so org scoping cannot be spoofed by the client.
  */
@@ -44,16 +44,35 @@ export async function requireAuth(
     .limit(1);
   const user = rows[0];
   if (!user) throw unauthorized("Invalid session token.");
+
   /**
-   * organization_id became nullable in Phase 4: identity is global and
-   * membership lives in organization_members, so a user can exist with no
-   * default organization. This prototype API predates that and scopes every
-   * query by this one column, so a user without it has no tenant here — which
-   * is a refusal, never a query that silently spans organizations.
+   * Tier 0 membership is the authoritative tenant boundary. Legacy routes can
+   * keep working for users that only have the prototype's default-tenant
+   * column, but once organization_members exists we use that as the source of
+   * truth and refuse to guess across tenants.
    */
-  if (!user.organizationId) {
-    throw unauthorized("This account is not a member of any organization.");
+  const memberships = await db
+    .select({
+      organizationId: organizationMembers.organizationId,
+    })
+    .from(organizationMembers)
+    .where(eq(organizationMembers.userId, user.id));
+
+  const activeMembership = user.organizationId
+    ? memberships.find((membership) => membership.organizationId === user.organizationId)
+    : undefined;
+
+  if (activeMembership) {
+    return { userId: user.id, organizationId: activeMembership.organizationId };
   }
 
-  return { userId: user.id, organizationId: user.organizationId };
+  if (memberships.length === 1) {
+    return { userId: user.id, organizationId: memberships[0]!.organizationId };
+  }
+
+  if (memberships.length === 0 && user.organizationId) {
+    return { userId: user.id, organizationId: user.organizationId };
+  }
+
+  throw unauthorized("This account is not a member of any organization.");
 }

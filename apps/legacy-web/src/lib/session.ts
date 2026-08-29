@@ -113,6 +113,13 @@ async function bootstrapSession(): Promise<void> {
 
 /** Idempotent — safe to call from every route's `beforeLoad` and from the http client. */
 export function ensureSession(): Promise<void> {
-  if (!sessionPromise) sessionPromise = bootstrapSession();
+  if (!sessionPromise) {
+    sessionPromise = bootstrapSession().catch((error) => {
+      // A failed bootstrap should not poison the app forever; the next
+      // navigation or reload can retry once the backend is back.
+      sessionPromise = null;
+      throw error;
+    });
+  }
   return sessionPromise;
 }
