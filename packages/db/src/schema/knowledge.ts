@@ -1,4 +1,4 @@
-import { date, index, numeric, pgEnum, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { date, index, jsonb, numeric, pgEnum, pgTable, text, uuid } from "drizzle-orm/pg-core";
 
 import { requirementCategoryEnum, timestamps } from "./_shared";
 import { users } from "./identity";
@@ -35,6 +35,7 @@ export const knowledgeSources = pgTable(
     lastUpdated: date("last_updated"),
     expiresAt: date("expires_at"),
     summary: text("summary").notNull().default(""),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     ...timestamps,
   },
   (t) => [index("knowledge_sources_org_idx").on(t.organizationId)],
