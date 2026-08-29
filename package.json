@@ -11,6 +11,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
+    "step4:acceptance": "bun scripts/step4-acceptance.ts",
     "db:generate": "turbo run db:generate --filter=@rfp-os/db",
     "db:migrate": "turbo run db:migrate --filter=@rfp-os/db",
     "db:seed": "turbo run db:seed --filter=@rfp-os/db",
