@@ -28,6 +28,7 @@
     "better-auth": "^1.7.1",
     "bullmq": "^5.34.0",
     "drizzle-orm": "^0.44.2",
+    "firebase-admin": "^14.3.0",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.1",
     "reflect-metadata": "^0.2.2",
