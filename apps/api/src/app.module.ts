@@ -27,10 +27,14 @@ import { AuditsModule } from "./modules/audits";
 import { DocumentsModule } from "./modules/documents";
 import { OrganizationsModule } from "./modules/organizations";
 import { PoliciesModule } from "./modules/policies";
+import { KnowledgeModule } from "./modules/knowledge";
+import { DashboardModule } from "./modules/dashboard";
 import { RfpModule } from "./modules/rfp";
+import { TendersModule } from "./modules/tenders";
 import { RolesModule } from "./modules/roles";
 import { TeamsModule } from "./modules/teams";
 import { WorkspacesModule } from "./modules/workspaces";
+import { OnboardingModule } from "./modules/onboarding/onboarding.module";
 
 @Module({
   imports: [
@@ -58,12 +62,16 @@ import { WorkspacesModule } from "./modules/workspaces";
     OrganizationsModule,
     RolesModule,
     PoliciesModule,
+    KnowledgeModule,
+    DashboardModule,
     WorkspacesModule,
+    OnboardingModule,
     TeamsModule,
     AssignmentsModule,
     ActivitiesModule,
     AuditsModule,
     RfpModule,
+    TendersModule,
     DocumentsModule,
   ],
   providers: [

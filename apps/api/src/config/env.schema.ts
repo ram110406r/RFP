@@ -30,6 +30,11 @@ export const envSchema = z.object({
    */
   BETTER_AUTH_SECRET: blankToUndefined(z.string().min(32, "must be at least 32 characters")),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:4100"),
+  FIREBASE_PROJECT_ID: z.string().min(1).optional(),
+  GROQ_API_KEY: blankToUndefined(z.string().min(1)),
+  GROQ_MODEL: z.string().min(1).default("openai/gpt-oss-20b"),
+  GROQ_BASE_URL: z.string().url().default("https://api.groq.com/openai/v1"),
+  GROQ_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   /** How long a session stays valid, in seconds. Default 7 days. */
   SESSION_MAX_AGE_SECONDS: z.coerce
     .number()
@@ -86,6 +91,9 @@ export function validateEnv(config: Record<string, unknown>): Env {
     const missing: string[] = [];
     if (!result.data.BETTER_AUTH_SECRET) {
       missing.push("BETTER_AUTH_SECRET: required in production (min 32 characters)");
+    }
+    if (!result.data.GROQ_API_KEY) {
+      missing.push("GROQ_API_KEY: required in production for real AI generation");
     }
     /*
      * Storage is optional in development so the API boots without MinIO, but

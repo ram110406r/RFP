@@ -9,6 +9,8 @@ import { PinoLoggerService } from "./common/logger/pino-logger.service";
 import type { Env } from "./config/env.schema";
 
 async function bootstrap() {
+  ensureNoProxyHost(process.env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1");
+
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   const logger = app.get(PinoLoggerService);
@@ -41,3 +43,25 @@ async function bootstrap() {
 }
 
 void bootstrap();
+
+function ensureNoProxyHost(baseUrl: string) {
+  try {
+    const host = new URL(baseUrl).hostname;
+    const updated = appendNoProxy(process.env.NO_PROXY, host);
+    process.env.NO_PROXY = updated;
+    process.env.no_proxy = updated;
+  } catch {
+    // If the configured base URL is invalid, env validation will fail later.
+  }
+}
+
+function appendNoProxy(existing: string | undefined, host: string) {
+  const entries = new Set(
+    (existing ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+  entries.add(host);
+  return [...entries].join(",");
+}
