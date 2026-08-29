@@ -14,8 +14,11 @@ import {
   invitations,
   organizationMembers,
   organizations,
+  teamMembers,
+  teams,
   users,
   withTransaction,
+  workspaceMembers,
   type Database,
 } from "@rfp-os/db";
 import type { AuthContext, OrgRole } from "@rfp-os/types";
@@ -332,6 +335,19 @@ export class OrganizationsService {
         message: "Only an owner can invite another owner.",
       });
     }
+    if (input.workspaceId && !(auth.workspaceIds ?? []).includes(input.workspaceId)) {
+      throw new ForbiddenException({ code: "WORKSPACE_FORBIDDEN", message: "You cannot invite members to that workspace." });
+    }
+    if (input.proposedTeamId) {
+      const [team] = await this.db
+        .select({ id: teams.id, workspaceId: teams.workspaceId })
+        .from(teams)
+        .where(and(eq(teams.id, input.proposedTeamId), eq(teams.organizationId, auth.organizationId), eq(teams.status, "active")))
+        .limit(1);
+      if (!team || (input.workspaceId && team.workspaceId && team.workspaceId !== input.workspaceId)) {
+        throw new BadRequestException({ code: "INVALID_PROPOSED_TEAM", message: "The proposed team is not available in that workspace." });
+      }
+    }
 
     const [existingUser] = await this.db
       .select({ id: users.id })
@@ -382,8 +398,11 @@ export class OrganizationsService {
         .insert(invitations)
         .values({
           organizationId: auth.organizationId,
+          workspaceId: input.workspaceId ?? null,
           email: input.email,
           role: input.role,
+          proposedDepartment: input.proposedDepartment ?? null,
+          proposedTeamId: input.proposedTeamId ?? null,
           token: randomBytes(32).toString("base64url"),
           invitedBy: auth.userId,
           expiresAt,
@@ -455,6 +474,23 @@ export class OrganizationsService {
    * leaked token cannot be redeemed by whoever finds it.
    */
   async acceptInvitation(userId: string, token: string) {
+    const [candidate] = await this.db.select().from(invitations).where(eq(invitations.token, token)).limit(1);
+    if (candidate?.status === "accepted" && candidate.acceptedBy === userId) {
+      return { organizationId: candidate.organizationId, workspaceId: candidate.workspaceId, role: candidate.role as OrgRole };
+    }
+    if (!candidate || candidate.status !== "pending") {
+      throw new NotFoundException({ code: "INVITATION_INVALID", message: "That invitation is no longer valid." });
+    }
+    if (candidate.expiresAt.getTime() < Date.now()) {
+      await this.db.update(invitations).set({ status: "expired", updatedAt: new Date() }).where(and(eq(invitations.id, candidate.id), eq(invitations.status, "pending")));
+      throw new BadRequestException({ code: "INVITATION_EXPIRED", message: "That invitation has expired. Ask for a new one." });
+    }
+    const [candidateUser] = await this.db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+    if (!candidateUser) throw new NotFoundException({ code: "NOT_FOUND", message: "User not found." });
+    if (candidateUser.email.toLowerCase() !== candidate.email.toLowerCase()) {
+      throw new ForbiddenException({ code: "INVITATION_EMAIL_MISMATCH", message: "This invitation was sent to a different email address." });
+    }
+
     return withTransaction(async (tx) => {
       const [invitation] = await tx
         .select()
@@ -462,6 +498,13 @@ export class OrganizationsService {
         .where(eq(invitations.token, token))
         .limit(1);
 
+      if (invitation?.status === "accepted" && invitation.acceptedBy === userId) {
+        return {
+          organizationId: invitation.organizationId,
+          workspaceId: invitation.workspaceId,
+          role: invitation.role as OrgRole,
+        };
+      }
       if (!invitation || invitation.status !== "pending") {
         throw new NotFoundException({
           code: "INVITATION_INVALID",
@@ -523,6 +566,29 @@ export class OrganizationsService {
         .limit(1);
       membershipId = membership?.id ?? "";
 
+      if (invitation.workspaceId && membershipId) {
+        await tx
+          .insert(workspaceMembers)
+          .values({ workspaceId: invitation.workspaceId, organizationMemberId: membershipId, status: "active" })
+          .onConflictDoUpdate({
+            target: [workspaceMembers.workspaceId, workspaceMembers.organizationMemberId],
+            set: { status: "active", updatedAt: new Date() },
+          });
+      }
+      if (invitation.proposedTeamId && membershipId) {
+        const [team] = await tx
+          .select({ id: teams.id, workspaceId: teams.workspaceId })
+          .from(teams)
+          .where(and(eq(teams.id, invitation.proposedTeamId), eq(teams.organizationId, invitation.organizationId), eq(teams.status, "active")))
+          .limit(1);
+        if (team && (!invitation.workspaceId || !team.workspaceId || team.workspaceId === invitation.workspaceId)) {
+          await tx
+            .insert(teamMembers)
+            .values({ teamId: team.id, organizationMemberId: membershipId })
+            .onConflictDoNothing({ target: [teamMembers.teamId, teamMembers.organizationMemberId] });
+        }
+      }
+
       await tx
         .update(invitations)
         .set({
@@ -569,9 +635,24 @@ export class OrganizationsService {
 
       return {
         organizationId: invitation.organizationId,
+        workspaceId: invitation.workspaceId,
         role: invitation.role as OrgRole,
       };
     });
+  }
+
+  async acceptDetectedInvitation(userId: string, invitationId: string) {
+    const rows = await this.db.execute(sql`
+      select ${invitations.token} as token
+      from ${invitations}
+      where ${invitations.id} = ${invitationId}
+      limit 1
+    `);
+    const invitation = rows[0] as { token: string } | undefined;
+    if (!invitation) {
+      throw new NotFoundException({ code: "INVITATION_INVALID", message: "That invitation is no longer valid." });
+    }
+    return this.acceptInvitation(userId, invitation.token);
   }
 
   private async requireMembership(organizationId: string, userId: string) {
