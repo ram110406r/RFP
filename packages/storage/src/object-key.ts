@@ -22,6 +22,19 @@ export function documentObjectKey(input: DocumentObjectKeyInput): string {
   return `org/${input.organizationId}/rfp/${input.rfpId}/${input.fileId}/${name}`;
 }
 
+export interface TenderSourceObjectKeyInput {
+  organizationId: string;
+  workspaceId: string;
+  tenderId: string;
+  sourceId: string;
+  filename: string;
+}
+
+export function tenderSourceObjectKey(input: TenderSourceObjectKeyInput): string {
+  const name = sanitizeFilename(input.filename);
+  return `org/${input.organizationId}/workspace/${input.workspaceId}/tender/${input.tenderId}/sources/${input.sourceId}/${name}`;
+}
+
 /**
  * Reduces a filename to something safe to place in a key.
  *

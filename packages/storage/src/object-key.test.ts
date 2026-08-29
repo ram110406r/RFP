@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { documentObjectKey, sanitizeFilename } from "./object-key";
+import { documentObjectKey, sanitizeFilename, tenderSourceObjectKey } from "./object-key";
 
 const ORG = "11111111-1111-1111-1111-111111111111";
 const RFP = "22222222-2222-2222-2222-222222222222";
 const FILE = "33333333-3333-3333-3333-333333333333";
+const WORKSPACE = "44444444-4444-4444-4444-444444444444";
+const TENDER = "55555555-5555-5555-5555-555555555555";
+const SOURCE = "66666666-6666-6666-6666-666666666666";
 
 describe("documentObjectKey", () => {
   test("puts the organization first, so a key prefix is a tenant boundary", () => {
@@ -74,5 +77,32 @@ describe("sanitizeFilename", () => {
 
   test("bounds the length, since object keys are capped", () => {
     expect(sanitizeFilename(`${"a".repeat(400)}.pdf`).length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("tenderSourceObjectKey", () => {
+  test("puts the organization and workspace first", () => {
+    const key = tenderSourceObjectKey({
+      organizationId: ORG,
+      workspaceId: WORKSPACE,
+      tenderId: TENDER,
+      sourceId: SOURCE,
+      filename: "Questionnaire.pdf",
+    });
+    expect(key).toBe(
+      `org/${ORG}/workspace/${WORKSPACE}/tender/${TENDER}/sources/${SOURCE}/Questionnaire.pdf`,
+    );
+  });
+
+  test("sanitizes the filename before placing it in the key", () => {
+    const key = tenderSourceObjectKey({
+      organizationId: ORG,
+      workspaceId: WORKSPACE,
+      tenderId: TENDER,
+      sourceId: SOURCE,
+      filename: "../../../other-org/secrets.pdf",
+    });
+    expect(key).toContain(`/secrets.pdf`);
+    expect(key).not.toContain("..");
   });
 });
