@@ -92,6 +92,69 @@
       "when": 1787603222496,
       "tag": "0012_yellow_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787603222497,
+      "tag": "0013_immovable_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787686328461,
+      "tag": "0014_tender_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1787779200000,
+      "tag": "0015_tender_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787865600000,
+      "tag": "0016_tender_validation_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787865600001,
+      "tag": "0017_tender_evidence_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787865600002,
+      "tag": "0018_knowledge_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787865600003,
+      "tag": "0019_tender_review_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787865600004,
+      "tag": "0020_onboarding_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788048000000,
+      "tag": "0021_onboarding_v2",
+      "breakpoints": true
     }
   ]
 }
