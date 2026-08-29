@@ -1,0 +1,116 @@
+"use client";
+
+import Link from "next/link";
+
+import { AppShell } from "../../components/app-shell";
+import type { DashboardOverview } from "../../lib/models";
+import { useDashboardSummary } from "../../lib/queries";
+
+export default function SubmissionsPage() {
+  const dashboardQuery = useDashboardSummary(10);
+  const rows: DashboardOverview["tenders"] = dashboardQuery.data?.activeTenders ?? dashboardQuery.data?.tenders ?? [];
+
+  return (
+    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Submissions" }]}>
+      <div className="space-y-6">
+        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Delivery</p>
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">Submissions</h1>
+          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+            Track submission readiness from the current workspace validation.
+          </p>
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard title="Visible tenders" value={String(rows.length)} detail="Loaded from the dashboard summary endpoint." />
+          <StatCard title="Ready to submit" value={String(rows.filter((row) => row.ready).length)} detail="Workspace validation already marks these ready." />
+          <StatCard title="Needs attention" value={String(rows.filter((row) => !row.ready).length)} detail="Still missing readiness checks or validation." />
+          <StatCard title="Open blockers" value={String(rows.reduce((sum, row) => sum + row.blockingIssueCount, 0))} detail="Blocking validation issues across visible tenders." />
+        </section>
+
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+          <div className="overflow-hidden rounded-[24px] border border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="min-w-[860px] w-full border-separate border-spacing-0">
+                <thead className="bg-slate-100/80 text-left text-[13px] uppercase tracking-[0.14em] text-slate-500">
+                  <tr>
+                    <Th>RFP</Th>
+                    <Th>Readiness</Th>
+                    <Th>Issues</Th>
+                    <Th>Status</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.length > 0 ? (
+                    rows.map((row) => (
+                      <tr key={row.tender.id} className="bg-white align-top">
+                        <Td>
+                          <Link href={`/tenders/${row.tender.id}`} className="block py-4 pr-4">
+                            <p className="font-semibold text-slate-950">{row.tender.title}</p>
+                            <p className="mt-1 text-sm text-slate-600">{row.tender.name}</p>
+                          </Link>
+                        </Td>
+                        <Td>
+                          <div className="flex items-center gap-3 py-4">
+                            <div className="h-2.5 w-28 rounded-full bg-slate-200">
+                              <div className="h-2.5 rounded-full bg-sky-700" style={{ width: `${Math.max(8, row.readiness ?? 0)}%` }} />
+                            </div>
+                            <span className="text-sm font-medium text-slate-900">{row.readiness ?? "-"}%</span>
+                          </div>
+                        </Td>
+                        <Td>
+                          <span className="text-sm text-slate-600">{row.issueCount} issue(s)</span>
+                        </Td>
+                        <Td>
+                          <div className="py-4">
+                            <Badge tone={row.ready ? "success" : "warning"}>{row.ready ? "Ready" : "In progress"}</Badge>
+                          </div>
+                        </Td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-10 text-sm text-slate-500">
+                        No submissions are available yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </AppShell>
+  );
+}
+
+function StatCard({ title, value, detail }: { title: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
+      <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
+      <p className="mt-3 text-sm leading-6 text-slate-600">{detail}</p>
+    </div>
+  );
+}
+
+function Th({ children }: { children: React.ReactNode }) {
+  return <th className="px-4 py-4 font-semibold">{children}</th>;
+}
+
+function Td({ children }: { children: React.ReactNode }) {
+  return <td className="border-t border-slate-200 px-4 align-top">{children}</td>;
+}
+
+function Badge({ tone, children }: { tone: "success" | "warning" | "danger" | "neutral"; children: React.ReactNode }) {
+  const palette =
+    tone === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : tone === "danger"
+          ? "border-rose-200 bg-rose-50 text-rose-800"
+          : "border-slate-200 bg-slate-100 text-slate-700";
+  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${palette}`}>{children}</span>;
+}
