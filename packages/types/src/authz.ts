@@ -74,6 +74,37 @@ export const PERMISSIONS = [
   "document:read",
   "document:upload",
   "document:delete",
+  "tender:source:read",
+  "tender:source:create",
+  "tender:source:delete",
+  "tender:create",
+  "tender:read",
+  "tender:update",
+  "tender:delete",
+  "tender:assign",
+  "tender:review",
+  "tender:approve",
+  "tender:submit",
+  "question:read",
+  "question:create",
+  "question:update",
+  "question:assign",
+  "answer:read",
+  "answer:create",
+  "answer:update",
+  "answer:review",
+  "answer:approve",
+  "requirement:read",
+  "requirement:create",
+  "requirement:update",
+  "ai.answer.generate",
+  "ai.answer.improve",
+  "ai.answer.analyze",
+  "ai.tender.analyze",
+  "ai.knowledge.read",
+  "ai.knowledge.create",
+  "ai.knowledge.update",
+  "ai.knowledge.approve",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -106,6 +137,37 @@ export const WORKSPACE_SCOPED_PERMISSIONS: readonly Permission[] = [
   "assignment:cancel",
   "activity:read",
   "audit:read",
+  "tender:create",
+  "tender:read",
+  "tender:update",
+  "tender:delete",
+  "tender:assign",
+  "tender:review",
+  "tender:approve",
+  "tender:submit",
+  "tender:source:read",
+  "tender:source:create",
+  "tender:source:delete",
+  "question:read",
+  "question:create",
+  "question:update",
+  "question:assign",
+  "answer:read",
+  "answer:create",
+  "answer:update",
+  "answer:review",
+  "answer:approve",
+  "requirement:read",
+  "requirement:create",
+  "requirement:update",
+  "ai.answer.generate",
+  "ai.answer.improve",
+  "ai.answer.analyze",
+  "ai.tender.analyze",
+  "ai.knowledge.read",
+  "ai.knowledge.create",
+  "ai.knowledge.update",
+  "ai.knowledge.approve",
 ] as const;
 
 const ALL_RFP: Permission[] = [
@@ -130,6 +192,60 @@ const ALL_RFP: Permission[] = [
  * needs it, and an unused permission is one more thing to get wrong.
  */
 const ALL_DOCUMENT: Permission[] = ["document:read", "document:upload", "document:delete"];
+
+const ALL_TENDER: Permission[] = [
+  "tender:create",
+  "tender:read",
+  "tender:update",
+  "tender:delete",
+  "tender:assign",
+  "tender:review",
+  "tender:approve",
+  "tender:submit",
+];
+
+const ALL_TENDER_SOURCE: Permission[] = [
+  "tender:source:read",
+  "tender:source:create",
+  "tender:source:delete",
+];
+
+const ALL_TENDER_SOURCE_READ: Permission[] = ["tender:source:read"];
+
+const ALL_QUESTION: Permission[] = [
+  "question:read",
+  "question:create",
+  "question:update",
+  "question:assign",
+];
+
+const ALL_ANSWER: Permission[] = [
+  "answer:read",
+  "answer:create",
+  "answer:update",
+  "answer:review",
+  "answer:approve",
+];
+
+const ALL_ANSWER_AUTHORING: Permission[] = ["answer:read", "answer:create", "answer:update"];
+
+const ALL_ANSWER_REVIEW: Permission[] = ["answer:read", "answer:review", "answer:approve"];
+
+const ALL_ANSWER_COLLABORATIVE: Permission[] = ["answer:read", "answer:update", "answer:review"];
+
+const ALL_REQUIREMENT: Permission[] = ["requirement:read", "requirement:create", "requirement:update"];
+const ALL_AI_ANSWER: Permission[] = [
+  "ai.answer.generate",
+  "ai.answer.improve",
+  "ai.answer.analyze",
+];
+const ALL_AI_TENDER: Permission[] = ["ai.tender.analyze"];
+const ALL_AI_KNOWLEDGE: Permission[] = [
+  "ai.knowledge.read",
+  "ai.knowledge.create",
+  "ai.knowledge.update",
+  "ai.knowledge.approve",
+];
 
 const ALL_WORKSPACE: Permission[] = [
   "workspace:create",
@@ -183,11 +299,19 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
   OWNER: [
     ...ALL_RFP,
     ...ALL_DOCUMENT,
+    ...ALL_TENDER,
+    ...ALL_TENDER_SOURCE,
+    ...ALL_QUESTION,
+    ...ALL_ANSWER,
+    ...ALL_REQUIREMENT,
     ...ALL_WORKSPACE,
     ...ALL_TEAM,
     ...ALL_ROLE,
     ...ALL_POLICY,
-    ...ALL_ASSIGNMENT,
+  ...ALL_ASSIGNMENT,
+    ...ALL_AI_ANSWER,
+    ...ALL_AI_TENDER,
+    ...ALL_AI_KNOWLEDGE,
     "org:read",
     "org:update",
     "member:read",
@@ -200,11 +324,19 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
   ADMIN: [
     ...ALL_RFP,
     ...ALL_DOCUMENT,
+    ...ALL_TENDER,
+    ...ALL_TENDER_SOURCE,
+    ...ALL_QUESTION,
+    ...ALL_ANSWER,
+    ...ALL_REQUIREMENT,
     ...ALL_WORKSPACE,
     ...ALL_TEAM,
     ...ALL_ROLE,
     ...ALL_POLICY,
-    ...ALL_ASSIGNMENT,
+  ...ALL_ASSIGNMENT,
+    ...ALL_AI_ANSWER,
+    ...ALL_AI_TENDER,
+    ...ALL_AI_KNOWLEDGE,
     "org:read",
     "org:update",
     "member:read",
@@ -226,6 +358,14 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "rfp:export",
     "rfp:manage",
     ...ALL_DOCUMENT,
+    ...ALL_TENDER,
+    ...ALL_TENDER_SOURCE,
+    ...ALL_QUESTION,
+    ...ALL_ANSWER,
+    ...ALL_REQUIREMENT,
+    ...ALL_AI_ANSWER,
+    ...ALL_AI_TENDER,
+    ...ALL_AI_KNOWLEDGE,
     "workspace:create",
     "workspace:read",
     "workspace:update",
@@ -248,6 +388,14 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "rfp:export",
     "document:read",
     "document:upload",
+    ...ALL_TENDER,
+    ...ALL_TENDER_SOURCE_READ,
+    ...ALL_QUESTION,
+    ...ALL_ANSWER_AUTHORING,
+    ...ALL_REQUIREMENT,
+    ...ALL_AI_ANSWER,
+    ...ALL_AI_TENDER,
+    ...ALL_AI_KNOWLEDGE,
     "workspace:read",
     "workspace:member:read",
     "team:read",
@@ -263,6 +411,15 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "rfp:review",
     "rfp:approve",
     "document:read",
+    ...ALL_TENDER,
+    ...ALL_TENDER_SOURCE_READ,
+    ...ALL_QUESTION,
+    ...ALL_ANSWER_REVIEW,
+    ...ALL_REQUIREMENT,
+    "ai.answer.analyze",
+    "ai.tender.analyze",
+    "ai.knowledge.read",
+    "ai.knowledge.approve",
     "workspace:read",
     "workspace:member:read",
     "team:read",
@@ -278,6 +435,19 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "rfp:update",
     "rfp:review",
     "document:read",
+    ...ALL_TENDER,
+    ...ALL_TENDER_SOURCE_READ,
+    ...ALL_QUESTION,
+    ...ALL_ANSWER_COLLABORATIVE,
+    ...ALL_REQUIREMENT,
+    "ai.answer.generate",
+    "ai.answer.improve",
+    "ai.answer.analyze",
+    "ai.tender.analyze",
+    "ai.knowledge.read",
+    "ai.knowledge.create",
+    "ai.knowledge.update",
+    "ai.knowledge.approve",
     "workspace:read",
     "team:read",
     "assignment:read",
@@ -285,7 +455,22 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "org:read",
     "member:read",
   ],
-  VIEWER: ["rfp:read", "document:read", "workspace:read", "team:read", "activity:read", "org:read"],
+  VIEWER: [
+    "rfp:read",
+    "document:read",
+    "workspace:read",
+    "team:read",
+    "activity:read",
+    "org:read",
+    "tender:read",
+    ...ALL_TENDER_SOURCE_READ,
+    "question:read",
+    "answer:read",
+    "requirement:read",
+    "ai.answer.analyze",
+    "ai.tender.analyze",
+    "ai.knowledge.read",
+  ],
 };
 
 /** Roles that may act on membership, used to protect privilege escalation. */
