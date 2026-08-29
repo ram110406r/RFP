@@ -18,9 +18,12 @@ build
 .turbo
 *.local
 *.tsbuildinfo
+.tmp/
+cookiejar.txt
 
 # Next.js
 .next/
+.next-*/
 
 # Plasmo
 .plasmo/
