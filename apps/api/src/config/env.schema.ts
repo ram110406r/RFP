@@ -89,16 +89,29 @@ export function validateEnv(config: Record<string, unknown>): Env {
    */
   if (result.data.NODE_ENV === "production") {
     const missing: string[] = [];
+    const hasDatabaseUrl = Boolean(result.data.DATABASE_URL);
+    const hasPostgresEnv =
+      Boolean(config.POSTGRES_USER) &&
+      Boolean(config.POSTGRES_PASSWORD) &&
+      Boolean(config.POSTGRES_DB);
     if (!result.data.BETTER_AUTH_SECRET) {
       missing.push("BETTER_AUTH_SECRET: required in production (min 32 characters)");
     }
     if (!result.data.GROQ_API_KEY) {
       missing.push("GROQ_API_KEY: required in production for real AI generation");
     }
+    if (!hasDatabaseUrl && !hasPostgresEnv) {
+      missing.push(
+        "DATABASE_URL or POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB: required in production",
+      );
+    }
+    if (!result.data.REDIS_URL) {
+      missing.push("REDIS_URL: required in production for background jobs");
+    }
     /*
      * Storage is optional in development so the API boots without MinIO, but
      * in production a missing credential would only surface when someone first
-     * tried to upload — a real document, rather than the deploy.
+     * tried to upload – a real document, rather than the deploy.
      */
     if (!result.data.STORAGE_ACCESS_KEY_ID || !result.data.STORAGE_SECRET_ACCESS_KEY) {
       missing.push("STORAGE_ACCESS_KEY_ID / STORAGE_SECRET_ACCESS_KEY: both required in production");

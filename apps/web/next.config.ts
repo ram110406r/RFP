@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
-const apiTarget = (process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4100").replace(/\/$/, "");
+const configuredApiTarget = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL;
+if (process.env.NODE_ENV === "production" && !configuredApiTarget) {
+  throw new Error("API_URL or NEXT_PUBLIC_API_URL is required in production.");
+}
+const apiTarget = (configuredApiTarget ?? "http://127.0.0.1:4100").replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
   // Allow a clean local runtime to use isolated generated artifacts when a

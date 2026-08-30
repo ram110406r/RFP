@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import type { Database } from "@rfp-os/db";
 import { ObjectStorage } from "@rfp-os/storage";
 import { sql } from "drizzle-orm";
+import IORedis from "ioredis";
 
 import type { Env } from "../config/env.schema";
 import { DATABASE } from "../infrastructure/database";
@@ -36,14 +37,18 @@ export class HealthService {
    * deployment for an optional dependency teaches people to ignore it.
    */
   async readiness(): Promise<ReadinessResult> {
-    const [database, storage] = await Promise.all([this.checkDatabase(), this.checkStorage()]);
-    const checks: Record<string, CheckStatus> = { database, storage };
+    const [database, redis, storage] = await Promise.all([
+      this.checkDatabase(),
+      this.checkRedis(),
+      this.checkStorage(),
+    ]);
+    const checks: Record<string, CheckStatus> = { database, redis, storage };
     const status = Object.values(checks).includes("error") ? "degraded" : "ok";
     return { status, checks };
   }
 
   private async checkDatabase(): Promise<CheckStatus> {
-    if (!this.config.get("DATABASE_URL", { infer: true })) {
+    if (this.config.get("NODE_ENV", { infer: true }) !== "production" && !this.config.get("DATABASE_URL", { infer: true })) {
       return "skipped";
     }
     try {
@@ -55,9 +60,26 @@ export class HealthService {
   }
 
   private async checkStorage(): Promise<CheckStatus> {
-    if (!this.config.get("STORAGE_ENDPOINT", { infer: true })) {
+    if (this.config.get("NODE_ENV", { infer: true }) !== "production" && !this.config.get("STORAGE_ENDPOINT", { infer: true })) {
       return "skipped";
     }
     return (await this.storage.bucketReachable()) ? "ok" : "error";
+  }
+
+  private async checkRedis(): Promise<CheckStatus> {
+    const url = this.config.get("REDIS_URL", { infer: true });
+    if (!url) {
+      return this.config.get("NODE_ENV", { infer: true }) === "production" ? "error" : "skipped";
+    }
+
+    const redis = new IORedis(url, { maxRetriesPerRequest: null });
+    try {
+      const pong = await redis.ping();
+      return pong === "PONG" ? "ok" : "error";
+    } catch {
+      return "error";
+    } finally {
+      await redis.quit().catch(() => undefined);
+    }
   }
 }

@@ -1,173 +1,112 @@
-# Deploying the private demo
+# Deploying the legacy production stack
 
-This deploys **`apps/legacy-web` + `apps/legacy-api`** — the prototype stack,
-which is the only part of the repo with a working UI. `apps/web` is still a
-placeholder page and `apps/api` has no frontend, so neither can be demoed yet.
+This deploys `apps/legacy-web` and `apps/legacy-api` together with Postgres.
+The web service is the public entrypoint. It proxies `/api` requests to the API
+service over the internal Docker network, so no separate reverse proxy service
+is needed.
 
 ## Read this first
 
-**The application has no authentication.** `apps/legacy-api/src/lib/auth.ts`
-uses the user's database id as the bearer token, and the frontend auto-logs-in
-as a fixed seeded user. Anyone who reaches the app is signed in as that user.
+This stack is still the legacy demo flow:
 
-The only thing making this deployment safe is the **password gate in Caddy**.
-So:
+- The frontend auto-logs in with a seeded user.
+- The API is not a full multi-user auth system yet.
+- Do not use real customer data in this deployment.
 
-- Never publish the `api` or `web` container ports on the host. Only Caddy is
-  exposed. `docker-compose.prod.yml` is already set up this way — keep it that way.
-- Never put real customer data in this database. The demo dataset is seeded.
-- Everyone who logs in shares one identity. This is a demo, not multi-user.
-
-This is a temporary arrangement until Better Auth lands in `apps/api`.
+That said, the deployment is now self-contained: the web service is public, the
+API stays private, and the browser talks to the API through the web server.
 
 ## What runs
 
 | Service | Purpose | Exposed |
 |---|---|---|
-| `caddy` | TLS + password gate + reverse proxy | **80, 443** |
-| `web` | TanStack Start SSR frontend | internal only |
+| `web` | TanStack Start SSR frontend and `/api` proxy | public |
 | `api` | Elysia REST API | internal only |
 | `postgres` | pgvector database | internal only |
-| `migrate` | one-shot, applies migrations then exits | — |
+| `migrate` | one-shot, applies migrations then exits | - |
+| `seed` | one-shot, seeds demo data then exits | - |
 
-No Redis, OpenSearch, or object storage: the legacy API doesn't use them.
+No Redis, OpenSearch, or object storage: the legacy API does not use them.
 
-There are two compose files. Use **`docker-compose.dokploy.yml`** if you are
-deploying through Dokploy, and `docker-compose.prod.yml` for a plain Docker
-host where Caddy also handles TLS.
+## Compose files
+
+Use `docker-compose.prod.yml` for a plain Docker host.
+
+Use `docker-compose.dokploy.yml` for Dokploy. In that variant, point the domain
+at the `web` service on port `3000`.
 
 ## Prerequisites
 
-- A Linux server with Docker Engine and the Compose plugin (or a Dokploy
-  instance already installed on one).
-- A domain with an **A record already pointing at the server's IP** — this must
-  resolve before a TLS certificate can be issued.
-- Ports 80 and 443 open.
+- Docker Engine and the Compose plugin.
+- A server or platform where port `3000` is reachable, or an ingress pointing
+  at the `web` service.
+- A database password and a public URL for the web app.
 
-## Deploying with Dokploy
+## Configure environment
 
-Use **`docker-compose.dokploy.yml`**, not `docker-compose.prod.yml`. Dokploy's
-Traefik already owns ports 80/443, so the standalone file's Caddy would fail to
-bind them.
-
-In the Dokploy variant, Caddy stays in the stack but as an *internal* proxy: it
-enforces the password gate and the `/api`-vs-`/` split, while Traefik terminates
-TLS in front of it. Only Caddy joins `dokploy-network` — postgres, the API, and
-the SSR server stay on a private network where the ingress cannot reach them
-even by accident.
-
-**1. Create the application**
-
-In Dokploy: **Create Application → Compose**. Point it at your Git repository
-and set the compose path to `docker-compose.dokploy.yml`.
-
-**2. Set the environment variables**
-
-In the application's **Environment** tab:
-
-```
-PUBLIC_URL=https://demo.example.com
-DEMO_USER=demo
-DEMO_PASSWORD_HASH=<bcrypt hash, see below>
-POSTGRES_USER=rfpos
-POSTGRES_PASSWORD=<strong secret, see below>
-POSTGRES_DB=rfpos
-```
-
-Generate the hash with:
-
-```bash
-docker run --rm caddy caddy hash-password --plaintext 'your-strong-password'
-```
-
-Double every `$` in the hash (`$2a$14$...` becomes `$$2a$$14$$...`) so compose
-does not interpolate it.
-
-Do **not** set `ACME_EMAIL` — Traefik handles certificates here, and an empty
-value overrides the Caddyfile default and crashloops the container.
-
-**3. Add the domain**
-
-In the **Domains** tab, add your domain and target the **`caddy`** service on
-**port 80**. Dokploy wires up Traefik and the certificate. Do not add domains
-for `web` or `api` — routing between them is Caddy's job, and exposing them
-directly would bypass the password gate.
-
-**4. Deploy, then seed**
-
-Deploy. Migrations run automatically before the API starts. Then seed once,
-from the Dokploy terminal or over SSH:
-
-```bash
-docker compose -f docker-compose.dokploy.yml run --rm   -w /repo/packages/db migrate bun run src/seed/index.ts
-```
-
-**5. Check it**
-
-Visit your domain. You should get a browser password prompt, then the app.
-
----
-
-## Steps (standalone Docker, without Dokploy)
-
-These steps use `docker-compose.prod.yml`, which brings its own Caddy for TLS.
-Skip this section if you are using Dokploy.
-
-**1. Get the code onto the server**
-
-```bash
-git clone <your-repo-url> rfp-os && cd rfp-os
-```
-
-**2. Create the environment file**
+Copy the example file:
 
 ```bash
 cp .env.production.example .env.production
 ```
 
-Generate the two secrets and put them in `.env.production`:
+Then fill in the values:
 
-```bash
-# Database password. The deploy stack passes it as a separate environment
-# variable, so normal special characters are fine.
-docker run --rm alpine sh -lc "tr -dc 'A-Za-z0-9!@#$%^&*()_+-=' </dev/urandom | head -c 40; echo"
-
-# Password-gate hash. Double any $ characters in the output before pasting,
-# so docker compose doesn't interpolate them.
-docker run --rm caddy caddy hash-password --plaintext 'your-strong-password'
+```ini
+PUBLIC_URL=http://localhost:3000
+POSTGRES_USER=rfpos
+POSTGRES_PASSWORD=<strong secret>
+POSTGRES_DB=rfpos
 ```
 
-Then set `SITE_ADDRESS`, `PUBLIC_URL`, and `ACME_EMAIL` to your domain and email.
+`PUBLIC_URL` must match the URL users will actually open. For a raw Docker
+host, use `http://localhost:3000` or `http://server-ip:3000`. For an ingress or
+load balancer, use the public domain.
 
-**3. Bring it up**
+## Deploying with Dokploy
+
+1. Create a Compose application in Dokploy and point it at
+   `docker-compose.dokploy.yml`.
+2. Set the environment variables from `.env.production`.
+3. Add one domain and target the `web` service on port `3000`.
+4. Deploy.
+5. Seed the demo data once:
+
+```bash
+docker compose -f docker-compose.dokploy.yml run --rm -w /repo/packages/db migrate \
+  bun run src/seed/index.ts
+```
+
+## Deploying with plain Docker
+
+1. Get the code onto the server.
+
+```bash
+git clone <your-repo-url> rfp-os && cd rfp-os
+```
+
+2. Create the environment file as shown above.
+
+3. Bring it up:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
 
-Migrations run automatically before the API starts. If a migration fails the
-API will not boot — check `docker compose -f docker-compose.prod.yml logs migrate`.
-
-**4. Seed the demo data**
-
-The app expects a seeded organization and user; without this the frontend's
-session bootstrap fails on load.
+4. Seed the demo data:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production \
   run --rm -w /repo/packages/db migrate bun run src/seed/index.ts
 ```
 
-**5. Check it**
-
-Visit `https://your-domain`. The browser prompts for the demo credentials,
-then the app loads.
+5. Open the public web URL.
 
 ## Operations
 
 ```bash
 # Logs
-docker compose -f docker-compose.prod.yml logs -f api web
+docker compose -f docker-compose.prod.yml logs -f web api
 
 # Deploy an update
 git pull
@@ -178,29 +117,19 @@ docker compose -f docker-compose.prod.yml exec -T postgres \
   pg_dump -U rfpos rfpos | gzip > backup-$(date +%F).sql.gz
 ```
 
-Set up that backup on a cron job before you let anyone put work into the demo —
-the database lives in a Docker volume and nothing else is protecting it.
-
 ## Testing locally without a domain
 
-Set `SITE_ADDRESS=:80` and `PUBLIC_URL=http://localhost` in `.env.production`,
-then browse to `http://localhost`. Caddy skips TLS and the password gate still
-applies.
-
-On **Windows with Git Bash**, prefix any compose command that passes a
-container path with `MSYS_NO_PATHCONV=1`, or the shell rewrites `/repo/...`
-into a Windows path and the command fails:
+Set `PUBLIC_URL=http://localhost:3000` in `.env.production`, then run:
 
 ```bash
-MSYS_NO_PATHCONV=1 docker compose -f docker-compose.prod.yml --env-file .env.production   run --rm -w /repo/packages/db migrate bun run src/seed/index.ts
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
 
-This does not apply on the Linux server.
+Browse to `http://localhost:3000`.
 
-## Before this can become a real public launch
+## Before this becomes a real public launch
 
-1. Replace the dev auth boundary with Better Auth (already a dependency in
-   `apps/api`) — real passwords, sessions, org invites.
-2. Remove the `dev-login` endpoint and the frontend's auto-login.
+1. Replace the dev auth boundary with Better Auth in `apps/api`.
+2. Remove the `dev-login` flow and the frontend auto-login.
 3. Finish the `apps/web` + `apps/api` migration and deploy that instead.
-4. Add rate limiting, database backups off-box, and error monitoring.
+4. Add rate limiting, off-box backups, and error monitoring.
