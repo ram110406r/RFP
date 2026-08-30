@@ -178,20 +178,20 @@ function NavLink({
           onNavigate?.();
         }}
         className={[
-          "grid h-[44px] items-center rounded-[10px] px-3 text-[15px] font-medium transition",
-          collapsed ? "grid-cols-[20px] justify-items-center px-0" : "grid-cols-[20px_minmax(0,1fr)] gap-3",
+          "flex h-[44px] items-center rounded-[10px] px-3 text-[15px] font-medium transition",
+          collapsed ? "justify-center px-0" : "justify-start gap-3",
           active || flyoutOpen ? "bg-[#EFF5FF] text-[#0F172A]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
         ].join(" ")}
       >
-        <span className={["flex h-5 w-5 items-center justify-center", active || flyoutOpen ? "text-[#155EEF]" : "text-slate-500"].join(" ")}>
+        <span
+          className={[
+            "flex h-5 w-5 shrink-0 items-center justify-center",
+            active || flyoutOpen ? "text-[#155EEF]" : "text-slate-500",
+          ].join(" ")}
+        >
           <Icon size={18} strokeWidth={1.75} />
         </span>
         {!collapsed ? <span className="truncate">{item.label}</span> : null}
-        {!collapsed && hasSubmenu ? (
-          <span className="ml-auto text-slate-400">
-            <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
-          </span>
-        ) : null}
       </Link>
 
       {flyoutOpen ? (
