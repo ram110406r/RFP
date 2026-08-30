@@ -103,6 +103,22 @@ export interface TenderListPayload {
   pageSize: number;
 }
 
+export interface ActivityItem {
+  id: string;
+  workspaceId: string | null;
+  rfpId: string | null;
+  actorId: string | null;
+  actorLabel: string;
+  kind: string;
+  label: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface WorkspaceSummary {
   id: string;
   organizationId: string;

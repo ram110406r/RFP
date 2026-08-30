@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   analyzeRequirementAnswer,
   analyzeTender,
+  fetchActivities,
   fetchDashboardSummary,
   approveKnowledge,
   archiveKnowledge,
@@ -34,6 +35,7 @@ import {
   updateKnowledge,
   updateReview,
   parseTenderSource,
+  transitionTender,
 } from "./api";
 import type {
   DashboardOverview,
@@ -307,6 +309,28 @@ export function useCreateTender() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: tenderListKeys.list() }),
+      ]);
+    },
+  });
+}
+
+export function useActivities(params: { workspaceId?: string; q?: string; action?: string; entityType?: string; rfpId?: string; actorId?: string } = {}) {
+  return useQuery({
+    queryKey: ["activities", params] as const,
+    queryFn: () => fetchActivities(params),
+  });
+}
+
+export function useTransitionTender(tenderId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { to: string; reason?: string }) => transitionTender(tenderId, input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.detail(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.workspace(tenderId) }),
         queryClient.invalidateQueries({ queryKey: tenderListKeys.list() }),
       ]);
     },

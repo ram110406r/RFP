@@ -249,6 +249,18 @@ export async function fetchWorkspaces(init?: ApiInit) {
   return requestJson<{ items: WorkspaceSummary[] }>(`/workspaces`, init);
 }
 
+export async function fetchActivities(
+  params: { workspaceId?: string; q?: string; action?: string; entityType?: string; rfpId?: string; actorId?: string } = {},
+  init?: ApiInit,
+) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return requestJson<{ items: import("./models").ActivityItem[] }>(`/activities${suffix}`, init);
+}
+
 export async function createTender(
   body: {
     workspaceId: string;
@@ -295,6 +307,21 @@ export async function updateTender(
     method: "PATCH",
     body: JSON.stringify(body),
   });
+}
+
+export async function transitionTender(
+  tenderId: string,
+  body: { to: string; reason?: string; metadata?: Record<string, unknown> },
+  init?: ApiInit,
+) {
+  return requestJson<{ id: string; status: string; previousStatus: string | null; reason: string | null }>(
+    `/tenders/${tenderId}/transition`,
+    {
+      ...init,
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 export type TenderSourceUploadIntent = {

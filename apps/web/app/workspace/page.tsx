@@ -24,7 +24,7 @@ export default function WorkspacePage() {
           <QuickLink title="Dashboard" href="/" detail="Open the operational summary." />
           <QuickLink title="Tender Search" href="/tenders" detail="Browse active tenders and pipeline filters." />
           <QuickLink title="Knowledge Brain" href="/knowledge" detail="Review the knowledge lifecycle." />
-          <QuickLink title="Pipeline" href="/submissions" detail="Track submissions and readiness." />
+          <QuickLink title="Pipeline" href="/pipeline" detail="Track opportunities by stage and risk." />
         </section>
 
         <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">

@@ -174,7 +174,7 @@ function KpiCard({ label, value, detail, icon, loading }: Kpi & { loading?: bool
 function PipelineSnapshot({ pipeline }: { pipeline: Array<{ id: string; label: string; count: number }> }) {
   return (
     <article className="min-w-0 border border-[#E4E7EC] bg-white">
-      <PanelHeader title="Pipeline snapshot" actionLabel="View pipeline" actionHref="/submissions" />
+      <PanelHeader title="Pipeline snapshot" actionLabel="View pipeline" actionHref="/pipeline" />
       <div className="overflow-x-auto px-4 pb-4 sm:px-5">
         <div className="grid min-w-[680px] grid-cols-6 divide-x divide-[#E4E7EC] border-t border-[#E4E7EC]">
           {pipeline.map((stage) => (
