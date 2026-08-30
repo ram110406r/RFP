@@ -124,26 +124,16 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_46%,#eef2f7_100%)] text-slate-900">
-      <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="sticky top-0 hidden h-screen border-r border-slate-200 bg-white/95 backdrop-blur-xl lg:flex lg:flex-col">
-          <div className="flex items-center gap-3 px-5 py-5">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#60a5fa,#2563eb)] text-lg font-semibold text-white shadow-sm">
-              T
-            </div>
-            <div>
-              <p className="text-lg font-semibold tracking-tight text-slate-950">TENDYY</p>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">RFP operating system</p>
-            </div>
-          </div>
-
-          <div className="px-3 pb-3">
+      <div className="grid min-h-screen lg:grid-cols-[264px_minmax(0,1fr)] xl:grid-cols-[288px_minmax(0,1fr)]">
+        <aside className="sticky top-0 hidden h-screen overflow-y-auto border-r border-slate-200 bg-white/95 backdrop-blur-xl lg:flex lg:flex-col">
+          <div className="px-3 py-4">
             <div className="flex items-center justify-between rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 shadow-sm">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-600 text-sm font-semibold text-white">
                   AC
                 </div>
                 <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-950">{workspaceName}</p>
+                  <p className="truncate text-sm font-semibold text-slate-950">{workspaceName}</p>
                   <p className="truncate text-xs text-slate-500">Current workspace</p>
                 </div>
               </div>
@@ -153,7 +143,7 @@ export function AppShell({
             </div>
           </div>
 
-          <nav className="flex-1 space-y-1 px-3">
+          <nav className="flex-1 space-y-1 px-3 pb-3">
             {navItems.map((item) => {
               const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
               return (
@@ -174,7 +164,7 @@ export function AppShell({
             })}
           </nav>
 
-          <div className="border-t border-slate-200 px-4 py-4">
+          <div className="border-t border-slate-200 px-3 py-4">
             <Link
               href="/settings"
               className="flex items-center gap-3 rounded-2xl px-4 py-3 text-[15px] font-medium text-slate-700 hover:bg-slate-50"
@@ -224,10 +214,10 @@ export function AppShell({
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
                     <path d="M4 7h16M4 12h16M4 17h16" />
                   </svg>
-                </button>
-                <div>
-                  <p className="text-base font-semibold tracking-tight text-slate-950">Tendyy</p>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">RFP operating system</p>
+                  </button>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold tracking-tight text-slate-950">{workspaceName}</p>
+                  <p className="truncate text-xs text-slate-500">Workspace navigation</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -252,14 +242,9 @@ export function AppShell({
                 onClick={(event) => event.stopPropagation()}
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#60a5fa,#2563eb)] text-lg font-semibold text-white">
-                      T
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold tracking-tight text-slate-950">Tendyy</p>
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">RFP operating system</p>
-                    </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold tracking-tight text-slate-950">{workspaceName}</p>
+                    <p className="text-xs text-slate-500">Workspace navigation</p>
                   </div>
                   <button
                     type="button"

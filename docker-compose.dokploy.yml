@@ -7,8 +7,8 @@
 #      container binding them would fail to start. Traefik reaches the web
 #      service over the shared dokploy-network instead.
 #
-#   2. The web service is the edge proxy. It serves the app and forwards /api
-#      requests to the internal API service.
+#   2. The web service is the edge proxy. It serves the app and forwards
+#      /api/v1 requests to the internal API service.
 #
 # In Dokploy: create a Compose application, point it at this file, then add one
 # domain targeting the web service on port 3000. Everything else stays private
@@ -38,10 +38,34 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [internal]
+    volumes:
+      - rfp_os_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    networks: [internal]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL is required}
+    volumes:
+      - rfp_os_minio_data:/data
+
   migrate:
     build:
       context: .
-      dockerfile: apps/legacy-api/Dockerfile
+      dockerfile: apps/api/Dockerfile
     working_dir: /repo/packages/db
     command: ["bun", "run", "db:migrate"]
     networks: [internal]
@@ -59,7 +83,7 @@ services:
   seed:
     build:
       context: .
-      dockerfile: apps/legacy-api/Dockerfile
+      dockerfile: apps/api/Dockerfile
     working_dir: /repo/packages/db
     command: ["bun", "run", "db:ensure-seed"]
     networks: [internal]
@@ -79,7 +103,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: apps/legacy-api/Dockerfile
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     networks: [internal]
     environment:
@@ -88,12 +112,26 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
-      PORT: 4000
+      NODE_ENV: production
+      API_PORT: 4000
       CORS_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL is required}
-      DEV_AUTH_ENABLED: "true"
+      BETTER_AUTH_URL: ${PUBLIC_URL:?PUBLIC_URL is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      REDIS_URL: redis://redis:6379
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+      STORAGE_FORCE_PATH_STYLE: "true"
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
       seed:
         condition: service_completed_successfully
     healthcheck:
@@ -150,3 +188,5 @@ services:
 
 volumes:
   rfp_os_postgres_data:
+  rfp_os_redis_data:
+  rfp_os_minio_data:

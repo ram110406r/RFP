@@ -97,9 +97,6 @@ export function validateEnv(config: Record<string, unknown>): Env {
     if (!result.data.BETTER_AUTH_SECRET) {
       missing.push("BETTER_AUTH_SECRET: required in production (min 32 characters)");
     }
-    if (!result.data.GROQ_API_KEY) {
-      missing.push("GROQ_API_KEY: required in production for real AI generation");
-    }
     if (!hasDatabaseUrl && !hasPostgresEnv) {
       missing.push(
         "DATABASE_URL or POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB: required in production",

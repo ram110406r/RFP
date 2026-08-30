@@ -1,14 +1,13 @@
 # Production compose for the updated dashboard.
 #
-# Deliberately smaller than docker-compose.yml (the local dev stack): the
-# legacy API talks to Postgres and nothing else - no Redis, no OpenSearch, no
-# object storage - so running those here would be cost and attack surface for
-# no benefit. Add them back when apps/api takes over.
+# The public entrypoint is the Next.js web service. It proxies /api/v1
+# requests to the Nest API over the internal Docker network. The API now owns
+# dashboard summary, onboarding, and the rest of the production surface.
 #
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 #
-# The web service is the only public entrypoint. It proxies /api requests to the
-# API service over the internal Docker network.
+# Redis and MinIO are included because the Nest API's production configuration
+# expects a queue backend and S3-compatible storage credentials.
 
 services:
   postgres:
@@ -26,13 +25,35 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - rfp_os_prod_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL is required}
+    volumes:
+      - rfp_os_prod_minio_data:/data
+
   # One-shot: applies packages/db/migrations, then exits. The API waits for it
   # to succeed, so a failed migration stops the deploy instead of booting an
   # API against a half-migrated schema.
   migrate:
     build:
       context: .
-      dockerfile: apps/legacy-api/Dockerfile
+      dockerfile: apps/api/Dockerfile
     working_dir: /repo/packages/db
     command: ["bun", "run", "db:migrate"]
     environment:
@@ -49,7 +70,7 @@ services:
   seed:
     build:
       context: .
-      dockerfile: apps/legacy-api/Dockerfile
+      dockerfile: apps/api/Dockerfile
     working_dir: /repo/packages/db
     command: ["bun", "run", "db:ensure-seed"]
     environment:
@@ -68,7 +89,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: apps/legacy-api/Dockerfile
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_HOST: postgres
@@ -76,12 +97,26 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
-      PORT: 4000
+      NODE_ENV: production
+      API_PORT: 4000
       CORS_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL is required}
-      DEV_AUTH_ENABLED: "true"
+      BETTER_AUTH_URL: ${PUBLIC_URL:?PUBLIC_URL is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      REDIS_URL: redis://redis:6379
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+      STORAGE_FORCE_PATH_STYLE: "true"
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
       seed:
         condition: service_completed_successfully
     healthcheck:
@@ -139,3 +174,5 @@ services:
 
 volumes:
   rfp_os_prod_postgres_data:
+  rfp_os_prod_redis_data:
+  rfp_os_prod_minio_data:
