@@ -101,7 +101,7 @@ services:
       API_PORT: 4000
       CORS_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL is required}
       BETTER_AUTH_URL: ${PUBLIC_URL:?PUBLIC_URL is required}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-rfp-os_local_auth_secret}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-rfp-os_local_auth_secret_20260830_fallback}
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: http://minio:9000
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
