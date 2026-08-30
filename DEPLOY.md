@@ -70,8 +70,9 @@ load balancer, use the public domain.
 container. In Dokploy and the bundled Docker compose files, leave it as
 `http://api:4000`.
 
-`BETTER_AUTH_SECRET` signs the session cookies. It needs to be a real secret in
-every production environment.
+`BETTER_AUTH_SECRET` signs the session cookies. The compose files now fall back
+to a local-safe default if Dokploy does not provide one, but you should still
+set a real secret in production as soon as the deploy is stable.
 
 `STORAGE_ACCESS_KEY_ID` and `STORAGE_SECRET_ACCESS_KEY` are the credentials the
 API uses to talk to MinIO. In the bundled compose files, the same pair also
