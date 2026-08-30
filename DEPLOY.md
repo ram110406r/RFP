@@ -1,6 +1,6 @@
 # Deploying the legacy production stack
 
-This deploys `apps/legacy-web` and `apps/legacy-api` together with Postgres.
+This deploys `apps/web` and `apps/legacy-api` together with Postgres.
 The web service is the public entrypoint. It proxies `/api` requests to the API
 service over the internal Docker network, so no separate reverse proxy service
 is needed.
@@ -20,7 +20,7 @@ API stays private, and the browser talks to the API through the web server.
 
 | Service | Purpose | Exposed |
 |---|---|---|
-| `web` | TanStack Start SSR frontend and `/api` proxy | public |
+| `web` | Next.js frontend and `/api` proxy | public |
 | `api` | Elysia REST API | internal only |
 | `postgres` | pgvector database | internal only |
 | `migrate` | one-shot, applies migrations then exits | - |
@@ -54,14 +54,29 @@ Then fill in the values:
 
 ```ini
 PUBLIC_URL=http://localhost:3000
+API_INTERNAL_URL=http://api:4000
 POSTGRES_USER=rfpos
 POSTGRES_PASSWORD=<strong secret>
 POSTGRES_DB=rfpos
+
+# Firebase public config used by apps/web
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=tendyy.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=tendyy
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=tendyy.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=980605439539
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
+NEXT_PUBLIC_FIREBASE_USE_EMULATORS=false
 ```
 
 `PUBLIC_URL` must match the URL users will actually open. For a raw Docker
 host, use `http://localhost:3000` or `http://server-ip:3000`. For an ingress or
 load balancer, use the public domain.
+
+`API_INTERNAL_URL` is the address the Next.js server uses to reach the API
+container. In Dokploy and the bundled Docker compose files, leave it as
+`http://api:4000`.
 
 ## Deploying with Dokploy
 
@@ -119,7 +134,8 @@ docker compose -f docker-compose.prod.yml exec -T postgres \
 
 ## Testing locally without a domain
 
-Set `PUBLIC_URL=http://localhost:3000` in `.env.production`, then run:
+Set `PUBLIC_URL=http://localhost:3000` and `API_INTERNAL_URL=http://api:4000`
+in `.env.production`, then run:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build

@@ -46,7 +46,11 @@ type ApiInit = RequestInit & {
 };
 
 export function getApiBaseUrl() {
-  return process.env.NEXT_PUBLIC_API_URL ?? process.env.API_URL ?? "";
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+
+  return process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? process.env.API_URL ?? "";
 }
 
 export type OnboardingStatus = {
@@ -114,9 +118,8 @@ function resolveBaseUrl(baseUrl?: string) {
   if (baseUrl) return baseUrl.replace(/\/$/, "");
   const configuredBaseUrl = getApiBaseUrl().replace(/\/$/, "");
   if (configuredBaseUrl) return configuredBaseUrl;
-  if (typeof window !== "undefined") return window.location.origin;
   if (process.env.NODE_ENV === "production") {
-    throw new Error("API_URL or NEXT_PUBLIC_API_URL is required in production.");
+    throw new Error("API_INTERNAL_URL is required in production.");
   }
   return "http://127.0.0.1:4100";
 }
