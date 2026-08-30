@@ -441,7 +441,7 @@ function MobileDrawer({
           <SidebarSearch />
         </div>
 
-        <div className="mt-6 flex-1 space-y-6 overflow-y-auto pr-1">
+        <div className="mt-6 flex-1 space-y-6 overflow-y-auto scrollbar-hide pr-1">
           {navGroups.map((group) => (
             <SidebarSection
               key={group.label}
@@ -561,7 +561,7 @@ export function AppShell({
               </div>
             )}
 
-            <div className="mt-6 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
+            <div className="mt-6 flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-hide pr-1">
               <div className="space-y-6">
                 {navGroups.map((group, index) => (
                   <section key={group.label}>
