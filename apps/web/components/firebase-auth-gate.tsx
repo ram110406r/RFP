@@ -337,10 +337,10 @@ function AuthShell({
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#eff6ff_0%,_#ffffff_55%,_#f8fafc_100%)] px-4 py-10">
       <div className="w-full max-w-md rounded-[32px] border border-slate-200 bg-white/95 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
         <div className="mb-8">
-          <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-700 text-xl font-semibold text-white">
+          <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#155EEF] text-xl font-semibold text-white">
             T
           </div>
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-sky-700">Tendyy</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-sky-700">TENDYY</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{heading}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">{description}</p>
         </div>

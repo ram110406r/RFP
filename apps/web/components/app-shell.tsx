@@ -8,15 +8,21 @@ import type { LucideIcon } from "lucide-react";
 import {
   Brain,
   Building2,
-  ChevronsLeft,
-  ChevronsRight,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
   FilePenLine,
+  FileText,
   GitBranch,
+  Home,
   LayoutGrid,
   Menu,
+  MessageSquare,
   PanelsTopLeft,
   Search,
+  Send,
   Settings,
+  Star,
   User,
   X,
 } from "lucide-react";
@@ -28,6 +34,12 @@ type Breadcrumb = {
   href?: string;
 };
 
+type NavSubItem = {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+};
+
 type NavItem = {
   href: string;
   label: string;
@@ -35,9 +47,13 @@ type NavItem = {
   section: "main" | "system";
   exact?: boolean;
   matches?: string[];
+  submenu?: NavSubItem[];
 };
 
 type Viewport = "mobile" | "tablet" | "desktop";
+
+const SIDEBAR_WIDTH_EXPANDED = 248;
+const SIDEBAR_WIDTH_COLLAPSED = 72;
 
 function maskEmail(email: string | null) {
   if (!email) return "signed in";
@@ -55,7 +71,11 @@ function initialsFromName(value: string) {
 }
 
 function isPathActive(pathname: string, item: NavItem) {
-  if (item.matches?.some((match) => pathname === match || pathname.startsWith(`${match}/`) || pathname.startsWith(`${match}?`))) {
+  if (
+    item.matches?.some(
+      (match) => pathname === match || pathname.startsWith(`${match}/`) || pathname.startsWith(`${match}?`),
+    )
+  ) {
     return true;
   }
 
@@ -78,6 +98,14 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         icon: FilePenLine,
         section: "main",
         matches: ["/tenders/new", "/tenders/import"],
+        submenu: [
+          { href: "/tenders/new", label: "Overview", icon: Home },
+          { href: "/tenders", label: "Active Tenders", icon: FileText },
+          { href: "/tenders/new?view=requirements", label: "Requirements", icon: ClipboardList },
+          { href: "/reviews", label: "Responses", icon: MessageSquare },
+          { href: "/reviews", label: "Reviews", icon: Star },
+          { href: "/submissions", label: "Submissions", icon: Send },
+        ],
       },
       { href: "/submissions", label: "Pipeline", icon: GitBranch, section: "main", exact: true },
       { href: "/knowledge", label: "Knowledge Brain", icon: Brain, section: "main", exact: true },
@@ -96,7 +124,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
 
 function SidebarSearch({ shortcut = "⌘ S" }: { shortcut?: string }) {
   return (
-    <label className="flex h-11 items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-slate-500">
+    <label className="flex h-[44px] items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-slate-500">
       <Search className="h-[18px] w-[18px] shrink-0 text-slate-400" strokeWidth={1.75} />
       <span className="min-w-0 flex-1 truncate text-sm text-slate-500">Search</span>
       <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500">
@@ -110,34 +138,93 @@ function NavLink({
   item,
   collapsed,
   pathname,
+  activeFlyout,
+  setActiveFlyout,
   onNavigate,
 }: {
   item: NavItem;
   collapsed: boolean;
   pathname: string;
+  activeFlyout: string | null;
+  setActiveFlyout: (value: string | null) => void;
   onNavigate?: () => void;
 }) {
   const active = isPathActive(pathname, item);
   const Icon = item.icon;
+  const hasSubmenu = Boolean(item.submenu?.length);
+  const flyoutOpen = collapsed && hasSubmenu && (activeFlyout === item.href || active);
 
   return (
-    <Link
-      href={item.href}
-      aria-current={active ? "page" : undefined}
-      aria-label={collapsed ? item.label : undefined}
-      title={collapsed ? item.label : undefined}
-      onClick={onNavigate}
-      className={[
-        "grid h-11 items-center rounded-[10px] px-3 text-[15px] font-medium transition",
-        collapsed ? "grid-cols-[20px] justify-items-center px-0" : "grid-cols-[20px_minmax(0,1fr)] gap-3",
-        active ? "bg-[#EFF5FF] text-[#0F172A]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
-      ].join(" ")}
+    <div
+      className="relative"
+      onMouseEnter={() => {
+        if (hasSubmenu && collapsed) setActiveFlyout(item.href);
+      }}
+      onMouseLeave={() => {
+        if (hasSubmenu && collapsed && !active) setActiveFlyout(null);
+      }}
     >
-      <span className={["flex h-5 w-5 items-center justify-center", active ? "text-[#155EEF]" : "text-slate-500"].join(" ")}>
-        <Icon size={18} strokeWidth={1.75} />
-      </span>
-      {!collapsed ? <span className="truncate">{item.label}</span> : null}
-    </Link>
+      <Link
+        href={item.href}
+        aria-current={active ? "page" : undefined}
+        aria-label={collapsed ? item.label : undefined}
+        title={collapsed ? item.label : undefined}
+        onClick={(event) => {
+          if (hasSubmenu && collapsed) {
+            event.preventDefault();
+            setActiveFlyout(activeFlyout === item.href ? null : item.href);
+            return;
+          }
+          onNavigate?.();
+        }}
+        className={[
+          "grid h-[44px] items-center rounded-[10px] px-3 text-[15px] font-medium transition",
+          collapsed ? "grid-cols-[20px] justify-items-center px-0" : "grid-cols-[20px_minmax(0,1fr)] gap-3",
+          active || flyoutOpen ? "bg-[#EFF5FF] text-[#0F172A]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
+        ].join(" ")}
+      >
+        <span className={["flex h-5 w-5 items-center justify-center", active || flyoutOpen ? "text-[#155EEF]" : "text-slate-500"].join(" ")}>
+          <Icon size={18} strokeWidth={1.75} />
+        </span>
+        {!collapsed ? <span className="truncate">{item.label}</span> : null}
+        {!collapsed && hasSubmenu ? (
+          <span className="ml-auto text-slate-400">
+            <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+        ) : null}
+      </Link>
+
+      {flyoutOpen ? (
+        <div className="absolute left-full top-1/2 z-40 ml-3 w-64 -translate-y-1/2">
+          <div className="rounded-[16px] border border-slate-200 bg-white p-2 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+            {item.submenu?.map((subItem) => {
+              const subActive =
+                pathname === subItem.href ||
+                pathname.startsWith(`${subItem.href}/`) ||
+                pathname.startsWith(`${subItem.href}?`);
+              const SubIcon = subItem.icon;
+
+              return (
+                <Link
+                  key={subItem.href}
+                  href={subItem.href}
+                  onClick={onNavigate}
+                  className={[
+                    "flex h-[44px] items-center gap-3 rounded-[10px] px-3 text-sm transition",
+                    subActive ? "bg-[#EFF5FF] text-[#155EEF]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
+                  ].join(" ")}
+                >
+                  <span className={subActive ? "text-[#155EEF]" : "text-slate-400"}>
+                    <SubIcon className="h-4 w-4" strokeWidth={1.75} />
+                  </span>
+                  <span className="flex-1">{subItem.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -146,12 +233,16 @@ function SidebarSection({
   items,
   collapsed,
   pathname,
+  activeFlyout,
+  setActiveFlyout,
   onNavigate,
 }: {
   label: string;
   items: NavItem[];
   collapsed: boolean;
   pathname: string;
+  activeFlyout: string | null;
+  setActiveFlyout: (value: string | null) => void;
   onNavigate?: () => void;
 }) {
   return (
@@ -159,7 +250,15 @@ function SidebarSection({
       {!collapsed ? <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p> : null}
       <nav className="space-y-1">
         {items.map((item) => (
-          <NavLink key={item.href} item={item} collapsed={collapsed} pathname={pathname} onNavigate={onNavigate} />
+          <NavLink
+            key={item.href}
+            item={item}
+            collapsed={collapsed}
+            pathname={pathname}
+            activeFlyout={activeFlyout}
+            setActiveFlyout={setActiveFlyout}
+            onNavigate={onNavigate}
+          />
         ))}
       </nav>
     </section>
@@ -207,7 +306,7 @@ function SidebarFooter({
             <p className="truncate text-xs text-slate-500">{subtitle}</p>
           </div>
           <span className="text-slate-400">
-            <ChevronsRight className="h-4 w-4" strokeWidth={1.75} />
+            <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
           </span>
         </>
       ) : null}
@@ -268,7 +367,9 @@ function ShellHeader({
                         {crumb.label}
                       </Link>
                     ) : (
-                      <span className={index === breadcrumbs.length - 1 ? "truncate font-medium text-slate-950" : "truncate"}>{crumb.label}</span>
+                      <span className={index === breadcrumbs.length - 1 ? "truncate font-medium text-slate-950" : "truncate"}>
+                        {crumb.label}
+                      </span>
                     )}
                     {index < breadcrumbs.length - 1 ? <span className="text-slate-300">/</span> : null}
                   </span>
@@ -276,7 +377,7 @@ function ShellHeader({
               </div>
             </div>
 
-            <label className="hidden h-11 w-[min(34vw,360px)] items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-slate-500 md:flex">
+            <label className="hidden h-11 w-[min(34vw,360px)] items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-slate-500 md:flex xl:hidden">
               <Search className="h-[18px] w-[18px] shrink-0 text-slate-400" strokeWidth={1.75} />
               <span className="text-sm text-slate-500">Search</span>
               <span className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500">
@@ -307,7 +408,6 @@ function MobileDrawer({
   initials,
   displayLabel,
   subtitle,
-  collapsed,
   onClose,
 }: {
   open: boolean;
@@ -315,7 +415,6 @@ function MobileDrawer({
   initials: string;
   displayLabel: string;
   subtitle: string;
-  collapsed: boolean;
   onClose: () => void;
 }) {
   if (!open) return null;
@@ -339,12 +438,21 @@ function MobileDrawer({
         </div>
 
         <div className="mt-5">
-          <SidebarSearch shortcut="⌘ S" />
+          <SidebarSearch />
         </div>
 
         <div className="mt-6 flex-1 space-y-6 overflow-y-auto pr-1">
           {navGroups.map((group) => (
-            <SidebarSection key={group.label} label={group.label} items={group.items} collapsed={collapsed} pathname={pathname} onNavigate={onClose} />
+            <SidebarSection
+              key={group.label}
+              label={group.label}
+              items={group.items}
+              collapsed={false}
+              pathname={pathname}
+              activeFlyout={null}
+              setActiveFlyout={() => undefined}
+              onNavigate={onClose}
+            />
           ))}
         </div>
 
@@ -368,6 +476,7 @@ export function AppShell({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewport, setViewport] = useState<Viewport>("desktop");
+  const [activeFlyout, setActiveFlyout] = useState<string | null>(null);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -398,16 +507,17 @@ export function AppShell({
 
   useEffect(() => {
     setMobileNavOpen(false);
+    setActiveFlyout(null);
   }, [pathname]);
 
   const accountEmail = session?.profile?.email ?? session?.user?.email ?? null;
   const displayLabel = maskEmail(accountEmail);
-  const subtitle = session?.profile?.role ?? "Account";
+  const subtitle = "Account";
   const initials = initialsFromName(session?.profile?.displayName ?? session?.user?.displayName ?? accountEmail ?? "RA");
   const pageTitle = breadcrumbs[breadcrumbs.length - 1]?.label ?? "Dashboard";
   const isMobile = viewport === "mobile";
   const collapsed = !isMobile && sidebarCollapsed;
-  const sidebarWidth = collapsed ? 72 : 248;
+  const sidebarWidth = collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED;
   const contentStyle = isMobile ? undefined : { marginLeft: sidebarWidth };
 
   return (
@@ -424,7 +534,11 @@ export function AppShell({
               className="absolute -right-3 top-[22px] inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
               aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
             >
-              {collapsed ? <ChevronsRight className="h-4 w-4" strokeWidth={1.75} /> : <ChevronsLeft className="h-4 w-4" strokeWidth={1.75} />}
+              {collapsed ? (
+                <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+              ) : (
+                <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
+              )}
             </button>
 
             <div className="flex h-[72px] items-center px-1">
@@ -433,16 +547,33 @@ export function AppShell({
 
             {!collapsed ? (
               <div className="mt-5">
-                <SidebarSearch shortcut="⌘ S" />
+                <SidebarSearch />
               </div>
-            ) : null}
+            ) : (
+              <div className="mt-5 flex justify-center">
+                <button
+                  type="button"
+                  className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+                  aria-label="Search"
+                >
+                  <Search className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                </button>
+              </div>
+            )}
 
             <div className="mt-6 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
               <div className="space-y-6">
                 {navGroups.map((group, index) => (
                   <section key={group.label}>
                     {index > 0 && !collapsed ? <div className="mb-6 border-t border-slate-200 pt-6" /> : null}
-                    <SidebarSection label={group.label} items={group.items} collapsed={collapsed} pathname={pathname} />
+                    <SidebarSection
+                      label={group.label}
+                      items={group.items}
+                      collapsed={collapsed}
+                      pathname={pathname}
+                      activeFlyout={activeFlyout}
+                      setActiveFlyout={setActiveFlyout}
+                    />
                   </section>
                 ))}
               </div>
@@ -461,7 +592,6 @@ export function AppShell({
         initials={initials}
         displayLabel={displayLabel}
         subtitle={subtitle}
-        collapsed={false}
         onClose={() => setMobileNavOpen(false)}
       />
 
@@ -475,7 +605,7 @@ export function AppShell({
         />
 
         <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="w-full min-w-0">{children}</div>
+          <div className="min-w-0 w-full">{children}</div>
         </main>
       </div>
     </div>

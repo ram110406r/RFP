@@ -39,6 +39,15 @@ a {
   text-decoration: none;
 }
 
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 .app-shell {
   min-height: 100vh;
   padding: 32px;
