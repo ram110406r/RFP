@@ -1,589 +1,383 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bookmark,
+  BookmarkCheck,
+  ChevronDown,
+  Clock3,
+  Download,
+  Eye,
+  FileText,
+  Grid2X2,
+  Landmark,
+  List,
+  MapPin,
+  RefreshCw,
+  Search,
+  Share2,
+  SlidersHorizontal,
+  X,
+  Zap,
+} from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
-import { RfpEmptyState, RfpLoadingState, RfpMetricCard, RfpStatusBadge } from "../../components/rfp-foundation";
-import type { DashboardOverview } from "../../lib/models";
-import { useDashboardSummary } from "../../lib/queries";
+import { RfpEmptyState, RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
+import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import { useTender, useTenders } from "../../lib/queries";
+import type { TenderSummary } from "../../lib/models";
 
-type SortKey = "priority" | "deadline" | "readiness" | "reviews";
+type SortKey = "updated" | "deadline" | "title";
+type TabKey = "all" | "saved" | "tracked" | "applied";
 
-const severityRank: Record<string, number> = {
-  CRITICAL: 4,
-  HIGH: 3,
-  MEDIUM: 2,
-  LOW: 1,
-  INFO: 0,
-};
+const statusOptions = ["DRAFT", "INTAKE", "PROCESSING", "READY", "IN_PROGRESS", "REVIEW", "APPROVED", "SUBMITTED", "CLOSED"];
 
 export default function TendersPage() {
   return (
-    <Suspense fallback={<LoadingState />}>
-      <TendersPageContent />
+    <Suspense fallback={<SearchLoadingState />}>
+      <TenderSearchPage />
     </Suspense>
   );
 }
 
-function TendersPageContent() {
+function TenderSearchPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const dashboardQuery = useDashboardSummary(25);
-  const dashboard = dashboardQuery.data ?? null;
-  const rows = useMemo<DashboardOverview["tenders"]>(
-    () => dashboard?.activeTenders ?? dashboard?.tenders ?? [],
-    [dashboard],
-  );
-
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [stageFilter, setStageFilter] = useState("all");
-  const [sortBy, setSortBy] = useState<SortKey>("priority");
+  const session = useFirebaseSession();
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get("q") ?? "");
+  const [status, setStatus] = useState(() => searchParams.get("status") ?? "all");
+  const [tenderType, setTenderType] = useState(() => searchParams.get("type") ?? "all");
+  const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get("page") ?? 1)));
+  const [sort, setSort] = useState<SortKey>("updated");
+  const [tab, setTab] = useState<TabKey>("all");
+  const [view, setView] = useState<"list" | "grid">("list");
+  const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
+  const [trackedIds, setTrackedIds] = useState<Set<string>>(() => new Set());
+  const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
-    const stage = searchParams.get("stage");
-    setStageFilter(stage ? stage.toUpperCase() : "all");
-  }, [searchParams]);
-
-  const metrics = dashboard?.metrics ?? {
-    activeRfps: 0,
-    dueThisWeek: 0,
-    awaitingReview: 0,
-    highRiskItems: 0,
-    averageReadiness: null,
-  };
-
-  const knowledge = dashboard?.knowledge ?? {
-    counts: { total: 0, draft: 0, active: 0, archived: 0, stale: 0 },
-    items: [],
-    attention: [],
-  };
-
-  const statusOptions = useMemo(() => {
-    return Array.from(new Set(rows.map((row) => row.tender.status))).sort();
-  }, [rows]);
-
-  const filteredRows = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-    const filtered = rows.filter((row) => {
-      const haystack = `${row.tender.title} ${row.tender.name} ${row.tender.referenceNumber ?? ""}`.toLowerCase();
-      const matchesSearch = normalizedSearch ? haystack.includes(normalizedSearch) : true;
-      const matchesStatus = statusFilter === "all" ? true : row.tender.status === statusFilter;
-      const matchesStage = stageFilter === "all" ? true : mapTenderStage(row.tender.status) === stageFilter;
-      return matchesSearch && matchesStatus && matchesStage;
-    });
-
-    const sorted = [...filtered].sort((a, b) => {
-      switch (sortBy) {
-        case "deadline":
-          return compareDeadline(a.tender.dueAt, b.tender.dueAt);
-        case "readiness":
-          return (b.readiness ?? -1) - (a.readiness ?? -1);
-        case "reviews":
-          return (b.pendingReviews ?? 0) - (a.pendingReviews ?? 0);
-        case "priority":
-        default: {
-          const severityDelta = rankSeverity(b.highestIssue?.severity) - rankSeverity(a.highestIssue?.severity);
-          if (severityDelta !== 0) return severityDelta;
-          const reviewDelta = (b.pendingReviews ?? 0) - (a.pendingReviews ?? 0);
-          if (reviewDelta !== 0) return reviewDelta;
-          return compareDeadline(a.tender.dueAt, b.tender.dueAt);
-        }
+    const saved = window.localStorage.getItem("tendyy:saved-tenders");
+    if (saved) {
+      try {
+        setSavedIds(new Set(JSON.parse(saved) as string[]));
+      } catch {
+        window.localStorage.removeItem("tendyy:saved-tenders");
       }
+    }
+    const tracked = window.localStorage.getItem("tendyy:tracked-tenders");
+    if (tracked) {
+      try {
+        setTrackedIds(new Set(JSON.parse(tracked) as string[]));
+      } catch {
+        window.localStorage.removeItem("tendyy:tracked-tenders");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const updateViewport = () => setIsDesktop(window.innerWidth >= 1200);
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextSearch = search.trim();
+      setDebouncedSearch(nextSearch);
+      setPage(1);
+      updateUrl(router, new URLSearchParams(window.location.search), { q: nextSearch || null, page: "1" });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [router, search]);
+
+  const tendersQuery = useTenders({
+    search: debouncedSearch || undefined,
+    status: tab === "applied" ? "IN_PROGRESS" : status === "all" ? undefined : status,
+    tenderType: tenderType === "all" ? undefined : tenderType,
+    includeArchived: false,
+    page,
+    pageSize: 10,
+  });
+
+  const rows = useMemo(() => {
+    const items = tendersQuery.data?.items ?? [];
+    return [...items].sort((left, right) => {
+      if (sort === "title") return left.title.localeCompare(right.title);
+      if (sort === "deadline") return compareDates(left.dueAt, right.dueAt);
+      return compareDates(right.updatedAt, left.updatedAt);
     });
+  }, [sort, tendersQuery.data?.items]);
 
-    return sorted;
-  }, [rows, search, statusFilter, stageFilter, sortBy]);
+  const visibleRows = useMemo(() => {
+    if (tab === "saved") return rows.filter((tender) => savedIds.has(tender.id));
+    if (tab === "tracked") return rows.filter((tender) => trackedIds.has(tender.id));
+    return rows;
+  }, [rows, savedIds, tab, trackedIds]);
 
-  const topIssues = useMemo(() => {
-    return rows
-      .flatMap((row) => (row.highestIssue ? [{ tender: row.tender, issue: row.highestIssue }] : []))
-      .sort((a, b) => rankSeverity(b.issue.severity) - rankSeverity(a.issue.severity))
-      .slice(0, 4);
-  }, [rows]);
+  const requestedTenderId = searchParams.get("tender");
+  const selectedId = requestedTenderId ?? (isDesktop ? visibleRows[0]?.id ?? "" : "");
+  const selectedFromList = rows.find((tender) => tender.id === selectedId) ?? null;
+  const selectedQuery = useTender(selectedId, selectedFromList);
+  const selectedTender = selectedQuery.data ?? selectedFromList;
+  const total = tendersQuery.data?.total ?? 0;
+  const pageSize = tendersQuery.data?.pageSize ?? 10;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const userName = session?.profile?.displayName ?? session?.user?.displayName ?? "Workspace user";
+  const userRole = session?.profile?.role ?? "Workspace member";
+  const lastUpdated = rows[0]?.updatedAt;
 
-  const pendingReviews = useMemo(() => rows.filter((row) => row.pendingReviews > 0).slice(0, 4), [rows]);
-  const overdueRows = useMemo(() => rows.filter((row) => isOverdue(row.tender.dueAt)), [rows]);
+  function selectTender(tenderId: string) {
+    updateUrl(router, searchParams, { tender: tenderId });
+  }
+
+  function closeDetail() {
+    updateUrl(router, searchParams, { tender: null });
+  }
+
+  function toggleSaved(tenderId: string) {
+    setSavedIds((current) => {
+      const next = new Set(current);
+      if (next.has(tenderId)) next.delete(tenderId);
+      else next.add(tenderId);
+      window.localStorage.setItem("tendyy:saved-tenders", JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  function toggleTracked(tenderId: string) {
+    setTrackedIds((current) => {
+      const next = new Set(current);
+      if (next.has(tenderId)) next.delete(tenderId);
+      else next.add(tenderId);
+      window.localStorage.setItem("tendyy:tracked-tenders", JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  function updateFilter(key: "status" | "type", value: string) {
+    if (key === "status") setStatus(value);
+    else setTenderType(value);
+    setPage(1);
+    updateUrl(router, searchParams, { [key]: value === "all" ? null : value, page: "1" });
+  }
 
   return (
-    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "RFPs" }]}>
-      <div className="space-y-6">
-        {dashboardQuery.isError ? (
-          <section className="rounded-[24px] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-            Unable to load the tender dashboard summary right now.
-          </section>
-        ) : null}
-
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Pipeline</p>
-              <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">RFPs</h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-                A live workspace view of tender readiness, review pressure, and the issues that need attention next.
-              </p>
+    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Tender Search" }]} hideDesktopHeader>
+      <div className="min-w-0 space-y-5 pb-6">
+        <header className="flex flex-col gap-5 border-b border-[#E4E7EC] pb-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#98A2B3]">Discovery workspace</p>
+            <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[#101828] sm:text-[32px]">Tender Search</h1>
+            <p className="mt-1 text-sm text-[#667085]">Discover, track and evaluate tenders from your workspace.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              aria-label="Tender source"
+              title="Source filtering is not available in the current tender list API"
+              disabled
+              className="h-10 max-w-[155px] appearance-none rounded-[9px] border border-[#E4E7EC] bg-white px-3 pr-8 text-xs font-semibold text-[#344054] disabled:cursor-not-allowed disabled:opacity-80"
+              defaultValue="all"
+            >
+              <option value="all">All sources</option>
+              <option value="portal">Portal imports</option>
+              <option value="manual">Manual entries</option>
+            </select>
+            <button type="button" className="relative inline-flex h-10 w-10 items-center justify-center rounded-[9px] border border-[#E4E7EC] bg-white text-[#344054]" aria-label="Notifications">
+              <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" aria-hidden="true" />
+              <Clock3 className="h-[17px] w-[17px]" strokeWidth={1.8} />
+            </button>
+            <div className="hidden items-center gap-2 sm:flex">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">{initials(userName)}</div>
+              <div className="min-w-0">
+                <p className="max-w-[130px] truncate text-xs font-semibold text-[#101828]">{userName}</p>
+                <p className="max-w-[130px] truncate text-[11px] text-[#667085]">{userRole}</p>
+              </div>
             </div>
+          </div>
+        </header>
 
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/tenders/new"
-                className="inline-flex items-center justify-center rounded-2xl bg-sky-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800"
-              >
-                Add Tender
-              </Link>
-              <Link
-                href="/tenders/import"
-                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
-              >
-                Import Tender
-              </Link>
-              <Link
-                href="/reviews"
-                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
-              >
-                Open reviews
-              </Link>
-            </div>
+        <section className="border border-[#E4E7EC] bg-white p-4 sm:p-5" aria-label="Tender search controls">
+          <div className="flex flex-col gap-3 xl:flex-row">
+            <label className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-[9px] border border-[#D0D5DD] bg-white px-3 text-[#667085] focus-within:border-[#155EEF] focus-within:ring-2 focus-within:ring-[#155EEF]/10">
+              <Search className="h-[18px] w-[18px] shrink-0" strokeWidth={1.8} />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by keyword, organization, ID, etc." className="min-w-0 flex-1 bg-transparent text-sm text-[#101828] outline-none placeholder:text-[#98A2B3]" />
+              {search ? <button type="button" onClick={() => setSearch("")} className="text-[#98A2B3] hover:text-[#101828]" aria-label="Clear search"><X className="h-4 w-4" /></button> : null}
+            </label>
+            <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-[9px] bg-[#155EEF] px-5 text-sm font-semibold text-white transition hover:bg-[#0F4BD6]">
+              <Search className="h-4 w-4" strokeWidth={1.8} /> Search
+            </button>
+            <button type="button" disabled title="Saved search persistence is not available in the current API" className="inline-flex h-11 items-center justify-center gap-2 rounded-[9px] border border-[#E4E7EC] bg-white px-4 text-sm font-semibold text-[#667085] disabled:cursor-not-allowed disabled:opacity-70">
+              Saved searches <ChevronDown className="h-4 w-4" strokeWidth={1.8} />
+            </button>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#F2F4F7] pt-4">
+            <FilterSelect label="Status" value={status} options={["all", ...statusOptions]} onChange={(value) => updateFilter("status", value)} />
+            <FilterSelect label="Tender type" value={tenderType} options={["all", "DOCUMENT", "ONLINE"]} onChange={(value) => updateFilter("type", value)} />
+            <details className="relative">
+              <summary className="flex h-9 cursor-pointer list-none items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054]">More filters <SlidersHorizontal className="h-3.5 w-3.5 text-[#667085]" /></summary>
+              <div className="absolute left-0 top-11 z-20 w-72 border border-[#E4E7EC] bg-white p-4 text-xs text-[#667085] shadow-[0_12px_32px_rgba(16,24,40,0.12)]">
+                The current API supports status, tender type, keyword search, and server-side pagination. Authority, location, value, and source filters will appear when supported by the data service.
+              </div>
+            </details>
+            {(status !== "all" || tenderType !== "all" || search) ? <button type="button" onClick={() => { setSearch(""); updateFilter("status", "all"); updateFilter("type", "all"); }} className="ml-auto text-xs font-semibold text-[#155EEF] hover:text-[#0F4BD6]">Clear all</button> : null}
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <MetricCard
-            label="Active RFPs"
-            value={String(metrics.activeRfps)}
-            helper="Current workspace scope"
-            loading={dashboardQuery.isLoading || dashboardQuery.isError}
-          />
-          <MetricCard
-            label="Due this week"
-            value={String(metrics.dueThisWeek)}
-            helper={metrics.dueThisWeek > 0 ? "Deadlines need attention" : "No near-term deadlines"}
-            tone={metrics.dueThisWeek > 0 ? "warning" : "success"}
-            loading={dashboardQuery.isLoading || dashboardQuery.isError}
-          />
-          <MetricCard
-            label="Awaiting review"
-            value={String(metrics.awaitingReview)}
-            helper="Pending or changes requested"
-            tone={metrics.awaitingReview > 0 ? "warning" : "success"}
-            loading={dashboardQuery.isLoading || dashboardQuery.isError}
-          />
-          <MetricCard
-            label="High-risk items"
-            value={String(metrics.highRiskItems)}
-            helper="Critical or high severity issues"
-            tone={metrics.highRiskItems > 0 ? "danger" : "success"}
-            loading={dashboardQuery.isLoading || dashboardQuery.isError}
-          />
-          <MetricCard
-            label="Avg. readiness"
-            value={metrics.averageReadiness === null ? "-" : `${metrics.averageReadiness}%`}
-            helper="Across the loaded tenders"
-            tone={metrics.averageReadiness !== null && metrics.averageReadiness >= 70 ? "success" : "warning"}
-            loading={dashboardQuery.isLoading || dashboardQuery.isError}
-          />
-        </section>
+        <div className="flex flex-col gap-3 border-b border-[#E4E7EC] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-5 overflow-x-auto">
+            {(["all", "saved", "tracked", "applied"] as TabKey[]).map((item) => (
+              <button key={item} type="button" onClick={() => { setTab(item); setPage(1); }} aria-pressed={tab === item} className={`relative whitespace-nowrap pb-3 text-sm font-semibold capitalize ${tab === item ? "text-[#155EEF] after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-[#155EEF]" : "text-[#667085] hover:text-[#344054]"}`}>{item === "all" ? "All tenders" : item}</button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3 pb-3 text-xs text-[#667085]">
+            <span className="font-medium">{tendersQuery.isLoading ? "Loading tenders..." : `${tab === "all" || tab === "applied" ? total : visibleRows.length} tender${(tab === "all" || tab === "applied" ? total : visibleRows.length) === 1 ? "" : "s"} found`}</span>
+            <span className="inline-flex items-center gap-1.5 text-[#344054]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> LIVE</span>
+            <span className="hidden md:inline">{lastUpdated ? `Updated ${relativeTime(lastUpdated)}` : "Waiting for refresh"}</span>
+            <button type="button" onClick={() => void tendersQuery.refetch()} className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#E4E7EC] text-[#667085] hover:text-[#155EEF]" aria-label="Refresh tenders"><RefreshCw className="h-3.5 w-3.5" strokeWidth={1.8} /></button>
+            <label className="hidden items-center gap-2 md:flex">Sort:
+              <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} className="bg-transparent font-semibold text-[#344054] outline-none"><option value="updated">Last updated</option><option value="deadline">Deadline</option><option value="title">Title</option></select>
+            </label>
+            <button type="button" onClick={() => setView("list")} className={view === "list" ? "text-[#155EEF]" : "text-[#98A2B3]"} aria-label="List view"><List className="h-4 w-4" /></button>
+            <button type="button" onClick={() => setView("grid")} className={view === "grid" ? "text-[#155EEF]" : "text-[#98A2B3]"} aria-label="Grid view"><Grid2X2 className="h-4 w-4" /></button>
+          </div>
+        </div>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.9fr)]">
-          <article className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-            <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Pipeline</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Tender overview</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Filter by status, search by customer or title, and sort by readiness, deadline, reviews, or operational priority.
-                </p>
-              </div>
+        {tendersQuery.isError ? <div className="border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">Unable to load tenders. <button type="button" onClick={() => void tendersQuery.refetch()} className="font-semibold underline">Retry</button></div> : null}
 
-              <div className="flex flex-wrap gap-2 text-sm text-slate-500">
-                <StatusPill tone="neutral">{filteredRows.length} visible</StatusPill>
-                <StatusPill tone="neutral">{statusOptions.length} statuses</StatusPill>
-                {stageFilter !== "all" ? <StatusPill tone="neutral">Stage: {stageFilter}</StatusPill> : null}
-              </div>
-            </div>
+        <div className={`grid min-w-0 gap-5 ${view === "grid" ? "md:grid-cols-2" : ""} xl:grid-cols-[minmax(0,1fr)_380px]`}>
+          <section className="min-w-0" aria-label="Tender results">
+            {tendersQuery.isLoading ? <TenderSkeleton /> : visibleRows.length > 0 ? view === "list" ? <TenderTable rows={visibleRows} selectedId={selectedId} savedIds={savedIds} onSelect={selectTender} onToggleSaved={toggleSaved} /> : <TenderGrid rows={visibleRows} selectedId={selectedId} savedIds={savedIds} onSelect={selectTender} onToggleSaved={toggleSaved} /> : <RfpEmptyState title="No tenders found" description={tab === "all" ? "Try adjusting your search or filters." : `No tenders are currently ${tab}.`} actionLabel="Show all tenders" onAction={() => setTab("all")} />}
+            <Pagination page={page} totalPages={tab === "saved" || tab === "tracked" ? 1 : totalPages} total={tab === "saved" || tab === "tracked" ? visibleRows.length : total} pageSize={pageSize} onPageChange={(nextPage) => { setPage(nextPage); updateUrl(router, searchParams, { page: String(nextPage) }); }} />
+          </section>
 
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_200px_180px]">
-              <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-500">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="m20 20-3.5-3.5" />
-                </svg>
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search RFPs or customers..."
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
-                />
-              </label>
-
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none"
-              >
-                <option value="all">All statuses</option>
-                {statusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={sortBy}
-                onChange={(event) => setSortBy(event.target.value as SortKey)}
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none"
-              >
-                <option value="priority">Sort: Priority</option>
-                <option value="deadline">Sort: Deadline</option>
-                <option value="readiness">Sort: Readiness</option>
-                <option value="reviews">Sort: Reviews</option>
-              </select>
-            </div>
-
-            <div className="mt-5 overflow-hidden rounded-[24px] border border-slate-200">
-              <div className="overflow-x-auto">
-                <table className="min-w-[1080px] w-full border-separate border-spacing-0">
-                  <thead className="bg-slate-100/80 text-left text-[13px] uppercase tracking-[0.14em] text-slate-500">
-                    <tr>
-                      <Th>RFP</Th>
-                      <Th>Owner</Th>
-                      <Th>Progress</Th>
-                      <Th>Issues</Th>
-                      <Th>Risk</Th>
-                      <Th>Deadline</Th>
-                      <Th>Status</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dashboardQuery.isLoading && rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="px-6 py-12">
-                          <LoadingState />
-                        </td>
-                      </tr>
-                    ) : filteredRows.length > 0 ? (
-                      filteredRows.map((row) => (
-                        <tr key={row.tender.id} className="bg-white align-top">
-                          <Td>
-                            <Link href={`/tenders/${row.tender.id}`} className="group block py-4 pr-4">
-                              <p className="text-[15px] font-semibold text-slate-950 group-hover:text-sky-800">{row.tender.title}</p>
-                              <p className="mt-1 text-sm text-slate-600">{row.tender.name}</p>
-                              <p className="mt-1 text-xs text-slate-400">{row.tender.referenceNumber ?? row.tender.id.slice(0, 8)}</p>
-                            </Link>
-                          </Td>
-                          <Td>
-                            <div className="py-4">
-                              <OwnerBadge ownerId={row.tender.ownerId} />
-                            </div>
-                          </Td>
-                          <Td>
-                            <div className="py-4">
-                              <ProgressCell value={row.readiness} />
-                            </div>
-                          </Td>
-                          <Td>
-                            <div className="py-4">
-                              <div className="flex flex-wrap gap-2">
-                                <StatusPill tone={row.blockingIssueCount > 0 ? "danger" : row.issueCount > 0 ? "warning" : "success"}>
-                                  {row.issueCount} total
-                                </StatusPill>
-                                {row.blockingIssueCount > 0 ? <StatusPill tone="danger">{row.blockingIssueCount} blocking</StatusPill> : null}
-                              </div>
-                            </div>
-                          </Td>
-                          <Td>
-                            <div className="py-4">
-                              <div className="space-y-1">
-                                <StatusPill tone={highestIssueTone(row.highestIssue?.severity ?? null)}>
-                                  {row.highestIssue?.severity ?? "None"}
-                                </StatusPill>
-                                {row.highestIssue ? (
-                                  <p className="max-w-[220px] text-xs leading-5 text-slate-500">{row.highestIssue.title}</p>
-                                ) : (
-                                  <p className="text-xs leading-5 text-slate-400">No major blockers</p>
-                                )}
-                              </div>
-                            </div>
-                          </Td>
-                          <Td>
-                            <div className="py-4 text-sm text-slate-700">{formatRelativeDeadline(row.tender.dueAt)}</div>
-                          </Td>
-                          <Td>
-                            <div className="py-4">
-                              <StatusPill tone={statusTone(row.tender.status)}>{row.tender.status}</StatusPill>
-                            </div>
-                          </Td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={7} className="px-6 py-10">
-                    <EmptyState
-                            title="No matching RFPs"
-                            description="Try a broader search or clear the status filter to show all loaded tenders."
-                            actionLabel="Reset filters"
-                            onAction={() => {
-                              setSearch("");
-                              setStatusFilter("all");
-                              setStageFilter("all");
-                              setSortBy("priority");
-                            }}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </article>
-
-          <aside className="space-y-6">
-            <PanelCard eyebrow="Review queue" title="My tasks" count={String(metrics.awaitingReview)}>
-              {pendingReviews.length > 0 ? (
-                <div className="space-y-3">
-                  {pendingReviews.map((row) => (
-                    <div key={row.tender.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <Link href={`/tenders/${row.tender.id}`} className="font-medium text-slate-950 hover:text-sky-800">
-                            {row.tender.title}
-                          </Link>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {row.pendingReviews} review item{row.pendingReviews === 1 ? "" : "s"} need attention
-                          </p>
-                        </div>
-                        <StatusPill tone="warning">{row.pendingReviews}</StatusPill>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  title="No open reviews"
-                  description="The visible pipeline has no pending review items right now."
-                  actionLabel="Open reviews"
-                  href="/reviews"
-                />
-              )}
-            </PanelCard>
-
-            <PanelCard eyebrow="Attention required" title="Highest-priority issues" count={String(topIssues.length)}>
-              <div className="space-y-3">
-                {topIssues.length > 0 ? (
-                  topIssues.map(({ tender, issue }) => (
-                    <div key={`${tender.id}-${issue.id}`} className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-950">{issue.title}</p>
-                          <p className="mt-1 text-sm text-slate-600">{tender.title}</p>
-                        </div>
-                        <StatusPill tone={highestIssueTone(issue.severity)}>{issue.severity}</StatusPill>
-                      </div>
-                      <p className="mt-3 text-sm leading-6 text-slate-600">{issue.recommendation}</p>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyState
-                    title="No blocker issues"
-                    description="Validation is clear across the loaded tenders."
-                    actionLabel="Review RFPs"
-                    href="/tenders"
-                  />
-                )}
-              </div>
-            </PanelCard>
-
-            <PanelCard eyebrow="Deadlines" title="Due soon" count={String(overdueRows.length)}>
-              {overdueRows.length > 0 ? (
-                <div className="space-y-3">
-                  {overdueRows.slice(0, 4).map((row) => (
-                    <div key={row.tender.id} className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                      <Link href={`/tenders/${row.tender.id}`} className="font-medium text-slate-950 hover:text-sky-800">
-                        {row.tender.title}
-                      </Link>
-                      <p className="mt-1 text-sm text-rose-700">{formatRelativeDeadline(row.tender.dueAt)}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <StatRow label="Due this week" value={String(metrics.dueThisWeek)} />
-                  <StatRow label="Knowledge sources" value={String(knowledge.counts.total)} />
-                  <StatRow label="Stale knowledge" value={String(knowledge.counts.stale)} />
-                </div>
-              )}
-            </PanelCard>
-          </aside>
-        </section>
+          {selectedTender ? <TenderDetailPanel tender={selectedTender} loading={selectedQuery.isLoading} saved={savedIds.has(selectedTender.id)} tracked={trackedIds.has(selectedTender.id)} onClose={closeDetail} onToggleSaved={() => toggleSaved(selectedTender.id)} onToggleTracked={() => toggleTracked(selectedTender.id)} mobile={!isDesktop} /> : null}
+        </div>
       </div>
     </AppShell>
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  helper,
-  tone = "neutral",
-  loading = false,
-}: {
-  label: string;
-  value: string;
-  helper: string;
-  tone?: "neutral" | "warning" | "danger" | "success";
-  loading?: boolean;
-}) {
-  const trendLabel =
-    tone === "danger" ? "Critical" : tone === "warning" ? "Attention" : tone === "success" ? "Healthy" : "Stable";
-  return <RfpMetricCard label={label} value={value} description={helper} loading={loading} trend={{ label: trendLabel, tone }} />;
+function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return <label className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs text-[#667085]">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="max-w-[125px] bg-transparent font-semibold text-[#344054] outline-none"><option value="all">All</option>{options.filter((option) => option !== "all").map((option) => <option key={option} value={option}>{formatStatus(option)}</option>)}</select></label>;
 }
 
-function PanelCard({
-  eyebrow,
-  title,
-  count,
-  children,
-}: {
-  eyebrow: string;
-  title: string;
-  count?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{eyebrow}</p>
-          <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{title}</h3>
-        </div>
-        {count ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">{count}</span> : null}
-      </div>
-      {children}
-    </article>
-  );
+function TenderTable({ rows, selectedId, savedIds, onSelect, onToggleSaved }: { rows: TenderSummary[]; selectedId: string; savedIds: Set<string>; onSelect: (id: string) => void; onToggleSaved: (id: string) => void }) {
+  return <div className="overflow-x-auto border border-[#E4E7EC] bg-white"><table className="min-w-[780px] w-full border-collapse text-left"><thead className="border-b border-[#E4E7EC] bg-[#FCFCFD] text-[10px] font-semibold uppercase tracking-[0.08em] text-[#667085]"><tr><th className="px-4 py-3">Tender</th><th className="px-3 py-3">Authority</th><th className="px-3 py-3">Type</th><th className="px-3 py-3">Value</th><th className="px-3 py-3">Deadline</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Updated</th><th className="px-3 py-3" /></tr></thead><tbody className="divide-y divide-[#F2F4F7]">{rows.map((tender) => <TenderTableRow key={tender.id} tender={tender} selected={tender.id === selectedId} saved={savedIds.has(tender.id)} onSelect={onSelect} onToggleSaved={onToggleSaved} />)}</tbody></table></div>;
 }
 
-function ProgressCell({ value }: { value: number | null }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="h-2.5 w-28 rounded-full bg-slate-200">
-        <div className="h-2.5 rounded-full bg-sky-700" style={{ width: `${Math.max(8, value ?? 0)}%` }} />
-      </div>
-      <span className="text-sm font-medium text-slate-900">{value === null ? "-" : `${value}%`}</span>
-    </div>
-  );
+function TenderTableRow({ tender, selected, saved, onSelect, onToggleSaved }: { tender: TenderSummary; selected: boolean; saved: boolean; onSelect: (id: string) => void; onToggleSaved: (id: string) => void }) {
+  return <tr className={`align-top text-xs text-[#344054] transition hover:bg-[#F8FAFC] ${selected ? "bg-[#EFF5FF]/60" : ""}`}><td className="max-w-[245px] px-4 py-3"><button type="button" onClick={() => onSelect(tender.id)} className="flex w-full items-start gap-3 text-left"><TenderIcon tender={tender} /><span className="min-w-0"><span className="block font-semibold leading-5 text-[#101828]">{tender.title}</span><span className="mt-1 block truncate text-[11px] text-[#667085]">ID: {tender.referenceNumber ?? tender.id}</span><span className="mt-1 block text-[10px] text-[#98A2B3]">{isRecentlyUpdated(tender.updatedAt) ? "LIVE" : "Workspace record"}</span></span></button></td><td className="max-w-[140px] px-3 py-4 text-xs leading-5">{tender.name}</td><td className="px-3 py-4 text-xs">{formatStatus(tender.tenderType)}</td><td className="whitespace-nowrap px-3 py-4 font-medium text-[#101828]">{getTenderValue(tender.metadata)}</td><td className="whitespace-nowrap px-3 py-4">{formatDate(tender.dueAt)}<span className="mt-1 block text-[10px] text-[#98A2B3]">{tender.dueAt ? formatTime(tender.dueAt, tender.timezone) : ""}</span></td><td className="px-3 py-4"><RfpStatusBadge tone={statusTone(tender.status)}>{formatStatus(tender.status)}</RfpStatusBadge></td><td className="whitespace-nowrap px-3 py-4 text-[#667085]">{relativeTime(tender.updatedAt)}</td><td className="px-3 py-4"><div className="flex items-center gap-1"><button type="button" onClick={() => onToggleSaved(tender.id)} className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[#667085] hover:bg-[#EFF5FF] hover:text-[#155EEF]" aria-label={saved ? "Remove saved tender" : "Save tender"}>{saved ? <BookmarkCheck className="h-4 w-4 text-[#155EEF]" /> : <Bookmark className="h-4 w-4" />}</button><button type="button" onClick={() => onSelect(tender.id)} className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[#667085] hover:bg-[#EFF5FF] hover:text-[#155EEF]" aria-label="Preview tender"><Eye className="h-4 w-4" /></button></div></td></tr>;
 }
 
-function OwnerBadge({ ownerId }: { ownerId: string }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-900">
-        {ownerId.slice(0, 2).toUpperCase()}
-      </div>
-      <div>
-        <p className="text-sm font-medium text-slate-900">{shortId(ownerId)}</p>
-        <p className="text-xs text-slate-500">Owner</p>
-      </div>
-    </div>
-  );
+function TenderGrid({ rows, selectedId, savedIds, onSelect, onToggleSaved }: { rows: TenderSummary[]; selectedId: string; savedIds: Set<string>; onSelect: (id: string) => void; onToggleSaved: (id: string) => void }) {
+  return <div className="grid gap-3">{rows.map((tender) => <button type="button" key={tender.id} onClick={() => onSelect(tender.id)} className={`border p-4 text-left transition hover:bg-[#F8FAFC] ${selectedId === tender.id ? "border-[#155EEF] bg-[#EFF5FF]/60" : "border-[#E4E7EC] bg-white"}`}><div className="flex items-start gap-3"><TenderIcon tender={tender} /><div className="min-w-0 flex-1"><p className="font-semibold text-[#101828]">{tender.title}</p><p className="mt-1 text-xs text-[#667085]">{tender.name}</p></div><span onClick={(event) => { event.stopPropagation(); onToggleSaved(tender.id); }} className="text-[#667085]">{savedIds.has(tender.id) ? <BookmarkCheck className="h-4 w-4 text-[#155EEF]" /> : <Bookmark className="h-4 w-4" />}</span></div><div className="mt-4 grid grid-cols-3 gap-2 border-t border-[#F2F4F7] pt-3 text-xs"><span><b className="block text-[#98A2B3]">Deadline</b>{formatDate(tender.dueAt)}</span><span><b className="block text-[#98A2B3]">Value</b>{getTenderValue(tender.metadata)}</span><span><b className="block text-[#98A2B3]">Status</b>{formatStatus(tender.status)}</span></div></button>)}</div>;
 }
 
-function EmptyState({
-  title,
-  description,
-  actionLabel,
-  href,
-  onAction,
-}: {
-  title: string;
-  description: string;
-  actionLabel: string;
-  href?: string;
-  onAction?: () => void;
-}) {
-  return <RfpEmptyState title={title} description={description} actionLabel={actionLabel} actionHref={href} onAction={onAction} />;
+function TenderDetailPanel({ tender, loading, saved, tracked, onClose, onToggleSaved, onToggleTracked, mobile }: { tender: TenderSummary; loading: boolean; saved: boolean; tracked: boolean; onClose: () => void; onToggleSaved: () => void; onToggleTracked: () => void; mobile: boolean }) {
+  const [activeTab, setActiveTab] = useState<"overview" | "documents" | "updates" | "timeline">("overview");
+  const sourceUrl = tender.sourceUrl;
+  const panel = <aside className={`min-w-0 border border-[#E4E7EC] bg-white ${mobile ? "fixed inset-y-0 right-0 z-40 w-[min(390px,100vw)] overflow-y-auto shadow-[-12px_0_32px_rgba(16,24,40,0.12)]" : "xl:sticky xl:top-6 xl:self-start"}`} aria-label="Tender details"><div className="flex items-center justify-between border-b border-[#F2F4F7] px-5 py-4"><span className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {isRecentlyUpdated(tender.updatedAt) ? "LIVE" : "WORKSPACE RECORD"}</span><button type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[#667085] hover:bg-[#F8FAFC]" aria-label="Close tender details"><X className="h-4 w-4" /></button></div><div className="border-b border-[#F2F4F7] px-5 py-5"><div className="flex items-start gap-3"><TenderIcon tender={tender} /><div className="min-w-0"><h2 className="text-lg font-semibold leading-6 text-[#101828]">{tender.title}</h2><p className="mt-2 text-sm text-[#667085]">{tender.name}</p><p className="mt-2 text-xs text-[#98A2B3]">ID: {tender.referenceNumber ?? tender.id}</p></div></div><div className="mt-4 flex flex-wrap items-center gap-2"><RfpStatusBadge tone={statusTone(tender.status)}>{formatStatus(tender.status)}</RfpStatusBadge><span className="text-xs text-[#667085]">Updated {relativeTime(tender.updatedAt)}</span></div><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={onToggleSaved} className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Bookmark className="h-3.5 w-3.5" />{saved ? "Saved" : "Save"}</button><button type="button" onClick={onToggleTracked} className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Clock3 className="h-3.5 w-3.5" />{tracked ? "Tracked" : "Track"}</button><button type="button" onClick={() => void navigator.clipboard?.writeText(window.location.href)} className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Share2 className="h-3.5 w-3.5" />Share</button>{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Download className="h-3.5 w-3.5" />Source</a> : null}</div></div><div className="flex gap-4 overflow-x-auto border-b border-[#F2F4F7] px-5 pt-3">{(["overview", "documents", "updates", "timeline"] as const).map((tab) => <button type="button" key={tab} onClick={() => setActiveTab(tab)} className={`whitespace-nowrap pb-3 text-xs font-semibold capitalize ${activeTab === tab ? "border-b-2 border-[#155EEF] text-[#155EEF]" : "text-[#667085]"}`}>{tab}</button>)}</div>{loading ? <div className="space-y-3 p-5"><div className="h-4 w-28 animate-pulse bg-slate-100" /><div className="h-4 w-full animate-pulse bg-slate-100" /><div className="h-4 w-4/5 animate-pulse bg-slate-100" /></div> : activeTab === "overview" ? <DetailOverview tender={tender} /> : <div className="p-5 text-sm leading-6 text-[#667085]">This workspace tab is ready for its corresponding persisted data. Open the full tender workspace to inspect {activeTab}.</div>}<div className="border-t border-[#F2F4F7] p-5"><Link href={`/tenders/${tender.id}`} className="flex h-10 w-full items-center justify-center gap-2 rounded-[9px] bg-[#155EEF] text-sm font-semibold text-white hover:bg-[#0F4BD6]">Open tender workspace <ArrowRight className="h-4 w-4" /></Link></div></aside>;
+  return mobile ? <div className="fixed inset-0 z-30 bg-[#101828]/25" onClick={onClose}><div onClick={(event) => event.stopPropagation()}>{panel}</div></div> : panel;
 }
 
-function LoadingState() {
-  return <RfpLoadingState title="Loading tenders" description="Fetching the current workspace summary." />;
+function DetailOverview({ tender }: { tender: TenderSummary }) {
+  const metadata = tender.metadata;
+  return <div className="p-5"><dl className="divide-y divide-[#F2F4F7] border-y border-[#F2F4F7]">{[["Estimated value", getTenderValue(metadata)], ["Deadline", tender.dueAt ? `${formatDate(tender.dueAt)}, ${formatTime(tender.dueAt, tender.timezone)}` : "Not set"], ["Published date", formatDate(tender.receivedAt ?? tender.createdAt)], ["Authority", tender.name], ["Category", formatStatus(tender.tenderType)], ["Location", metadataText(metadata, "location")], ["Submission mode", metadataText(metadata, "submissionMode")], ["Source", formatStatus(tender.sourceType)]].map(([label, value]) => <div key={label} className="grid grid-cols-[112px_1fr] gap-4 py-3 text-xs"><dt className="text-[#667085]">{label}</dt><dd className="font-medium text-[#101828]">{value}</dd></div>)}</dl><div className="mt-5"><h3 className="text-sm font-semibold text-[#101828]">Description</h3><p className="mt-2 line-clamp-6 text-sm leading-6 text-[#667085]">{tender.description || "No description has been provided for this tender."}</p></div></div>;
 }
 
-function StatRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-      <span className="text-slate-600">{label}</span>
-      <span className="font-semibold text-slate-950">{value}</span>
-    </div>
-  );
+function TenderIcon({ tender }: { tender: TenderSummary }) {
+  const text = `${tender.title} ${tender.name}`.toLowerCase();
+  const Icon = text.includes("elect") ? Zap : text.includes("water") ? MapPin : text.includes("government") ? Landmark : FileText;
+  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-[#EFF5FF] text-[#155EEF]"><Icon className="h-[18px] w-[18px]" strokeWidth={1.8} /></span>;
 }
 
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-4 font-semibold">{children}</th>;
+function Pagination({ page, totalPages, total, pageSize, onPageChange }: { page: number; totalPages: number; total: number; pageSize: number; onPageChange: (page: number) => void }) {
+  if (total === 0) return null;
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, total);
+  return <div className="flex flex-col gap-3 py-4 text-xs text-[#667085] sm:flex-row sm:items-center sm:justify-between"><span>Showing {start} to {end} of {total} tenders</span><div className="flex items-center gap-1"><button type="button" disabled={page <= 1} onClick={() => onPageChange(page - 1)} className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-[#E4E7EC] disabled:opacity-40" aria-label="Previous page"><ArrowLeft className="h-3.5 w-3.5" /></button>{paginationPages(page, totalPages).map((item, index) => item === "..." ? <span key={`ellipsis-${index}`} className="px-2">...</span> : <button type="button" key={item} onClick={() => onPageChange(item)} className={`inline-flex h-8 min-w-8 items-center justify-center rounded-[7px] border px-2 ${item === page ? "border-[#155EEF] bg-[#EFF5FF] font-semibold text-[#155EEF]" : "border-[#E4E7EC] text-[#344054]"}`}>{item}</button>)}<button type="button" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-[#E4E7EC] disabled:opacity-40" aria-label="Next page"><ArrowRight className="h-3.5 w-3.5" /></button></div></div>;
 }
 
-function Td({ children }: { children: React.ReactNode }) {
-  return <td className="border-t border-slate-200 px-4 align-top">{children}</td>;
+function TenderSkeleton() {
+  return <div className="space-y-2 border border-[#E4E7EC] bg-white p-4">{[1, 2, 3, 4, 5].map((item) => <div key={item} className="flex animate-pulse items-center gap-3 border-b border-[#F2F4F7] py-4 last:border-0"><div className="h-9 w-9 bg-slate-100" /><div className="flex-1 space-y-2"><div className="h-3 w-3/5 bg-slate-100" /><div className="h-2 w-2/5 bg-slate-100" /></div><div className="h-3 w-16 bg-slate-100" /></div>)}</div>;
 }
 
-function StatusPill({ tone, children }: { tone: "success" | "warning" | "danger" | "neutral"; children: React.ReactNode }) {
-  return <RfpStatusBadge tone={tone}>{children}</RfpStatusBadge>;
+function SearchLoadingState() { return <AppShell breadcrumbs={[{ label: "Tender Search" }]}><TenderSkeleton /></AppShell>; }
+
+function updateUrl(router: ReturnType<typeof useRouter>, current: URLSearchParams, changes: Record<string, string | null>) {
+  const next = new URLSearchParams(current.toString());
+  Object.entries(changes).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key));
+  const query = next.toString();
+  router.replace(query ? `/tenders?${query}` : "/tenders", { scroll: false });
 }
 
-function highestIssueTone(severity: string | null): "success" | "warning" | "danger" | "neutral" {
-  if (severity === "CRITICAL") return "danger";
-  if (severity === "HIGH") return "warning";
-  if (severity === "MEDIUM") return "neutral";
-  return "success";
+function compareDates(left: string | null, right: string | null) {
+  if (!left && !right) return 0;
+  if (!left) return 1;
+  if (!right) return -1;
+  return new Date(left).getTime() - new Date(right).getTime();
 }
 
-function formatRelativeDeadline(value: string | null) {
+function formatDate(value: string | null | undefined) {
   if (!value) return "Not set";
-  const diffDays = Math.round((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Tomorrow";
-  if (diffDays > 1) return `in ${diffDays} days`;
-  if (diffDays === -1) return "1 day overdue";
-  return `${Math.abs(diffDays)} days overdue`;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not set" : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(date);
 }
 
-function isOverdue(value: string | null) {
-  if (!value) return false;
-  return new Date(value).getTime() < Date.now();
+function formatTime(value: string, timezone: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: timezone || undefined }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit" }).format(date);
+  }
 }
 
-function statusTone(status: string): "success" | "warning" | "danger" | "neutral" {
-  const normalized = status.toUpperCase();
-  if (normalized.includes("APPROVED") || normalized.includes("ACTIVE") || normalized.includes("SUBMITTED")) return "success";
-  if (normalized.includes("DRAFT") || normalized.includes("PENDING") || normalized.includes("REVIEW")) return "warning";
-  if (normalized.includes("REJECT") || normalized.includes("ARCHIVED") || normalized.includes("CANCEL")) return "danger";
-  return "neutral";
+function relativeTime(value: string) {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
 
-function compareDeadline(a: string | null, b: string | null) {
-  const timeA = a ? new Date(a).getTime() : Number.POSITIVE_INFINITY;
-  const timeB = b ? new Date(b).getTime() : Number.POSITIVE_INFINITY;
-  return timeA - timeB;
+function isRecentlyUpdated(value: string) {
+  const age = Date.now() - new Date(value).getTime();
+  return Number.isFinite(age) && age >= 0 && age < 15 * 60 * 1000;
 }
 
-function shortId(value: string) {
-  return value.length > 10 ? `${value.slice(0, 4)}…${value.slice(-4)}` : value;
+function getTenderValue(metadata: Record<string, unknown>) {
+  const value = metadata.estimatedValue ?? metadata.estimatedContractValue ?? metadata.value;
+  if (typeof value === "number" && Number.isFinite(value)) return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
+  if (typeof value === "string" && value.trim()) return value;
+  return "-";
 }
 
-function rankSeverity(severity: string | null | undefined) {
-  return severityRank[severity ?? "INFO"] ?? 0;
+function metadataText(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value : "Not provided";
 }
 
-function mapTenderStage(status: string) {
-  const normalized = status.toUpperCase();
-  if (["DRAFT", "INTAKE", "PROCESSING"].includes(normalized)) return "INTAKE";
-  if (normalized === "IN_PROGRESS") return "ANSWERING";
-  if (normalized === "REVIEW") return "REVIEW";
-  if (normalized === "APPROVED") return "APPROVAL";
-  if (normalized === "READY") return "READY";
-  if (["SUBMITTED", "CLOSED"].includes(normalized)) return "SUBMITTED";
-  return "INTAKE";
+function formatStatus(value: string) {
+  return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function initials(value: string) {
+  return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0)).join("").toUpperCase() || "TW";
+}
+
+function paginationPages(page: number, totalPages: number): Array<number | "..."> {
+  if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
+  if (page <= 3) return [1, 2, 3, "...", totalPages];
+  if (page >= totalPages - 2) return [1, "...", totalPages - 2, totalPages - 1, totalPages];
+  return [1, "...", page, "...", totalPages];
 }

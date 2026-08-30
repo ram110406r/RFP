@@ -113,6 +113,7 @@ export function useTender(tenderId: string, initialData?: TenderSummary | null) 
   return useQuery({
     queryKey: tenderKeys.detail(tenderId),
     queryFn: () => fetchTender(tenderId),
+    enabled: Boolean(tenderId),
     initialData: initialData ?? undefined,
   });
 }
