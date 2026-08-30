@@ -58,6 +58,14 @@ export function useFirebaseSession() {
 
 export function FirebaseAuthGate({ children }: { children: React.ReactNode }) {
   const allowGuestUi = process.env.NEXT_PUBLIC_ALLOW_GUEST_UI === "true";
+  if (allowGuestUi) {
+    return <>{children}</>;
+  }
+
+  return <FirebaseAuthGateInner>{children}</FirebaseAuthGateInner>;
+}
+
+function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<FirebaseUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,10 +74,6 @@ export function FirebaseAuthGate({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-
-  if (allowGuestUi) {
-    return <>{children}</>;
-  }
 
   useEffect(() => {
     let unsubscribe = () => {};
