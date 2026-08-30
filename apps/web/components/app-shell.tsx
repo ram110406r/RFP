@@ -466,9 +466,11 @@ function MobileDrawer({
 
 export function AppShell({
   breadcrumbs = [{ label: "Dashboard" }],
+  hideDesktopHeader = false,
   children,
 }: {
   breadcrumbs?: Breadcrumb[];
+  hideDesktopHeader?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -596,15 +598,17 @@ export function AppShell({
       />
 
       <div className="min-w-0" style={contentStyle}>
-        <ShellHeader
-          breadcrumbs={breadcrumbs}
-          pageTitle={pageTitle}
-          initials={initials}
-          isMobile={isMobile}
-          onMobileMenuOpen={() => setMobileNavOpen(true)}
-        />
+        {!hideDesktopHeader || isMobile ? (
+          <ShellHeader
+            breadcrumbs={breadcrumbs}
+            pageTitle={pageTitle}
+            initials={initials}
+            isMobile={isMobile}
+            onMobileMenuOpen={() => setMobileNavOpen(true)}
+          />
+        ) : null}
 
-        <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="min-w-0 px-4 py-5 sm:px-5 sm:py-6 lg:px-6 lg:py-6">
           <div className="min-w-0 w-full">{children}</div>
         </main>
       </div>

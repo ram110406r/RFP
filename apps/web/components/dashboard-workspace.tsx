@@ -93,8 +93,8 @@ export function DashboardWorkspace() {
   ];
 
   return (
-    <AppShell breadcrumbs={[{ label: "Dashboard" }]}>
-      <div className="min-w-0 space-y-6 pb-8">
+    <AppShell breadcrumbs={[{ label: "Dashboard" }]} hideDesktopHeader>
+      <div className="min-w-0 space-y-5 pb-6">
         <DashboardHeader generatedAt={dashboard?.generatedAt} />
 
         {dashboardQuery.isError ? (
@@ -103,18 +103,18 @@ export function DashboardWorkspace() {
           </div>
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4" aria-label="Dashboard metrics">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Dashboard metrics">
           {kpis.map((kpi) => (
             <KpiCard key={kpi.label} {...kpi} loading={dashboardQuery.isLoading || dashboardQuery.isError} />
           ))}
         </section>
 
-        <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.9fr)_minmax(320px,1fr)]">
+        <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.9fr)_minmax(300px,1fr)]">
           <PipelineSnapshot pipeline={pipeline} />
           <RecentActivity attention={attention} reviewQueue={reviewQueue} />
         </section>
 
-        <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.9fr)_minmax(320px,1fr)]">
+        <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.9fr)_minmax(300px,1fr)]">
           <ActiveTenders rows={rows} loading={dashboardQuery.isLoading} />
           <ImportantAlerts
             overdueCount={dashboard?.deadlines.overdue.count ?? 0}
@@ -235,7 +235,7 @@ function ActiveTenders({ rows, loading }: { rows: DashboardTenderCard[]; loading
     <article className="min-w-0 border border-[#E4E7EC] bg-white">
       <PanelHeader title={`Active tenders (${rows.length})`} actionLabel="View all" actionHref="/tenders" />
       <div className="overflow-x-auto">
-        <table className="min-w-[850px] w-full border-collapse text-left">
+        <table className="min-w-[780px] w-full border-collapse text-left">
           <thead className="border-y border-[#F2F4F7] bg-[#FCFCFD] text-[11px] font-semibold uppercase tracking-[0.08em] text-[#667085]">
             <tr>
               <th className="px-5 py-3">Tender</th>
