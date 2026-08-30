@@ -75,7 +75,9 @@ every production environment.
 
 `STORAGE_ACCESS_KEY_ID` and `STORAGE_SECRET_ACCESS_KEY` are the credentials the
 API uses to talk to MinIO. In the bundled compose files, the same pair also
-boots the MinIO container.
+boots the MinIO container. If Dokploy does not have these set yet, the compose
+files fall back to local-safe defaults so the deploy can start, but you should
+override them with real secrets in production.
 
 ## Deploying with Dokploy
 

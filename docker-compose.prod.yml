@@ -41,8 +41,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
-      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
       MINIO_API_CORS_ALLOW_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL is required}
     volumes:
       - rfp_os_prod_minio_data:/data
@@ -106,8 +106,8 @@ services:
       STORAGE_ENDPOINT: http://minio:9000
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
-      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID is required}
-      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY is required}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
       STORAGE_FORCE_PATH_STYLE: "true"
       GROQ_API_KEY: ${GROQ_API_KEY:-}
     depends_on:
