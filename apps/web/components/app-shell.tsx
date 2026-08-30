@@ -178,8 +178,8 @@ function NavLink({
           onNavigate?.();
         }}
         className={[
-          "flex h-[44px] items-center rounded-[10px] px-3 text-[15px] font-medium transition",
-          collapsed ? "justify-center px-0" : "justify-start gap-3",
+          "grid h-[44px] items-center rounded-[10px] px-3 text-[15px] font-medium transition",
+          collapsed ? "grid-cols-[20px] justify-items-center px-0" : "grid-cols-[20px_minmax(0,1fr)] gap-3",
           active || flyoutOpen ? "bg-[#EFF5FF] text-[#0F172A]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
         ].join(" ")}
       >
