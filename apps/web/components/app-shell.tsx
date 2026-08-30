@@ -4,6 +4,22 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Brain,
+  Building2,
+  ChevronsLeft,
+  ChevronsRight,
+  FilePenLine,
+  GitBranch,
+  LayoutGrid,
+  Menu,
+  PanelsTopLeft,
+  Search,
+  Settings,
+  User,
+  X,
+} from "lucide-react";
 
 import { useFirebaseSession } from "./firebase-auth-gate";
 
@@ -12,19 +28,13 @@ type Breadcrumb = {
   href?: string;
 };
 
-type NavSubItem = {
-  label: string;
-  href: string;
-};
-
 type NavItem = {
   href: string;
   label: string;
-  icon: ReactNode;
+  icon: LucideIcon;
   section: "main" | "system";
   exact?: boolean;
   matches?: string[];
-  submenu?: NavSubItem[];
 };
 
 type Viewport = "mobile" | "tablet" | "desktop";
@@ -56,237 +66,292 @@ function isPathActive(pathname: string, item: NavItem) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`) || pathname.startsWith(`${item.href}?`);
 }
 
-function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#5b21b6_0%,#7c3aed_54%,#4f46e5_100%)] text-[18px] font-semibold text-white shadow-[0_10px_24px_rgba(91,33,182,0.24)]">
-        T
-      </div>
-      {!collapsed ? <span className="text-[22px] font-semibold tracking-tight text-slate-950">TENDYY</span> : null}
-    </div>
-  );
-}
-
-function DashboardIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 4h6v6H4z" />
-      <path d="M14 4h6v8h-6z" />
-      <path d="M4 14h6v6H4z" />
-      <path d="M14 16h6v4h-6z" />
-    </svg>
-  );
-}
-
-function SearchIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8">
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" />
-    </svg>
-  );
-}
-
-function ClipboardIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M9 4h6a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2Z" />
-      <path d="M7 7h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" />
-      <path d="M9 12h6M9 16h6" />
-    </svg>
-  );
-}
-
-function PipelineIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M5 6h6" />
-      <path d="M5 12h14" />
-      <path d="M5 18h9" />
-      <circle cx="16.5" cy="6" r="1.5" />
-      <circle cx="12.5" cy="12" r="1.5" />
-      <circle cx="18.5" cy="18" r="1.5" />
-    </svg>
-  );
-}
-
-function BrainIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M8.5 5a3.5 3.5 0 0 1 3.4 2.7 3.5 3.5 0 0 1 6.1 2.3 3.5 3.5 0 0 1-1.5 2.8A3.5 3.5 0 0 1 15 20h-3" />
-      <path d="M8 20H7a3 3 0 0 1-2-5.2A3.5 3.5 0 0 1 8.5 7H9" />
-      <path d="M12 5v14" />
-      <path d="M10 9h4M10 13h4" />
-    </svg>
-  );
-}
-
-function BuildingIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 20h16" />
-      <path d="M6 20V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v14" />
-      <path d="M9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2" />
-    </svg>
-  );
-}
-
-function SettingsIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M10.2 4.5a2 2 0 0 1 3.6 0l.3.8a2 2 0 0 0 1.9 1.3h.8a2 2 0 0 1 1.4 3.4l-.5.5a2 2 0 0 0 0 2.8l.5.5a2 2 0 0 1-1.4 3.4H16a2 2 0 0 0-1.9 1.3l-.3.8a2 2 0 0 1-3.6 0l-.3-.8A2 2 0 0 0 8 19.6h-.8a2 2 0 0 1-1.4-3.4l.5-.5a2 2 0 0 0 0-2.8l-.5-.5a2 2 0 0 1 1.4-3.4H8a2 2 0 0 0 1.9-1.3l.3-.8Z" />
-      <circle cx="12" cy="12" r="2.5" />
-    </svg>
-  );
-}
-
-function UserIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M20 21a8 8 0 0 0-16 0" />
-      <circle cx="12" cy="8" r="4" />
-    </svg>
-  );
-}
-
-function WorkspaceIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 7a2 2 0 0 1 2-2h4v6H4z" />
-      <path d="M14 5h4a2 2 0 0 1 2 2v4h-6z" />
-      <path d="M4 17v-4h6v6H6a2 2 0 0 1-2-2Z" />
-      <path d="M14 13h6v4a2 2 0 0 1-2 2h-4z" />
-    </svg>
-  );
-}
-
 const navGroups: { label: string; items: NavItem[] }[] = [
   {
     label: "MAIN",
     items: [
-      { href: "/", label: "Dashboard", icon: <DashboardIcon className="h-5 w-5" />, section: "main", exact: true },
-      { href: "/tenders", label: "Tender Search", icon: <SearchIcon className="h-5 w-5" />, section: "main", exact: true },
+      { href: "/", label: "Dashboard", icon: LayoutGrid, section: "main", exact: true },
+      { href: "/tenders", label: "Tender Search", icon: Search, section: "main", exact: true },
       {
         href: "/tenders/new",
         label: "Apply",
-        icon: <ClipboardIcon className="h-5 w-5" />,
+        icon: FilePenLine,
         section: "main",
         matches: ["/tenders/new", "/tenders/import"],
-        submenu: [
-          { label: "Overview", href: "/tenders/new" },
-          { label: "Active Tenders", href: "/tenders" },
-          { label: "Requirements", href: "/tenders?view=requirements" },
-          { label: "Responses", href: "/reviews" },
-          { label: "Reviews", href: "/reviews" },
-          { label: "Submissions", href: "/submissions" },
-        ],
       },
-      { href: "/submissions", label: "Pipeline", icon: <PipelineIcon className="h-5 w-5" />, section: "main", exact: true },
-      { href: "/knowledge", label: "Knowledge Brain", icon: <BrainIcon className="h-5 w-5" />, section: "main", exact: true },
-      { href: "/organization", label: "Organization", icon: <BuildingIcon className="h-5 w-5" />, section: "main", exact: true },
+      { href: "/submissions", label: "Pipeline", icon: GitBranch, section: "main", exact: true },
+      { href: "/knowledge", label: "Knowledge Brain", icon: Brain, section: "main", exact: true },
+      { href: "/organization", label: "Organization", icon: Building2, section: "main", exact: true },
     ],
   },
   {
     label: "SYSTEM",
     items: [
-      { href: "/settings", label: "Settings", icon: <SettingsIcon className="h-5 w-5" />, section: "system", exact: true },
-      { href: "/profile", label: "Profile", icon: <UserIcon className="h-5 w-5" />, section: "system", exact: true },
-      { href: "/workspace", label: "Workspace", icon: <WorkspaceIcon className="h-5 w-5" />, section: "system", exact: true },
+      { href: "/settings", label: "Settings", icon: Settings, section: "system", exact: true },
+      { href: "/profile", label: "Profile", icon: User, section: "system", exact: true },
+      { href: "/workspace", label: "Workspace", icon: PanelsTopLeft, section: "system", exact: true },
     ],
   },
 ];
+
+function SidebarSearch({ shortcut = "⌘ S" }: { shortcut?: string }) {
+  return (
+    <label className="flex h-11 items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-slate-500">
+      <Search className="h-[18px] w-[18px] shrink-0 text-slate-400" strokeWidth={1.75} />
+      <span className="min-w-0 flex-1 truncate text-sm text-slate-500">Search</span>
+      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+        {shortcut}
+      </span>
+    </label>
+  );
+}
 
 function NavLink({
   item,
   collapsed,
   pathname,
   onNavigate,
-  onHoverSubmenu,
-  activeSubmenu,
 }: {
   item: NavItem;
   collapsed: boolean;
   pathname: string;
   onNavigate?: () => void;
-  onHoverSubmenu?: (key: string | null) => void;
-  activeSubmenu: string | null;
 }) {
   const active = isPathActive(pathname, item);
-  const hasSubmenu = collapsed && item.submenu && item.submenu.length > 0;
-  const open = hasSubmenu && activeSubmenu === item.href;
-
-  const baseItemClass = collapsed
-    ? "group relative flex h-11 w-11 items-center justify-center rounded-2xl transition"
-    : "group relative flex w-full items-center gap-3 rounded-[14px] px-3 py-3 text-[15px] font-medium transition";
-
-  const activeClass = collapsed
-    ? "bg-[rgba(124,58,237,0.12)] text-[#5b21b6] shadow-[inset_0_0_0_1px_rgba(124,58,237,0.14)]"
-    : "bg-[rgba(124,58,237,0.10)] text-[#5b21b6] shadow-[inset_0_0_0_1px_rgba(124,58,237,0.14)]";
-
-  const idleClass = collapsed
-    ? "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
-    : "text-slate-700 hover:bg-slate-50 hover:text-slate-950";
-
-  const content = (
-    <>
-      <span className={["shrink-0 transition", active ? "text-[#5b21b6]" : "text-slate-500 group-hover:text-slate-950"].join(" ")}>{item.icon}</span>
-      {!collapsed ? <span className="truncate">{item.label}</span> : null}
-      {!collapsed && hasSubmenu ? (
-        <span className="ml-auto text-slate-400 transition group-hover:text-slate-600">
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="m9 6 6 6-6 6" />
-          </svg>
-        </span>
-      ) : null}
-    </>
-  );
+  const Icon = item.icon;
 
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => {
-        if (hasSubmenu) onHoverSubmenu?.(item.href);
-      }}
-      onMouseLeave={() => {
-        if (hasSubmenu) onHoverSubmenu?.(null);
-      }}
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      aria-label={collapsed ? item.label : undefined}
+      title={collapsed ? item.label : undefined}
+      onClick={onNavigate}
+      className={[
+        "grid h-11 items-center rounded-[10px] px-3 text-[15px] font-medium transition",
+        collapsed ? "grid-cols-[20px] justify-items-center px-0" : "grid-cols-[20px_minmax(0,1fr)] gap-3",
+        active ? "bg-[#EFF5FF] text-[#0F172A]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
+      ].join(" ")}
     >
-      <Link
-        href={item.href}
-        aria-current={active ? "page" : undefined}
-        aria-label={collapsed ? item.label : undefined}
-        title={collapsed ? item.label : undefined}
-        onClick={onNavigate}
-        className={[baseItemClass, active ? activeClass : idleClass].join(" ")}
-      >
-        {content}
-      </Link>
+      <span className={["flex h-5 w-5 items-center justify-center", active ? "text-[#155EEF]" : "text-slate-500"].join(" ")}>
+        <Icon size={18} strokeWidth={1.75} />
+      </span>
+      {!collapsed ? <span className="truncate">{item.label}</span> : null}
+    </Link>
+  );
+}
 
-      {open ? (
-        <div className="absolute left-full top-1/2 z-30 ml-3 w-60 -translate-y-1/2">
-          <div className="rounded-[18px] border border-slate-200 bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.12)]">
-            {item.submenu?.map((subItem) => {
-              const subActive = pathname === subItem.href || pathname.startsWith(`${subItem.href}/`);
-              return (
-                <Link
-                  key={subItem.href}
-                  href={subItem.href}
-                  onClick={onNavigate}
-                  className={[
-                    "flex items-center justify-between rounded-[12px] px-3 py-2.5 text-sm transition",
-                    subActive ? "bg-[rgba(124,58,237,0.10)] text-[#5b21b6]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
-                  ].join(" ")}
-                >
-                  <span>{subItem.label}</span>
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path d="m9 6 6 6-6 6" />
-                  </svg>
-                </Link>
-              );
-            })}
+function SidebarSection({
+  label,
+  items,
+  collapsed,
+  pathname,
+  onNavigate,
+}: {
+  label: string;
+  items: NavItem[];
+  collapsed: boolean;
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <section className="space-y-2">
+      {!collapsed ? <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p> : null}
+      <nav className="space-y-1">
+        {items.map((item) => (
+          <NavLink key={item.href} item={item} collapsed={collapsed} pathname={pathname} onNavigate={onNavigate} />
+        ))}
+      </nav>
+    </section>
+  );
+}
+
+function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#155EEF] text-[13px] font-semibold text-white">
+        T
+      </div>
+      {!collapsed ? <span className="text-[18px] font-semibold tracking-[-0.02em] text-slate-950">TENDYY</span> : null}
+    </div>
+  );
+}
+
+function SidebarFooter({
+  collapsed,
+  displayLabel,
+  subtitle,
+  initials,
+}: {
+  collapsed: boolean;
+  displayLabel: string;
+  subtitle: string;
+  initials: string;
+}) {
+  return (
+    <Link
+      href="/profile"
+      aria-label="Open profile"
+      className={[
+        "flex items-center rounded-[12px] border border-slate-200 bg-white transition hover:bg-slate-50",
+        collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-3",
+      ].join(" ")}
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">
+        {initials}
+      </div>
+      {!collapsed ? (
+        <>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-slate-950">{displayLabel}</p>
+            <p className="truncate text-xs text-slate-500">{subtitle}</p>
           </div>
-        </div>
+          <span className="text-slate-400">
+            <ChevronsRight className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+        </>
       ) : null}
+    </Link>
+  );
+}
+
+function ShellHeader({
+  breadcrumbs,
+  pageTitle,
+  initials,
+  isMobile,
+  onMobileMenuOpen,
+}: {
+  breadcrumbs: Breadcrumb[];
+  pageTitle: string;
+  initials: string;
+  isMobile: boolean;
+  onMobileMenuOpen: () => void;
+}) {
+  return (
+    <header className="sticky top-0 z-20 border-b border-[#E8ECF2] bg-white">
+      <div className="flex h-[72px] items-center gap-4 px-4 sm:px-6 lg:px-8">
+        {isMobile ? (
+          <>
+            <button
+              type="button"
+              onClick={onMobileMenuOpen}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-700"
+              aria-label="Open navigation"
+            >
+              <Menu className="h-5 w-5" strokeWidth={1.75} />
+            </button>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-950">{pageTitle}</p>
+              <p className="truncate text-xs text-slate-500">Application shell</p>
+            </div>
+
+            <button
+              type="button"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-700"
+              aria-label="Profile"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">
+                {initials}
+              </div>
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-slate-500">
+                {breadcrumbs.map((crumb, index) => (
+                  <span key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-2">
+                    {crumb.href ? (
+                      <Link href={crumb.href} className="truncate transition hover:text-slate-950">
+                        {crumb.label}
+                      </Link>
+                    ) : (
+                      <span className={index === breadcrumbs.length - 1 ? "truncate font-medium text-slate-950" : "truncate"}>{crumb.label}</span>
+                    )}
+                    {index < breadcrumbs.length - 1 ? <span className="text-slate-300">/</span> : null}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <label className="hidden h-11 w-[min(34vw,360px)] items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-slate-500 md:flex">
+              <Search className="h-[18px] w-[18px] shrink-0 text-slate-400" strokeWidth={1.75} />
+              <span className="text-sm text-slate-500">Search</span>
+              <span className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                <span>⌘</span>
+                <span>K</span>
+              </span>
+            </label>
+
+            <button
+              type="button"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-700"
+              aria-label="Profile"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">
+                {initials}
+              </div>
+            </button>
+          </>
+        )}
+      </div>
+    </header>
+  );
+}
+
+function MobileDrawer({
+  open,
+  pathname,
+  initials,
+  displayLabel,
+  subtitle,
+  collapsed,
+  onClose,
+}: {
+  open: boolean;
+  pathname: string;
+  initials: string;
+  displayLabel: string;
+  subtitle: string;
+  collapsed: boolean;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 bg-slate-950/30 md:hidden" onClick={onClose}>
+      <aside
+        className="flex h-full w-[280px] flex-col border-r border-slate-200 bg-white p-3"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex h-[72px] items-center justify-between px-1">
+          <BrandMark />
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-700"
+            aria-label="Close navigation"
+          >
+            <X className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+        </div>
+
+        <div className="mt-5">
+          <SidebarSearch shortcut="⌘ S" />
+        </div>
+
+        <div className="mt-6 flex-1 space-y-6 overflow-y-auto pr-1">
+          {navGroups.map((group) => (
+            <SidebarSection key={group.label} label={group.label} items={group.items} collapsed={collapsed} pathname={pathname} onNavigate={onClose} />
+          ))}
+        </div>
+
+        <div className="mt-4">
+          <SidebarFooter collapsed={false} displayLabel={displayLabel} subtitle={subtitle} initials={initials} />
+        </div>
+      </aside>
     </div>
   );
 }
@@ -303,7 +368,6 @@ export function AppShell({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewport, setViewport] = useState<Viewport>("desktop");
-  const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -328,7 +392,7 @@ export function AppShell({
       return;
     }
 
-    setSidebarCollapsed(viewport === "tablet");
+    setSidebarCollapsed(viewport !== "desktop");
     setMobileNavOpen(false);
   }, [viewport]);
 
@@ -339,253 +403,81 @@ export function AppShell({
   const accountEmail = session?.profile?.email ?? session?.user?.email ?? null;
   const displayLabel = maskEmail(accountEmail);
   const subtitle = session?.profile?.role ?? "Account";
-  const workspaceName = session?.profile?.organizationName ?? "TENDYY";
   const initials = initialsFromName(session?.profile?.displayName ?? session?.user?.displayName ?? accountEmail ?? "RA");
+  const pageTitle = breadcrumbs[breadcrumbs.length - 1]?.label ?? "Dashboard";
   const isMobile = viewport === "mobile";
-  const collapsed = isMobile ? false : sidebarCollapsed;
-
-  const sidebarWidth = collapsed ? 72 : 256;
+  const collapsed = !isMobile && sidebarCollapsed;
+  const sidebarWidth = collapsed ? 72 : 248;
+  const contentStyle = isMobile ? undefined : { marginLeft: sidebarWidth };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_42%,#eef2ff_100%)] text-slate-900">
-      <div className="mx-auto flex min-h-screen w-full max-w-[2560px] gap-4 p-0 md:p-4 lg:p-6">
-        {!isMobile ? (
-          <aside
-            className="sticky top-4 hidden h-[calc(100vh-2rem)] shrink-0 overflow-visible rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)] md:flex"
-            style={{ width: sidebarWidth }}
-          >
-            <div className="relative flex h-full w-full flex-col px-3 py-4">
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed((current) => !current)}
-                className="absolute -right-3 top-6 inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-[0_10px_24px_rgba(15,23,42,0.10)] transition hover:text-slate-950"
-                aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d={collapsed ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"} />
-                </svg>
-              </button>
+    <div className="min-h-screen bg-white text-slate-950">
+      {!isMobile ? (
+        <aside
+          className="fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white md:flex"
+          style={{ width: sidebarWidth }}
+        >
+          <div className="relative flex h-full w-full flex-col px-3 pb-3 pt-4">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((current) => !current)}
+              className="absolute -right-3 top-[22px] inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
+              aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            >
+              {collapsed ? <ChevronsRight className="h-4 w-4" strokeWidth={1.75} /> : <ChevronsLeft className="h-4 w-4" strokeWidth={1.75} />}
+            </button>
 
-              <div className="px-1 pb-4">
-                <BrandMark collapsed={collapsed} />
+            <div className="flex h-[72px] items-center px-1">
+              <BrandMark collapsed={collapsed} />
+            </div>
+
+            {!collapsed ? (
+              <div className="mt-5">
+                <SidebarSearch shortcut="⌘ S" />
               </div>
+            ) : null}
 
-              <div className="px-1 pb-4">
-                {collapsed ? (
-                  <button
-                    type="button"
-                    className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 shadow-sm"
-                    aria-label="Search workspace"
-                  >
-                    <SearchIcon className="h-5 w-5" />
-                  </button>
-                ) : (
-                  <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-500 shadow-sm">
-                    <SearchIcon className="h-5 w-5 shrink-0" />
-                    <span className="min-w-0 flex-1 text-sm text-slate-500">Search</span>
-                    <span className="flex items-center gap-2 text-[11px] text-slate-400">
-                      <kbd className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5">⌘</kbd>
-                      <kbd className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5">S</kbd>
-                    </span>
-                  </label>
-                )}
-              </div>
-
-              <div className="flex-1 space-y-5">
-                {navGroups.map((group) => (
-                  <section key={group.label} className="space-y-3">
-                    {!collapsed ? <p className="px-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{group.label}</p> : null}
-                    <nav className={collapsed ? "space-y-1" : "space-y-1"}>
-                      {group.items.map((item) => (
-                        <NavLink
-                          key={item.href}
-                          item={item}
-                          collapsed={collapsed}
-                          pathname={pathname}
-                          onHoverSubmenu={setActiveSubmenu}
-                          activeSubmenu={activeSubmenu}
-                        />
-                      ))}
-                    </nav>
-                    {!collapsed && group.label === "MAIN" ? <div className="mx-1 border-t border-slate-200" /> : null}
+            <div className="mt-6 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
+              <div className="space-y-6">
+                {navGroups.map((group, index) => (
+                  <section key={group.label}>
+                    {index > 0 && !collapsed ? <div className="mb-6 border-t border-slate-200 pt-6" /> : null}
+                    <SidebarSection label={group.label} items={group.items} collapsed={collapsed} pathname={pathname} />
                   </section>
                 ))}
               </div>
 
-              <div className="px-1 pt-4">
-                <Link
-                  href="/profile"
-                  className={[
-                    "flex items-center rounded-[18px] border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:bg-slate-50",
-                    collapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-3",
-                  ].join(" ")}
-                  aria-label="Open profile"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#dbeafe_0%,#c4b5fd_50%,#7c3aed_100%)] text-sm font-semibold text-slate-950">
-                    {collapsed ? initials : initials}
-                  </div>
-                  {!collapsed ? (
-                    <>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-slate-950">{displayLabel}</p>
-                        <p className="truncate text-xs text-slate-500">{subtitle}</p>
-                      </div>
-                      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="m9 6 6 6-6 6" />
-                      </svg>
-                    </>
-                  ) : null}
-                </Link>
+              <div className="mt-auto pt-6">
+                <SidebarFooter collapsed={collapsed} displayLabel={displayLabel} subtitle={subtitle} initials={initials} />
               </div>
             </div>
-          </aside>
-        ) : null}
+          </div>
+        </aside>
+      ) : null}
 
-        <div className="min-w-0 flex-1">
-          {isMobile ? (
-            <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 px-4 py-4 backdrop-blur-xl">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setMobileNavOpen(true)}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm"
-                    aria-label="Open navigation"
-                  >
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <path d="M4 7h16M4 12h16M4 17h16" />
-                    </svg>
-                  </button>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold tracking-tight text-slate-950">{workspaceName}</p>
-                    <p className="truncate text-xs text-slate-500">Navigation</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm"
-                  aria-label="Profile"
-                >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#dbeafe_0%,#c4b5fd_50%,#7c3aed_100%)] text-xs font-semibold text-slate-950">
-                    {initials}
-                  </div>
-                </button>
-              </div>
-            </header>
-          ) : null}
+      <MobileDrawer
+        open={mobileNavOpen}
+        pathname={pathname}
+        initials={initials}
+        displayLabel={displayLabel}
+        subtitle={subtitle}
+        collapsed={false}
+        onClose={() => setMobileNavOpen(false)}
+      />
 
-          {mobileNavOpen && isMobile ? (
-            <div className="fixed inset-0 z-40 bg-slate-950/35 md:hidden" onClick={() => setMobileNavOpen(false)}>
-              <div
-                className="absolute inset-y-0 left-0 flex w-[86vw] max-w-[340px] flex-col border-r border-slate-200 bg-white p-4 shadow-2xl"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="flex items-center justify-between">
-                  <BrandMark />
-                  <button
-                    type="button"
-                    onClick={() => setMobileNavOpen(false)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
-                    aria-label="Close navigation"
-                  >
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <path d="M6 6l12 12M18 6 6 18" />
-                    </svg>
-                  </button>
-                </div>
+      <div className="min-w-0" style={contentStyle}>
+        <ShellHeader
+          breadcrumbs={breadcrumbs}
+          pageTitle={pageTitle}
+          initials={initials}
+          isMobile={isMobile}
+          onMobileMenuOpen={() => setMobileNavOpen(true)}
+        />
 
-                <label className="mt-5 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-500">
-                  <SearchIcon className="h-5 w-5 shrink-0" />
-                  <span className="text-sm text-slate-500">Search</span>
-                </label>
-
-                <nav className="mt-6 flex-1 space-y-1">
-                  {navGroups.flatMap((group) => group.items).map((item) => {
-                    const active = isPathActive(pathname, item);
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setMobileNavOpen(false)}
-                        aria-current={active ? "page" : undefined}
-                        className={[
-                          "flex items-center gap-3 rounded-[14px] px-3 py-3 text-[15px] font-medium transition",
-                          active
-                            ? "bg-[rgba(124,58,237,0.10)] text-[#5b21b6]"
-                            : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
-                        ].join(" ")}
-                      >
-                        <span className={active ? "text-[#5b21b6]" : "text-slate-500"}>{item.icon}</span>
-                        <span>{item.label}</span>
-                      </Link>
-                    );
-                  })}
-                </nav>
-
-                <div className="mt-4 rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
-                  <Link href="/profile" onClick={() => setMobileNavOpen(false)} className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,#dbeafe_0%,#c4b5fd_50%,#7c3aed_100%)] text-sm font-semibold text-slate-950">
-                      {initials}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-950">{displayLabel}</p>
-                      <p className="truncate text-xs text-slate-500">{subtitle}</p>
-                    </div>
-                    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <path d="m9 6 6 6-6 6" />
-                    </svg>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <header className="sticky top-0 z-20 hidden border-b border-slate-200 bg-white/85 backdrop-blur-xl lg:block">
-            <div className="mx-auto flex min-h-[72px] w-full max-w-[1600px] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-              <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-500">
-                {breadcrumbs.map((crumb, index) => (
-                  <span key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-2">
-                    {crumb.href ? (
-                      <Link href={crumb.href} className="truncate transition hover:text-slate-900">
-                        {crumb.label}
-                      </Link>
-                    ) : (
-                      <span className={index === breadcrumbs.length - 1 ? "truncate font-medium text-slate-900" : "truncate"}>{crumb.label}</span>
-                    )}
-                    {index < breadcrumbs.length - 1 ? <span className="text-slate-300">/</span> : null}
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex shrink-0 items-center gap-3">
-                <label className="hidden w-[min(34vw,360px)] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-500 shadow-sm lg:flex">
-                  <SearchIcon className="h-5 w-5 shrink-0" />
-                  <span className="text-sm">Search</span>
-                  <span className="ml-auto flex items-center gap-2 text-[11px] text-slate-400">
-                    <kbd className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5">⌘</kbd>
-                    <kbd className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5">K</kbd>
-                  </span>
-                </label>
-
-                <button
-                  type="button"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm"
-                  aria-label="Profile"
-                >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#dbeafe_0%,#c4b5fd_50%,#7c3aed_100%)] text-xs font-semibold text-slate-950">
-                    {initials}
-                  </div>
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
-            <div className="mx-auto w-full max-w-[1600px] min-w-0">{children}</div>
-          </main>
-        </div>
+        <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="w-full min-w-0">{children}</div>
+        </main>
       </div>
-
     </div>
   );
 }

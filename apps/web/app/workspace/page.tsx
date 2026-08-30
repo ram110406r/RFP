@@ -48,7 +48,7 @@ export default function WorkspacePage() {
 
 function QuickLink({ title, href, detail }: { title: string; href: string; detail: string }) {
   return (
-    <Link href={href} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(15,23,42,0.09)]">
+    <Link href={href} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_24px_70px_rgba(15,23,42,0.09)]">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
       <p className="mt-3 text-sm leading-6 text-slate-600">{detail}</p>
     </Link>
