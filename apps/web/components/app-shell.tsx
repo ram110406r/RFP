@@ -93,13 +93,13 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { href: "/", label: "Dashboard", icon: LayoutGrid, section: "main", exact: true },
       { href: "/tenders", label: "Tender Search", icon: Search, section: "main", exact: true },
       {
-        href: "/tenders/new",
+        href: "/apply",
         label: "Apply",
         icon: FilePenLine,
         section: "main",
         matches: ["/tenders/new", "/tenders/import"],
         submenu: [
-          { href: "/tenders/new", label: "Overview", icon: Home },
+          { href: "/apply", label: "Overview", icon: Home },
           { href: "/tenders", label: "Active Tenders", icon: FileText },
           { href: "/tenders/new?view=requirements", label: "Requirements", icon: ClipboardList },
           { href: "/reviews", label: "Responses", icon: MessageSquare },
