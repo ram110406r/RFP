@@ -3,28 +3,45 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BadgeCheck,
+  Bell,
+  CalendarClock,
+  ClipboardCheck,
+  FileCheck2,
+  FileText,
+  Flag,
+  Info,
+  ListChecks,
+  MessageSquare,
+  Search,
+  ShieldAlert,
+  Timer,
+} from "lucide-react";
 
 import { AppShell } from "./app-shell";
-import { RfpCard, RfpEmptyState, RfpMetricCard, RfpPageHeader, RfpSectionHeader, RfpStatusBadge } from "./rfp-foundation";
-import type { DashboardOverview, KnowledgeItem } from "../lib/models";
+import { RfpEmptyState, RfpStatusBadge, statusTone } from "./rfp-foundation";
+import type { DashboardOverview, DashboardTenderCard } from "../lib/models";
 import { useDashboardSummary } from "../lib/queries";
 
-type DashboardMetric = {
+type Kpi = {
   label: string;
   value: string;
-  helper: string;
-  tone?: "neutral" | "warning" | "danger" | "success";
-  icon?: ReactNode;
+  detail: string;
+  icon: ReactNode;
   loading?: boolean;
 };
 
-const severityRank: Record<string, number> = {
-  CRITICAL: 4,
-  HIGH: 3,
-  MEDIUM: 2,
-  LOW: 1,
-  INFO: 0,
-};
+const fallbackPipeline = [
+  { id: "intake", label: "Intake", count: 0 },
+  { id: "answering", label: "Answering", count: 0 },
+  { id: "review", label: "Review", count: 0 },
+  { id: "approval", label: "Approval", count: 0 },
+  { id: "ready", label: "Ready", count: 0 },
+  { id: "submitted", label: "Submitted", count: 0 },
+];
 
 export function DashboardWorkspace() {
   const dashboardQuery = useDashboardSummary(6);
@@ -35,443 +52,374 @@ export function DashboardWorkspace() {
     [dashboard],
   );
 
-  const activeCount = dashboard?.metrics.activeRfps ?? 0;
-  const dueThisWeek = dashboard?.metrics.dueThisWeek ?? 0;
-  const averageReadiness = dashboard?.metrics.averageReadiness ?? null;
-  const awaitingReviewCount = dashboard?.metrics.awaitingReview ?? 0;
-  const submissionReadyCount = dashboard?.metrics.submissionReady ?? rows.filter((row) => row.ready).length;
-  const blockedFromSubmission = dashboard?.metrics.blockedFromSubmission ?? rows.reduce((sum, row) => sum + row.blockingIssueCount, 0);
-  const knowledgeCounts = dashboard?.knowledge.counts ?? { total: 0, draft: 0, active: 0, archived: 0, stale: 0 };
-  const recentKnowledge: DashboardOverview["knowledge"]["items"] = dashboard?.knowledge.items ?? [];
-  const attentionKnowledge: DashboardOverview["knowledge"]["attention"] = dashboard?.knowledge.attention ?? [];
+  const metrics = dashboard?.metrics;
+  const activeCount = metrics?.activeRfps ?? 0;
+  const dueThisWeek = metrics?.dueThisWeek ?? 0;
+  const awaitingReview = metrics?.awaitingReview ?? 0;
+  const submissionReady = metrics?.submissionReady ?? rows.filter((row) => row.ready).length;
+  const blocked = metrics?.blockedFromSubmission ?? rows.reduce((sum, row) => sum + row.blockingIssueCount, 0);
+  const highRisk = metrics?.highRiskItems ?? 0;
+  const pipeline = dashboard?.pipeline ?? fallbackPipeline;
+  const attention = dashboard?.attention ?? [];
+  const reviewQueue = dashboard?.reviewQueue.items ?? [];
+  const dueItems = dashboard?.deadlines.dueThisWeek.items ?? [];
+  const overdueItems = dashboard?.deadlines.overdue.items ?? [];
 
-  const topIssues = rows
-    .flatMap((row) => (row.highestIssue ? [{ tender: row.tender, issue: row.highestIssue }] : []))
-    .sort((a, b) => rankSeverity(b.issue.severity) - rankSeverity(a.issue.severity))
-    .slice(0, 4);
-
-  const metrics: DashboardMetric[] = [
+  const kpis: Kpi[] = [
     {
-      label: "Active tenders",
+      label: "ACTIVE RFPS",
       value: String(activeCount),
-      helper: "Across the current workspace scope",
-      icon: <FolderIcon />,
-      loading: dashboardQuery.isLoading || dashboardQuery.isError,
+      detail: `${rows.length} currently visible in this workspace`,
+      icon: <FileText className="h-5 w-5" strokeWidth={1.8} />,
     },
     {
-      label: "Due soon",
+      label: "DUE THIS WEEK",
       value: String(dueThisWeek),
-      helper: dueThisWeek > 0 ? "Needs deadline attention" : "No near-term deadlines",
-      tone: dueThisWeek > 0 ? "warning" : "success",
-      icon: <CalendarIcon />,
-      loading: dashboardQuery.isLoading || dashboardQuery.isError,
+      detail: dueThisWeek ? "Deadlines requiring attention" : "No near-term deadlines",
+      icon: <CalendarClock className="h-5 w-5" strokeWidth={1.8} />,
     },
     {
-      label: "Awaiting review",
-      value: String(awaitingReviewCount),
-      helper: "Pending or changes requested",
-      tone: awaitingReviewCount > 0 ? "warning" : "success",
-      icon: <UsersIcon />,
-      loading: dashboardQuery.isLoading || dashboardQuery.isError,
+      label: "AWAITING REVIEW",
+      value: String(awaitingReview),
+      detail: `${highRisk} high-risk item${highRisk === 1 ? "" : "s"} in the workspace`,
+      icon: <ClipboardCheck className="h-5 w-5" strokeWidth={1.8} />,
     },
     {
-      label: "Blocked",
-      value: String(blockedFromSubmission),
-      helper: "Validation blockers preventing submission",
-      tone: blockedFromSubmission > 0 ? "danger" : "success",
-      icon: <ShieldIcon />,
-      loading: dashboardQuery.isLoading || dashboardQuery.isError,
-    },
-    {
-      label: "Submission ready",
-      value: String(submissionReadyCount),
-      helper: "Ready based on validation and blocking rules",
-      tone: submissionReadyCount > 0 ? "success" : "warning",
-      icon: <CheckBadgeIcon />,
-      loading: dashboardQuery.isLoading || dashboardQuery.isError,
+      label: "SUBMISSION READY",
+      value: String(submissionReady),
+      detail: blocked ? `${blocked} blocked by validation issues` : "No active submission blockers",
+      icon: <BadgeCheck className="h-5 w-5" strokeWidth={1.8} />,
     },
   ];
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard" }]}>
-      <div className="min-w-0 space-y-6">
-        {dashboardQuery.isError ? (
-          <section className="rounded-[24px] border border-rose-200 bg-rose-50/90 p-4 text-sm text-rose-800">
-            Unable to load the dashboard summary right now.
-          </section>
-        ) : null}
-        <RfpPageHeader
-          eyebrow="RFP operations"
-          title="Good afternoon"
-          description="Monitor active tenders, review pressure, evidence health, and the next operational move."
-          primaryAction={{ label: "New Tender", href: "/tenders/new" }}
-          secondaryActions={[{ label: "Import RFP", href: "/tenders/import", variant: "secondary" }]}
-        />
+      <div className="min-w-0 space-y-6 pb-8">
+        <DashboardHeader generatedAt={dashboard?.generatedAt} />
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {metrics.slice(0, 4).map((metric) => (
-            <MetricCard key={metric.label} {...metric} />
+        {dashboardQuery.isError ? (
+          <div className="border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+            Unable to load the dashboard summary right now.
+          </div>
+        ) : null}
+
+        <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4" aria-label="Dashboard metrics">
+          {kpis.map((kpi) => (
+            <KpiCard key={kpi.label} {...kpi} loading={dashboardQuery.isLoading || dashboardQuery.isError} />
           ))}
         </section>
 
-        <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-          <article className="space-y-6">
-            <RfpCard>
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">Active tenders</p>
-                  <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Active tenders</h2>
-                </div>
-                <Link href="/tenders" className="text-sm font-medium text-blue-700 hover:text-blue-800">
-                  View all
-                </Link>
-              </div>
+        <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.9fr)_minmax(320px,1fr)]">
+          <PipelineSnapshot pipeline={pipeline} />
+          <RecentActivity attention={attention} reviewQueue={reviewQueue} />
+        </section>
 
-              <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white">
-                <div className="overflow-x-auto">
-                  <table className="min-w-[920px] w-full border-separate border-spacing-0">
-                    <thead className="bg-slate-50 text-left text-[13px] uppercase tracking-[0.14em] text-slate-500">
-                      <tr>
-                        <Th>RFP</Th>
-                        <Th>Owner</Th>
-                        <Th>Progress</Th>
-                        <Th>Issues</Th>
-                        <Th>Risk</Th>
-                        <Th>Deadline</Th>
-                        <Th>Status</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.length > 0 ? (
-                        rows.map((row) => {
-                          const risk = highestIssueTone(row.highestIssue?.severity ?? null);
-                          const deadline = formatRelativeDeadline(row.tender.dueAt);
-                          return (
-                            <tr key={row.tender.id} className="border-t border-slate-200 bg-white align-top">
-                              <Td>
-                                <Link href={`/tenders/${row.tender.id}`} className="group block py-4 pr-4">
-                                  <p className="text-[15px] font-semibold text-slate-950 group-hover:text-blue-800">{row.tender.title}</p>
-                                  <p className="mt-1 text-sm text-slate-600">{row.tender.name}</p>
-                                  <p className="mt-1 text-xs text-slate-400">{row.tender.referenceNumber ?? row.tender.id.slice(0, 8)}</p>
-                                </Link>
-                              </Td>
-                              <Td>
-                                <div className="py-4">
-                                  <OwnerBadge ownerId={row.tender.ownerId} />
-                                </div>
-                              </Td>
-                              <Td>
-                                <div className="py-4">
-                                  <ProgressCell value={row.readiness} />
-                                </div>
-                              </Td>
-                              <Td>
-                                <div className="py-4">
-                                  <div className="flex flex-wrap gap-2">
-                                    <StatusPill tone={row.blockingIssueCount > 0 ? "danger" : row.issueCount > 0 ? "warning" : "success"}>
-                                      {row.issueCount} total
-                                    </StatusPill>
-                                    {row.blockingIssueCount > 0 ? <StatusPill tone="danger">{row.blockingIssueCount} blocking</StatusPill> : null}
-                                  </div>
-                                </div>
-                              </Td>
-                              <Td>
-                                <div className="py-4">
-                                  <div className="space-y-1">
-                                    <StatusPill tone={risk}>{row.highestIssue?.severity ?? "None"}</StatusPill>
-                                    {row.highestIssue ? (
-                                      <p className="max-w-[220px] text-xs leading-5 text-slate-500">{row.highestIssue.title}</p>
-                                    ) : (
-                                      <p className="text-xs leading-5 text-slate-400">No major blockers</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </Td>
-                              <Td>
-                                <div className="py-4 text-sm text-slate-700">{deadline}</div>
-                              </Td>
-                              <Td>
-                                <div className="py-4">
-                                  <StatusPill tone={statusTone(row.tender.status)}>{row.tender.status}</StatusPill>
-                                </div>
-                              </Td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr>
-                          <td colSpan={7} className="px-6 py-10">
-                            <EmptyState
-                              title="No tenders found"
-                              description="Create or import an RFP to see the pipeline overview here."
-                              actionHref="/knowledge"
-                              actionLabel="Open knowledge"
-                            />
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </RfpCard>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              <RfpCard>
-                <RfpSectionHeader eyebrow="Response health" title="Grounded progress" />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <StatRow label="Awaiting review" value={String(awaitingReviewCount)} />
-                  <StatRow label="Submission ready" value={String(submissionReadyCount)} />
-                  <StatRow label="Blocked items" value={String(blockedFromSubmission)} />
-                  <StatRow label="Avg. readiness" value={averageReadiness === null ? "-" : `${averageReadiness}%`} />
-                </div>
-              </RfpCard>
-
-              <RfpCard>
-                <RfpSectionHeader eyebrow="AI activity" title="Work in motion" />
-                <div className="space-y-3 text-sm">
-                  <StatRow label="Drafts generated" value={String(dashboard?.aiActivity?.aiGenerated ?? 0)} />
-                  <StatRow label="Answers approved" value={String(dashboard?.aiActivity?.approved ?? 0)} />
-                  <StatRow label="Evidence-backed" value={String(dashboard?.evidenceHealth?.answersWithEvidence ?? 0)} />
-                  <StatRow label="Stale knowledge" value={String(knowledgeCounts.stale)} />
-                </div>
-              </RfpCard>
-            </div>
-          </article>
-
-          <aside className="space-y-6">
-            <RfpCard>
-              <RfpSectionHeader eyebrow="Quick actions" title="What to do next" />
-              <div className="grid gap-3">
-                <ActionCard title="New Tender" description="Start a fresh intake workspace for a customer RFP." href="/tenders/new" />
-                <ActionCard title="Import RFP" description="Bring in an uploaded brief and begin parsing." href="/tenders/import" />
-                <ActionCard title="Generate Responses" description="Draft answers from evidence-backed requirements." href="/tenders" />
-                <ActionCard title="Review Queue" description="Open items waiting on approval or changes." href="/reviews" />
-              </div>
-            </RfpCard>
-
-            <RfpCard>
-              <RfpSectionHeader eyebrow="Attention required" title="Highest-priority issues" count={String(topIssues.length)} />
-              <div className="space-y-3">
-                {topIssues.length > 0 ? (
-                  topIssues.map(({ tender, issue }) => (
-                    <div key={`${tender.id}-${issue.id}`} className="rounded-2xl border border-[rgba(15,23,42,0.09)] bg-white/90 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-950">{issue.title}</p>
-                          <p className="mt-1 text-sm text-slate-600">{tender.title}</p>
-                        </div>
-                        <StatusPill tone={highestIssueTone(issue.severity)}>{issue.severity}</StatusPill>
-                      </div>
-                      <p className="mt-3 text-sm leading-6 text-slate-600">{issue.recommendation}</p>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyState
-                    title="No blocker issues"
-                    description="Validation is currently clear across the loaded tenders."
-                    actionHref="/tenders"
-                    actionLabel="Review RFPs"
-                  />
-                )}
-              </div>
-            </RfpCard>
-
-            <RfpCard>
-              <RfpSectionHeader eyebrow="Knowledge" title="Source health" count={String(knowledgeCounts.total)} />
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <StatRow label="Active sources" value={String(knowledgeCounts.active)} />
-                <StatRow label="Draft sources" value={String(knowledgeCounts.draft)} />
-                <StatRow label="Approval queue" value={String(attentionKnowledge.filter((item) => item.status === "DRAFT").length)} />
-                <StatRow label="Stale checks" value={String(knowledgeCounts.stale)} />
-              </div>
-              <div className="mt-4 space-y-2">
-                {recentKnowledge.slice(0, 3).map((item) => (
-                  <KnowledgeRow key={item.id} item={item} />
-                ))}
-                {recentKnowledge.length === 0 ? (
-                  <EmptyState title="No knowledge sources" description="Add or approve knowledge to power grounded answers." actionHref="/knowledge" actionLabel="Open knowledge" />
-                ) : null}
-              </div>
-            </RfpCard>
-          </aside>
+        <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.9fr)_minmax(320px,1fr)]">
+          <ActiveTenders rows={rows} loading={dashboardQuery.isLoading} />
+          <ImportantAlerts
+            overdueCount={dashboard?.deadlines.overdue.count ?? 0}
+            dueCount={dueThisWeek}
+            reviewCount={awaitingReview}
+            blockedCount={blocked}
+            overdueItems={overdueItems}
+            dueItems={dueItems}
+          />
         </section>
       </div>
     </AppShell>
   );
 }
 
-function MetricCard({ label, value, helper, tone = "neutral", icon, loading = false }: DashboardMetric) {
-  const trendLabel =
-    tone === "danger" ? "Critical" : tone === "warning" ? "Attention" : tone === "success" ? "Healthy" : "Stable";
-  return <RfpMetricCard label={label} value={value} description={helper} icon={icon} loading={loading} trend={{ label: trendLabel, tone }} />;
+function DashboardHeader({ generatedAt }: { generatedAt?: string }) {
+  return (
+    <header className="flex flex-col gap-5 border-b border-[#E4E7EC] pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">RFP operations</p>
+        <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[#101828] sm:text-[32px]">Dashboard</h1>
+        <p className="mt-1 text-sm text-[#667085]">Overview of your tender and RFP activities</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex h-10 items-center gap-2 rounded-[10px] border border-[#E4E7EC] bg-white px-3 text-sm text-[#344054]">
+          <CalendarClock className="h-4 w-4 text-[#155EEF]" strokeWidth={1.8} />
+          <span>{generatedAt ? `Updated ${formatDate(generatedAt)}` : "Current workspace"}</span>
+        </div>
+        <button type="button" className="relative inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-[#E4E7EC] bg-white text-[#344054]" aria-label="Notifications">
+          <Bell className="h-[18px] w-[18px]" strokeWidth={1.8} />
+          <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" aria-hidden="true" />
+        </button>
+        <Link href="/tenders/new" className="inline-flex h-10 items-center gap-2 rounded-[10px] bg-[#155EEF] px-4 text-sm font-semibold text-white transition hover:bg-[#0F4BD6] focus:outline-none focus:ring-2 focus:ring-[#155EEF]/30">
+          New tender
+          <ArrowRight className="h-4 w-4" strokeWidth={1.8} />
+        </Link>
+      </div>
+    </header>
+  );
+}
+
+function KpiCard({ label, value, detail, icon, loading }: Kpi & { loading?: boolean }) {
+  return (
+    <article className="min-w-0 border border-[#E4E7EC] bg-white p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-[#EFF5FF] text-[#155EEF]">{icon}</span>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold tracking-[0.12em] text-[#667085]">{label}</p>
+          {loading ? <div className="mt-2 h-8 w-16 animate-pulse bg-slate-100" /> : <p className="mt-1 text-[28px] font-semibold leading-8 tracking-[-0.03em] text-[#101828]">{value}</p>}
+          <p className="mt-2 text-xs leading-5 text-[#667085]">{detail}</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function PipelineSnapshot({ pipeline }: { pipeline: Array<{ id: string; label: string; count: number }> }) {
+  return (
+    <article className="min-w-0 border border-[#E4E7EC] bg-white">
+      <PanelHeader title="Pipeline snapshot" actionLabel="View pipeline" actionHref="/submissions" />
+      <div className="overflow-x-auto px-4 pb-4 sm:px-5">
+        <div className="grid min-w-[680px] grid-cols-6 divide-x divide-[#E4E7EC] border-t border-[#E4E7EC]">
+          {pipeline.map((stage) => (
+            <div key={stage.id} className="min-w-0 px-3 pt-4 first:pl-0 last:pr-0 sm:px-4">
+              <p className="truncate text-xs font-medium text-[#667085]">{stage.label}</p>
+              <p className="mt-3 text-xl font-semibold text-[#101828]">{stage.count}</p>
+              <p className="mt-1 text-xs text-[#667085]">active items</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function RecentActivity({
+  attention,
+  reviewQueue,
+}: {
+  attention: DashboardOverview["attention"];
+  reviewQueue: DashboardOverview["reviewQueue"]["items"];
+}) {
+  const activity = [
+    ...attention.slice(0, 5).map((item) => ({
+      id: item.id,
+      title: item.title,
+      detail: item.detail,
+      meta: item.kind.replace(/_/g, " "),
+      href: item.href,
+      icon: activityIcon(item.kind),
+    })),
+    ...reviewQueue.slice(0, Math.max(0, 5 - attention.length)).map((item) => ({
+      id: `review-${item.id}`,
+      title: item.title,
+      detail: `${item.pendingReviews} pending review${item.pendingReviews === 1 ? "" : "s"}`,
+      meta: "review queue",
+      href: `/tenders/${item.tenderId}`,
+      icon: <MessageSquare className="h-4 w-4" strokeWidth={1.8} />,
+    })),
+  ].slice(0, 5);
+
+  return (
+    <article className="min-w-0 border border-[#E4E7EC] bg-white">
+      <PanelHeader title="Recent activity" actionLabel="View all" actionHref="/reviews" />
+      <div className="divide-y divide-[#F2F4F7] px-5">
+        {activity.length > 0 ? (
+          activity.map((item) => <ActivityRow key={item.id} {...item} />)
+        ) : (
+          <div className="py-8 text-sm text-[#667085]">No recent activity in this workspace.</div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function ActiveTenders({ rows, loading }: { rows: DashboardTenderCard[]; loading: boolean }) {
+  return (
+    <article className="min-w-0 border border-[#E4E7EC] bg-white">
+      <PanelHeader title={`Active tenders (${rows.length})`} actionLabel="View all" actionHref="/tenders" />
+      <div className="overflow-x-auto">
+        <table className="min-w-[850px] w-full border-collapse text-left">
+          <thead className="border-y border-[#F2F4F7] bg-[#FCFCFD] text-[11px] font-semibold uppercase tracking-[0.08em] text-[#667085]">
+            <tr>
+              <th className="px-5 py-3">Tender</th>
+              <th className="px-3 py-3">Organization</th>
+              <th className="px-3 py-3">Deadline</th>
+              <th className="px-3 py-3">Value</th>
+              <th className="px-3 py-3">Status</th>
+              <th className="px-3 py-3">Owner</th>
+              <th className="px-5 py-3">Progress</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#F2F4F7]">
+            {loading && rows.length === 0 ? (
+              <tr><td colSpan={7} className="px-5 py-10 text-sm text-[#667085]">Loading active tenders...</td></tr>
+            ) : rows.length > 0 ? (
+              rows.map((row) => <TenderRow key={row.tender.id} row={row} />)
+            ) : (
+              <tr>
+                <td colSpan={7} className="px-5 py-8">
+                  <RfpEmptyState title="No active tenders" description="Create or import an RFP to populate this operational view." actionHref="/tenders/new" actionLabel="Create tender" />
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  );
+}
+
+function TenderRow({ row }: { row: DashboardTenderCard }) {
+  const value = getTenderValue(row.tender.metadata);
+  return (
+    <tr className="align-top text-[13px] text-[#344054]">
+      <td className="max-w-[250px] px-5 py-4">
+        <Link href={`/tenders/${row.tender.id}`} className="block hover:text-[#155EEF]">
+          <p className="font-semibold leading-5 text-[#101828]">{row.tender.title}</p>
+          <p className="mt-1 truncate text-xs text-[#667085]">{row.tender.referenceNumber ?? row.tender.name}</p>
+        </Link>
+      </td>
+      <td className="max-w-[170px] px-3 py-4 text-xs leading-5">{row.tender.name}</td>
+      <td className="whitespace-nowrap px-3 py-4 text-xs text-[#344054]">{formatDate(row.tender.dueAt)}</td>
+      <td className="whitespace-nowrap px-3 py-4 text-xs font-medium text-[#101828]">{value}</td>
+      <td className="px-3 py-4"><RfpStatusBadge tone={statusTone(row.tender.status)}>{formatStatus(row.tender.status)}</RfpStatusBadge></td>
+      <td className="px-3 py-4"><OwnerBadge ownerId={row.tender.ownerId} /></td>
+      <td className="px-5 py-4"><ProgressCell value={row.readiness} /></td>
+    </tr>
+  );
+}
+
+function ImportantAlerts({
+  overdueCount,
+  dueCount,
+  reviewCount,
+  blockedCount,
+  overdueItems,
+  dueItems,
+}: {
+  overdueCount: number;
+  dueCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  overdueItems: DashboardOverview["deadlines"]["overdue"]["items"];
+  dueItems: DashboardOverview["deadlines"]["dueThisWeek"]["items"];
+}) {
+  const alerts = [
+    {
+      label: "Overdue tenders",
+      detail: "Deadlines have passed and need triage",
+      value: overdueCount,
+      href: overdueItems[0] ? `/tenders/${overdueItems[0].tenderId}` : "/tenders",
+      icon: <AlertTriangle className="h-4 w-4" strokeWidth={1.8} />,
+    },
+    {
+      label: "Tenders closing soon",
+      detail: "Deadlines within the next seven days",
+      value: dueCount,
+      href: dueItems[0] ? `/tenders/${dueItems[0].tenderId}` : "/tenders",
+      icon: <Timer className="h-4 w-4" strokeWidth={1.8} />,
+    },
+    {
+      label: "Questions need review",
+      detail: "Require SME or reviewer attention",
+      value: reviewCount,
+      href: "/reviews",
+      icon: <ListChecks className="h-4 w-4" strokeWidth={1.8} />,
+    },
+    {
+      label: "Submission blockers",
+      detail: "Validation issues prevent submission",
+      value: blockedCount,
+      href: "/tenders",
+      icon: <ShieldAlert className="h-4 w-4" strokeWidth={1.8} />,
+    },
+  ];
+
+  return (
+    <article className="min-w-0 border border-[#E4E7EC] bg-white">
+      <PanelHeader title="Important alerts" actionLabel="View all" actionHref="/tenders" />
+      <div className="divide-y divide-[#F2F4F7] px-5">
+        {alerts.map((alert) => (
+          <Link key={alert.label} href={alert.href} className="flex items-center gap-3 py-4 transition hover:bg-[#FCFCFD]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-[#E4E7EC] bg-white text-[#344054]">{alert.icon}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-[#101828]">{alert.label}</span>
+              <span className="mt-1 block text-xs leading-5 text-[#667085]">{alert.detail}</span>
+            </span>
+            <span className="text-lg font-semibold text-[#155EEF]">{alert.value}</span>
+          </Link>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function PanelHeader({ title, actionLabel, actionHref }: { title: string; actionLabel: string; actionHref: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-5 py-4">
+      <h2 className="text-sm font-semibold uppercase tracking-[0.04em] text-[#101828]">{title}</h2>
+      <Link href={actionHref} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-[#155EEF] hover:text-[#0F4BD6]">
+        {actionLabel}
+        <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.8} />
+      </Link>
+    </div>
+  );
+}
+
+function ActivityRow({ title, detail, meta, href, icon }: { title: string; detail: string; meta: string; href?: string; icon: ReactNode }) {
+  const content = (
+    <span className="flex min-w-0 items-start gap-3 py-3">
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-[#F8FAFC] text-[#344054]">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold text-[#101828]">{title}</span>
+        <span className="mt-1 block truncate text-xs text-[#667085]">{detail}</span>
+        <span className="mt-1 block text-[10px] uppercase tracking-[0.08em] text-[#98A2B3]">{meta}</span>
+      </span>
+    </span>
+  );
+  return href ? <Link href={href} className="block hover:bg-[#FCFCFD]">{content}</Link> : <div>{content}</div>;
 }
 
 function OwnerBadge({ ownerId }: { ownerId: string }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
-        {ownerId.slice(0, 2).toUpperCase()}
-      </div>
-      <div>
-        <p className="text-sm font-medium text-slate-900">{shortId(ownerId)}</p>
-        <p className="text-xs text-slate-500">Owner</p>
-      </div>
-    </div>
-  );
+  return <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#EFF5FF] text-[10px] font-semibold text-[#155EEF]">{ownerId.slice(0, 2).toUpperCase()}</span>;
 }
 
 function ProgressCell({ value }: { value: number | null }) {
+  const progress = value === null ? 0 : Math.max(0, Math.min(100, value));
   return (
-    <div className="flex items-center gap-3">
-      <div className="h-2.5 w-28 rounded-full bg-slate-200">
-        <div className="h-2.5 rounded-full bg-blue-600" style={{ width: `${Math.max(8, value ?? 0)}%` }} />
-      </div>
-      <span className="text-sm font-medium text-slate-900">{value === null ? "-" : `${value}%`}</span>
+    <div className="min-w-[84px]">
+      <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-[#344054]"><span>{value === null ? "-" : `${value}%`}</span></div>
+      <div className="mt-1 h-1.5 rounded-full bg-[#E4E7EC]"><div className="h-1.5 rounded-full bg-[#155EEF]" style={{ width: `${progress}%` }} /></div>
     </div>
   );
 }
 
-function ActionCard({ title, description, href }: { title: string; description: string; href: string }) {
-  return (
-    <Link
-      href={href}
-      className="rounded-[22px] border border-[rgba(15,23,42,0.08)] bg-white p-4 transition hover:border-[rgba(37,99,235,0.22)] hover:shadow-sm"
-    >
-      <p className="text-sm font-semibold text-slate-950">{title}</p>
-      <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
-    </Link>
-  );
+function activityIcon(kind: DashboardOverview["attention"][number]["kind"]) {
+  if (kind === "deadline") return <CalendarClock className="h-4 w-4" strokeWidth={1.8} />;
+  if (kind === "review") return <ClipboardCheck className="h-4 w-4" strokeWidth={1.8} />;
+  if (kind === "evidence") return <FileCheck2 className="h-4 w-4" strokeWidth={1.8} />;
+  if (kind === "knowledge") return <Search className="h-4 w-4" strokeWidth={1.8} />;
+  return kind === "tender" ? <Flag className="h-4 w-4" strokeWidth={1.8} /> : <Info className="h-4 w-4" strokeWidth={1.8} />;
 }
 
-function StatRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-      <span className="text-slate-600">{label}</span>
-      <span className="font-semibold text-slate-950">{value}</span>
-    </div>
-  );
+function getTenderValue(metadata: Record<string, unknown>) {
+  const candidate = metadata.estimatedValue ?? metadata.estimatedContractValue ?? metadata.value;
+  if (typeof candidate === "number" && Number.isFinite(candidate)) return formatCurrency(candidate);
+  if (typeof candidate === "string" && candidate.trim()) {
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) ? formatCurrency(parsed) : candidate;
+  }
+  return "-";
 }
 
-function KnowledgeRow({ item }: { item: KnowledgeItem }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-medium text-slate-950">{item.name}</p>
-          <p className="mt-1 text-sm text-slate-600">
-            {item.type} - {item.category}
-          </p>
-        </div>
-        <StatusPill tone={item.status === "ACTIVE" ? "success" : item.status === "DRAFT" ? "warning" : "neutral"}>{item.status}</StatusPill>
-      </div>
-      <p className="mt-3 text-sm text-slate-600">{item.summary}</p>
-    </div>
-  );
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
 }
 
-function EmptyState({
-  title,
-  description,
-  actionHref,
-  actionLabel,
-}: {
-  title: string;
-  description: string;
-  actionHref: string;
-  actionLabel: string;
-}) {
-  return <RfpEmptyState title={title} description={description} actionHref={actionHref} actionLabel={actionLabel} />;
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-4 font-semibold">{children}</th>;
-}
-
-function Td({ children }: { children: React.ReactNode }) {
-  return <td className="border-t border-slate-200 px-4 align-top">{children}</td>;
-}
-
-function StatusPill({ tone, children }: { tone: "success" | "warning" | "danger" | "neutral"; children: React.ReactNode }) {
-  return <RfpStatusBadge tone={tone}>{children}</RfpStatusBadge>;
-}
-
-function highestIssueTone(severity: string | null): "success" | "warning" | "danger" | "neutral" {
-  if (severity === "CRITICAL") return "danger";
-  if (severity === "HIGH") return "warning";
-  if (severity === "MEDIUM") return "neutral";
-  return "success";
-}
-
-function formatRelativeDeadline(value: string | null) {
+function formatDate(value: string | null | undefined) {
   if (!value) return "Not set";
   const date = new Date(value);
-  const diffDays = Math.round((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Tomorrow";
-  if (diffDays > 1) return `in ${diffDays} days`;
-  if (diffDays === -1) return "1 day overdue";
-  return `${Math.abs(diffDays)} days overdue`;
+  if (Number.isNaN(date.getTime())) return "Not set";
+  return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(date);
 }
 
-function statusTone(status: string): "success" | "warning" | "danger" | "neutral" {
-  const normalized = status.toUpperCase();
-  if (normalized.includes("APPROVED") || normalized.includes("ACTIVE") || normalized.includes("SUBMITTED")) return "success";
-  if (normalized.includes("DRAFT") || normalized.includes("PENDING") || normalized.includes("REVIEW")) return "warning";
-  if (normalized.includes("REJECT") || normalized.includes("ARCHIVED")) return "danger";
-  return "neutral";
-}
-
-function shortId(value: string) {
-  return value.length > 8 ? `${value.slice(0, 4)}...${value.slice(-4)}` : value;
-}
-
-function rankSeverity(severity: string | null | undefined) {
-  return severityRank[severity ?? "INFO"] ?? 0;
-}
-
-function FolderIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-      <path d="M3.5 7.75A2.25 2.25 0 0 1 5.75 5.5h4.1c.6 0 1.17.24 1.59.66l1.32 1.34c.42.42.99.66 1.59.66h3.9A2.25 2.25 0 0 1 20.5 10.4v6.85A2.25 2.25 0 0 1 18.25 19.5H5.75A2.25 2.25 0 0 1 3.5 17.25V7.75Z" />
-    </svg>
-  );
-}
-
-function CalendarIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-      <path d="M7.5 4.5v3M16.5 4.5v3M4.5 9.75h15" />
-      <rect x="4.5" y="6" width="15" height="13.5" rx="2.25" />
-    </svg>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-      <path d="M8.25 11.25a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5Z" />
-      <path d="M15.75 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
-      <path d="M3.75 18.25a4.5 4.5 0 0 1 9 0" />
-      <path d="M13.25 18.25a4 4 0 0 1 7.5 0" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-      <path d="M12 3.75 19 6.5v5.18c0 4.28-2.8 7.93-7 9.57-4.2-1.64-7-5.29-7-9.57V6.5l7-2.75Z" />
-      <path d="m9.5 12 1.8 1.8 3.75-4.1" />
-    </svg>
-  );
-}
-
-function CheckBadgeIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-      <path d="M12 3.75 14.2 6.2l3.3.5-1.1 3.15.63 3.28-3.13.88L12 16.25l-1.9-2.24-3.13-.88.63-3.28-1.1-3.15 3.3-.5L12 3.75Z" />
-      <path d="m9.7 11.95 1.45 1.45 3.15-3.15" />
-    </svg>
-  );
+function formatStatus(value: string) {
+  return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
