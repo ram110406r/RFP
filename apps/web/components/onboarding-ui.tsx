@@ -47,13 +47,13 @@ export function OnboardingShell({
       </header>
 
       <div className="mx-auto grid max-w-[1280px] lg:min-h-[calc(100vh-5rem)] lg:grid-cols-[minmax(0,620px)_minmax(320px,1fr)]">
-        <section className="flex px-5 py-10 sm:px-8 sm:py-14 lg:px-12 lg:py-16">
-          <div className="my-auto w-full max-w-[520px]">
+        <section className="flex min-h-0 px-5 py-10 sm:px-8 sm:py-14 lg:px-12 lg:py-16">
+          <div className="w-full max-w-[560px]">
             {labels ? <OnboardingProgress labels={labels} active={active} /> : null}
             <p className={(labels ? "mt-10 " : "") + "text-xs font-bold uppercase tracking-[0.2em] text-blue-700"}>{eyebrow}</p>
             <h1 className="mt-3 max-w-none text-[clamp(2rem,4vw,2.6rem)] font-semibold leading-[1.08] tracking-[-0.035em]">{title}</h1>
             <p className="mt-4 max-w-[480px] text-[15px] leading-6 text-slate-600">{description}</p>
-            <div className="mt-9">{children}</div>
+            <div className="mt-9 pb-4">{children}</div>
           </div>
         </section>
 
@@ -176,18 +176,20 @@ export function CheckboxGroup({ legend, values, options, onChange }: { legend: s
 
 export function FormFooter({ label = "Continue", busy, secondaryLabel, onSecondary }: { label?: string; busy: boolean; secondaryLabel?: string; onSecondary?: () => void }) {
   return (
-    <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
-      {secondaryLabel && onSecondary ? (
-        <Button type="button" variant="ghost" size="md" onClick={onSecondary} className="px-2">
-          {secondaryLabel}
+    <div className="border-t border-slate-200 pt-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+          {secondaryLabel && onSecondary ? (
+            <Button type="button" variant="ghost" size="md" onClick={onSecondary} className="w-full justify-center px-2 sm:w-auto">
+              {secondaryLabel}
+            </Button>
+          ) : null}
+        </div>
+        <Button type="submit" disabled={busy} size="lg" className="w-full sm:w-auto">
+          {busy ? "Saving..." : label}
+          {!busy ? <ArrowIcon /> : null}
         </Button>
-      ) : (
-        <span />
-      )}
-      <Button type="submit" disabled={busy} size="lg">
-        {busy ? "Saving..." : label}
-        {!busy ? <ArrowIcon /> : null}
-      </Button>
+      </div>
     </div>
   );
 }

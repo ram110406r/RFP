@@ -165,8 +165,8 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
 
   const heading = useMemo(() => {
     if (!isFirebaseConfigured()) return "Firebase configuration missing";
-    return user ? `Signed in as ${maskEmail(user.email)}` : "Sign in with Firebase";
-  }, [user]);
+    return user ? `Signed in as ${maskEmail(user.email)}` : mode === "register" ? "Create your TENDYY account" : "Sign in to TENDYY";
+  }, [mode, user]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -220,8 +220,14 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#eff6ff_0%,_#ffffff_55%,_#f8fafc_100%)] px-6">
-        <div className="rounded-[10px] border border-slate-200 bg-white/90 px-4 py-3 text-sm text-slate-600 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
-          Initializing Firebase session...
+        <div className="rounded-[10px] border border-slate-200 bg-white/90 px-5 py-4 text-sm text-slate-600 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+          <div className="flex items-center gap-3">
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#155EEF]" aria-hidden="true" />
+            <span>Loading your secure workspace...</span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Preparing your session and checking onboarding status.
+          </p>
         </div>
       </div>
     );
@@ -236,10 +242,11 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
+    const isRegister = mode === "register";
     return (
       <AuthShell
         heading={heading}
-        description="Sign in with email/password or your Google account."
+        description={isRegister ? "Create your account to start a new workspace or join one by invitation." : "Use your email and password to continue into TENDYY."}
       >
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
@@ -284,18 +291,18 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
               disabled={busy}
               className="inline-flex items-center justify-center rounded-2xl bg-sky-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {busy ? "Working..." : mode === "register" ? "Create account" : "Sign in"}
+              {busy ? "Working..." : isRegister ? "Create account" : "Sign in"}
             </button>
             <button
               type="button"
               onClick={() => setMode(mode === "register" ? "sign-in" : "register")}
               className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
             >
-              {mode === "register" ? "Switch to sign in" : "Create a Firebase account"}
+              {isRegister ? "Already have an account? Sign in" : "New here? Create account"}
             </button>
           </div>
           <div className="relative py-1 text-center text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-            <span className="relative z-10 bg-white px-3">or</span>
+            <span className="relative z-10 bg-white px-3">or continue with</span>
             <span className="absolute inset-x-0 top-1/2 border-t border-slate-200" aria-hidden="true" />
           </div>
           <button
@@ -305,7 +312,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
             className="inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <span className="text-base font-bold text-blue-600" aria-hidden="true">G</span>
-            Continue with Google
+            {isRegister ? "Create with Google" : "Continue with Google"}
           </button>
         </form>
       </AuthShell>
@@ -347,7 +354,7 @@ function OnboardingRedirect({ children }: { children: React.ReactNode }) {
     if (status.data.needsOnboarding && !onOnboarding) router.replace("/onboarding");
     if (!status.data.needsOnboarding && onOnboarding) router.replace("/");
   }, [pathname, router, status.data, status.isError, status.isLoading]);
-  if (status.isLoading && pathname !== "/onboarding") return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Checking workspace setup...</div>;
+  if (status.isLoading && pathname !== "/onboarding") return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Checking your workspace and onboarding status...</div>;
   return <>{children}</>;
 }
 
@@ -382,11 +389,10 @@ function ConfigNotice() {
   return (
     <div className="space-y-3">
       <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        Firebase env vars are missing. Set `NEXT_PUBLIC_FIREBASE_*` in `.env` and restart the app.
+        Firebase environment variables are missing. Set `NEXT_PUBLIC_FIREBASE_*` in `.env` and restart the app.
       </p>
       <p className="text-sm leading-6 text-slate-600">
-        The repo now has the `tendyy` Firebase project registered, but the web app still needs the Firebase public config values
-        available to the Next.js runtime.
+        The app still needs the Firebase public config values at runtime before sign-in and onboarding can work.
       </p>
     </div>
   );

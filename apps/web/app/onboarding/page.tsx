@@ -50,7 +50,7 @@ export default function OnboardingPage() {
     onError: (cause) => setError(cause instanceof Error ? cause.message : "Please try again."),
   });
 
-  if (status.isLoading) return <Status title="Preparing your workspace" copy="Loading your saved onboarding progress..." />;
+  if (status.isLoading) return <Status title="Loading your onboarding" copy="Restoring your saved setup progress..." />;
   if (status.isError || !data) return <Status title="We could not load onboarding" copy="Refresh the page and try again." failed />;
   if (!data.journey) return <JourneyChoice data={data} action={action} error={error} />;
   return data.journey === "COMPANY"
