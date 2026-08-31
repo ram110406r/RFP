@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
-import { PageHero } from "../../components/page-hero";
 import { RfpEmptyState, RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { useTender, useTenders } from "../../lib/queries";
@@ -169,39 +168,32 @@ function TenderSearchPage() {
   }
 
   return (
-    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Tender Search" }]} hideDesktopHeader>
+    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Tender Search" }]}>
       <div className="min-w-0 space-y-5 pb-6">
-        <PageHero
-          eyebrow="Discovery workspace"
-          title="Tender Search"
-          description="Discover, track and evaluate tenders from your workspace."
-          actions={
-            <>
-              <select
-                aria-label="Tender source"
-                title="Source filtering is not available in the current tender list API"
-                disabled
-                className="h-9 max-w-[155px] appearance-none rounded-[8px] border border-slate-200 bg-white px-3 pr-8 text-[13px] font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-80"
-                defaultValue="all"
-              >
-                <option value="all">All sources</option>
-                <option value="portal">Portal imports</option>
-                <option value="manual">Manual entries</option>
-              </select>
-              <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700" aria-label="Notifications">
-                <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" aria-hidden="true" />
-                <Clock3 className="h-[17px] w-[17px]" strokeWidth={1.8} />
-              </button>
-              <div className="hidden items-center gap-2 sm:flex">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">{initials(userName)}</div>
-                <div className="min-w-0">
-                  <p className="max-w-[130px] truncate text-[13px] font-semibold text-slate-950">{userName}</p>
-                  <p className="max-w-[130px] truncate text-[11px] text-slate-500">{userRole}</p>
-                </div>
-              </div>
-            </>
-          }
-        />
+        <section className="flex flex-wrap items-center gap-3">
+          <select
+            aria-label="Tender source"
+            title="Source filtering is not available in the current tender list API"
+            disabled
+            className="h-9 max-w-[155px] appearance-none rounded-[8px] border border-slate-200 bg-white px-3 pr-8 text-[13px] font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-80"
+            defaultValue="all"
+          >
+            <option value="all">All sources</option>
+            <option value="portal">Portal imports</option>
+            <option value="manual">Manual entries</option>
+          </select>
+          <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700" aria-label="Notifications">
+            <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" aria-hidden="true" />
+            <Clock3 className="h-[17px] w-[17px]" strokeWidth={1.8} />
+          </button>
+          <div className="hidden items-center gap-2 sm:flex">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">{initials(userName)}</div>
+            <div className="min-w-0">
+              <p className="max-w-[130px] truncate text-[13px] font-semibold text-slate-950">{userName}</p>
+              <p className="max-w-[130px] truncate text-[11px] text-slate-500">{userRole}</p>
+            </div>
+          </div>
+        </section>
 
         <section className="border border-[#E4E7EC] bg-white p-4 sm:p-5" aria-label="Tender search controls">
           <div className="flex flex-col gap-3 xl:flex-row">
