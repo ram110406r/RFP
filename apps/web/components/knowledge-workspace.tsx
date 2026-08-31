@@ -125,7 +125,7 @@ type UsageRow = {
 
 export function KnowledgeWorkspaceClient() {
   return (
-    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Knowledge Brain" }]} hideDesktopHeader>
+    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Knowledge Brain" }]}>
       <KnowledgeBrowser />
     </AppShell>
   );
@@ -139,7 +139,7 @@ export function KnowledgeDetailClient({
   initialItem?: KnowledgeItem | null;
 }) {
   return (
-    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Knowledge Brain", href: "/knowledge" }, { label: "Knowledge Detail" }]} hideDesktopHeader>
+    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Knowledge Brain", href: "/knowledge" }, { label: "Knowledge Detail" }]}>
       <KnowledgeDetailPanel knowledgeId={knowledgeId} initialItem={initialItem ?? null} />
     </AppShell>
   );
