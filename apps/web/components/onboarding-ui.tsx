@@ -53,7 +53,7 @@ export function OnboardingShell({
             <p className={(labels ? "mt-10 " : "") + "text-xs font-bold uppercase tracking-[0.2em] text-blue-700"}>{eyebrow}</p>
             <h1 className="mt-3 max-w-none text-[clamp(2rem,4vw,2.6rem)] font-semibold leading-[1.08] tracking-[-0.035em]">{title}</h1>
             <p className="mt-4 max-w-[480px] text-[15px] leading-6 text-slate-600">{description}</p>
-            <div className="mt-9 pb-4">{children}</div>
+            <div className="mt-9 pb-24">{children}</div>
           </div>
         </section>
 
@@ -99,7 +99,7 @@ export function OnboardingForm({ children, onSubmit }: { children: ReactNode; on
     event.preventDefault();
     onSubmit();
   }
-  return <form className="space-y-6" onSubmit={submit}>{children}</form>;
+  return <form className="space-y-6 pb-24" onSubmit={submit}>{children}</form>;
 }
 
 export function FormGrid({ children }: { children: ReactNode }) {
@@ -176,7 +176,7 @@ export function CheckboxGroup({ legend, values, options, onChange }: { legend: s
 
 export function FormFooter({ label = "Continue", busy, secondaryLabel, onSecondary }: { label?: string; busy: boolean; secondaryLabel?: string; onSecondary?: () => void }) {
   return (
-    <div className="border-t border-slate-200 pt-6">
+    <div className="sticky bottom-4 z-20 rounded-[12px] border border-slate-200 bg-white/95 px-4 py-4 shadow-[0_12px_32px_rgba(15,23,42,0.08)] backdrop-blur">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
           {secondaryLabel && onSecondary ? (
@@ -213,7 +213,7 @@ export function ErrorNotice({ error }: { error: string | null }) {
 
 export function PrimaryAction({ children, busy, onClick }: { children: ReactNode; busy: boolean; onClick: () => void }) {
   return (
-    <Button type="button" disabled={busy} onClick={onClick} size="lg" className="w-full sm:w-auto">
+    <Button type="button" disabled={busy} onClick={onClick} size="lg" className="sticky bottom-4 z-20 w-full sm:w-auto">
       {busy ? "Saving..." : children}
       {!busy ? <ArrowIcon /> : null}
     </Button>
