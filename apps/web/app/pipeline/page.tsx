@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
+import { PageHero } from "../../components/page-hero";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
 import type { ActivityItem, DashboardTenderCard, TenderSummary } from "../../lib/models";
@@ -139,18 +140,27 @@ export default function PipelinePage() {
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Pipeline" }]} hideDesktopHeader>
       <div className="min-w-0 space-y-5 pb-8">
-        <header className="flex flex-col gap-4 border-b border-[#E4E7EC] pb-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#98A2B3]">Opportunity management</p>
-            <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[#101828] sm:text-[32px]">Pipeline</h1>
-            <p className="mt-1 text-sm text-[#667085]">Track every opportunity from discovery to outcome.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/tenders/new" className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-[#155EEF] px-4 text-sm font-semibold text-white hover:bg-[#0F4BD6]"><Plus className="h-4 w-4" />Add opportunity</Link>
-            <button type="button" onClick={exportRows} className="inline-flex h-10 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-4 text-sm font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Download className="h-4 w-4" />Export</button>
-            <button type="button" className="relative inline-flex h-10 w-10 items-center justify-center rounded-[8px] border border-[#E4E7EC] text-[#344054]" aria-label="Notifications"><Bell className="h-4 w-4" /><span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" /></button>
-          </div>
-        </header>
+        <PageHero
+          eyebrow="Opportunity management"
+          title="Pipeline"
+          description="Track every opportunity from discovery to outcome."
+          actions={
+            <>
+              <Link href="/tenders/new" className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white hover:bg-slate-800">
+                <Plus className="h-4 w-4" />
+                Add opportunity
+              </Link>
+              <button type="button" onClick={exportRows} className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 hover:border-[#155EEF] hover:text-[#155EEF]">
+                <Download className="h-4 w-4" />
+                Export
+              </button>
+              <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700" aria-label="Notifications">
+                <Bell className="h-4 w-4" />
+                <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" />
+              </button>
+            </>
+          }
+        />
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Pipeline summary">
           <Metric label="Pipeline value" value={formatValue(pipelineValue)} detail="Across loaded active stages" icon={<CircleDollarSign className="h-5 w-5" />} />

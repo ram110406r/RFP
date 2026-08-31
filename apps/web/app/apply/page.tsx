@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
+import { PageHero } from "../../components/page-hero";
 import { RfpEmptyState, RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import type { DashboardTenderCard } from "../../lib/models";
@@ -99,19 +100,35 @@ function ApplyInbox() {
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Apply" }]} hideDesktopHeader>
       <div className="min-w-0 space-y-5 pb-6">
-        <header className="flex flex-col gap-5 border-b border-[#E4E7EC] pb-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#98A2B3]">Response execution</p>
-            <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[#101828] sm:text-[32px]">Apply</h1>
-            <p className="mt-1 text-sm text-[#667085]">Manage and complete your tender and RFP responses from intake to submission.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link href="/tenders/import" className="inline-flex h-10 items-center gap-2 rounded-[9px] border border-[#E4E7EC] px-4 text-sm font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Upload className="h-4 w-4" />Import RFP</Link>
-            <Link href="/tenders/new" className="inline-flex h-10 items-center gap-2 rounded-[9px] bg-[#155EEF] px-4 text-sm font-semibold text-white hover:bg-[#0F4BD6]"><FilePlus2 className="h-4 w-4" />New application <ChevronDown className="h-4 w-4" /></Link>
-            <button type="button" className="relative inline-flex h-10 w-10 items-center justify-center rounded-[9px] border border-[#E4E7EC] text-[#344054]" aria-label="Notifications"><span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" /><Bell className="h-4 w-4" /></button>
-            <div className="hidden items-center gap-2 sm:flex"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">{initials(userName)}</div><div><p className="max-w-[120px] truncate text-xs font-semibold text-[#101828]">{userName}</p><p className="text-[11px] text-[#667085]">{session?.profile?.role ?? "Workspace member"}</p></div></div>
-          </div>
-        </header>
+        <PageHero
+          eyebrow="Response execution"
+          title="Apply"
+          description="Manage and complete your tender and RFP responses from intake to submission."
+          actions={
+            <>
+              <Link href="/tenders/import" className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 hover:border-[#155EEF] hover:text-[#155EEF]">
+                <Upload className="h-4 w-4" />
+                Import RFP
+              </Link>
+              <Link href="/tenders/new" className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white hover:bg-slate-800">
+                <FilePlus2 className="h-4 w-4" />
+                New application
+                <ChevronDown className="h-4 w-4" />
+              </Link>
+              <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700" aria-label="Notifications">
+                <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" />
+                <Bell className="h-4 w-4" />
+              </button>
+              <div className="hidden items-center gap-2 sm:flex">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">{initials(userName)}</div>
+                <div>
+                  <p className="max-w-[120px] truncate text-[13px] font-semibold text-slate-950">{userName}</p>
+                  <p className="text-[11px] text-slate-500">{session?.profile?.role ?? "Workspace member"}</p>
+                </div>
+              </div>
+            </>
+          }
+        />
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5" aria-label="Application workflow metrics">
           <WorkflowMetric label="In progress" value={pipelineCount("answering")} detail="Applications" icon={<Clock3 className="h-5 w-5" />} onClick={() => setTab("all")} />

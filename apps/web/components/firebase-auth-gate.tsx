@@ -38,6 +38,16 @@ export type FirebaseUserProfile = {
   emailVerified: boolean;
   role?: string | null;
   organizationName?: string | null;
+  preferredName?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  timezone?: string | null;
+  phone?: string | null;
+  location?: string | null;
+  language?: string | null;
+  bio?: string | null;
+  skills?: string[];
+  notificationPreferences?: Record<string, boolean> | null;
   lastLoginAt?: unknown;
 };
 
@@ -129,6 +139,23 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
         emailVerified: typeof data.emailVerified === "boolean" ? data.emailVerified : user.emailVerified,
         role: typeof data.role === "string" ? data.role : null,
         organizationName: typeof data.organizationName === "string" ? data.organizationName : null,
+        preferredName: typeof data.preferredName === "string" ? data.preferredName : null,
+        jobTitle: typeof data.jobTitle === "string" ? data.jobTitle : null,
+        department: typeof data.department === "string" ? data.department : null,
+        timezone: typeof data.timezone === "string" ? data.timezone : null,
+        phone: typeof data.phone === "string" ? data.phone : null,
+        location: typeof data.location === "string" ? data.location : null,
+        language: typeof data.language === "string" ? data.language : null,
+        bio: typeof data.bio === "string" ? data.bio : null,
+        skills: Array.isArray(data.skills) ? data.skills.filter((value): value is string => typeof value === "string") : undefined,
+        notificationPreferences:
+          data.notificationPreferences && typeof data.notificationPreferences === "object"
+            ? Object.fromEntries(
+                Object.entries(data.notificationPreferences as Record<string, unknown>).filter(
+                  (entry): entry is [string, boolean] => typeof entry[0] === "string" && typeof entry[1] === "boolean",
+                ),
+              )
+            : null,
         lastLoginAt: data.lastLoginAt ?? null,
       });
     });

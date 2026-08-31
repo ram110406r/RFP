@@ -52,7 +52,7 @@ type NavItem = {
 
 type Viewport = "mobile" | "tablet" | "desktop";
 
-const SIDEBAR_WIDTH_EXPANDED = 232;
+const SIDEBAR_WIDTH_EXPANDED = 216;
 const SIDEBAR_WIDTH_COLLAPSED = 68;
 
 function maskEmail(email: string | null) {
@@ -124,10 +124,10 @@ const navGroups: { label: string; items: NavItem[] }[] = [
 
 function SidebarSearch({ shortcut = "⌘ S" }: { shortcut?: string }) {
   return (
-    <label className="flex h-[38px] items-center gap-2.5 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-slate-500">
-      <Search className="h-[18px] w-[18px] shrink-0 text-slate-400" strokeWidth={1.75} />
-      <span className="min-w-0 flex-1 truncate text-[13px] text-slate-500">Search</span>
-      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+    <label className="flex h-8 items-center gap-1.5 rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 text-slate-500">
+      <Search className="h-[15px] w-[15px] shrink-0 text-slate-400" strokeWidth={1.75} />
+      <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500">Search</span>
+      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">
         {shortcut}
       </span>
     </label>
@@ -178,18 +178,18 @@ function NavLink({
           onNavigate?.();
         }}
         className={[
-          "grid h-[40px] items-center rounded-[8px] px-3 text-[13px] font-medium transition",
-          collapsed ? "grid-cols-[20px] justify-items-center px-0" : "grid-cols-[20px_minmax(0,1fr)] gap-3",
+          "grid h-8 items-center rounded-[8px] px-2 text-[11px] font-medium transition",
+          collapsed ? "grid-cols-[18px] justify-items-center px-0" : "grid-cols-[18px_minmax(0,1fr)] gap-2.5",
           active || flyoutOpen ? "bg-[#EFF5FF] text-[#0F172A]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
         ].join(" ")}
       >
         <span
           className={[
-            "flex h-5 w-5 shrink-0 items-center justify-center",
+            "flex h-[16px] w-[16px] shrink-0 items-center justify-center",
             active || flyoutOpen ? "text-[#155EEF]" : "text-slate-500",
           ].join(" ")}
         >
-          <Icon size={18} strokeWidth={1.75} />
+          <Icon size={15} strokeWidth={1.75} />
         </span>
         {!collapsed ? <span className="truncate">{item.label}</span> : null}
       </Link>
@@ -210,7 +210,7 @@ function NavLink({
                   href={subItem.href}
                   onClick={onNavigate}
                   className={[
-                    "flex h-[40px] items-center gap-3 rounded-[8px] px-3 text-[13px] transition",
+                    "flex h-8 items-center gap-2.5 rounded-[8px] px-3 text-[11px] transition",
                     subActive ? "bg-[#EFF5FF] text-[#155EEF]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
                   ].join(" ")}
                 >
@@ -246,9 +246,9 @@ function SidebarSection({
   onNavigate?: () => void;
 }) {
   return (
-    <section className="space-y-1.5">
-      {!collapsed ? <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p> : null}
-      <nav className="space-y-1">
+    <section className="space-y-1">
+      {!collapsed ? <p className="px-1 text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p> : null}
+      <nav className="space-y-0.5">
         {items.map((item) => (
           <NavLink
             key={item.href}
@@ -267,11 +267,11 @@ function SidebarSection({
 
 function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#155EEF] text-[12px] font-semibold text-white">
+    <div className="flex items-center gap-2">
+      <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[8px] bg-[#155EEF] text-[10px] font-semibold text-white">
         T
       </div>
-      {!collapsed ? <span className="text-[19px] font-semibold tracking-[-0.02em] text-slate-950">TENDYY</span> : null}
+      {!collapsed ? <span className="text-[15px] font-semibold tracking-[-0.02em] text-slate-950">TENDYY</span> : null}
     </div>
   );
 }
@@ -293,20 +293,20 @@ function SidebarFooter({
       aria-label="Open profile"
       className={[
         "flex items-center rounded-[10px] border border-slate-200 bg-white transition hover:bg-slate-50",
-        collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2.5",
+        collapsed ? "justify-center px-0 py-1.5" : "gap-2.5 px-2.5 py-1.5",
       ].join(" ")}
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[11px] font-semibold text-[#155EEF]">
+      <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[10px] font-semibold text-[#155EEF]">
         {initials}
       </div>
       {!collapsed ? (
         <>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium text-slate-950">{displayLabel}</p>
-            <p className="truncate text-[11px] text-slate-500">{subtitle}</p>
+            <p className="truncate text-[11px] font-medium text-slate-950">{displayLabel}</p>
+            <p className="truncate text-[9px] text-slate-500">{subtitle}</p>
           </div>
           <span className="text-slate-400">
-            <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+            <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.75} />
           </span>
         </>
       ) : null}
@@ -425,7 +425,7 @@ function MobileDrawer({
         className="flex h-full w-[280px] flex-col border-r border-slate-200 bg-white p-3"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex h-[64px] items-center justify-between px-1">
+        <div className="flex h-12 items-center justify-between px-1">
           <BrandMark />
           <button
             type="button"
@@ -437,11 +437,11 @@ function MobileDrawer({
           </button>
         </div>
 
-        <div className="mt-5">
+        <div className="mt-3">
           <SidebarSearch />
         </div>
 
-        <div className="mt-5 flex-1 space-y-5 overflow-y-auto scrollbar-hide pr-1">
+        <div className="mt-3 flex-1 space-y-3 overflow-hidden pr-1">
           {navGroups.map((group) => (
             <SidebarSection
               key={group.label}
@@ -456,7 +456,7 @@ function MobileDrawer({
           ))}
         </div>
 
-        <div className="mt-4">
+        <div className="mt-3">
           <SidebarFooter collapsed={false} displayLabel={displayLabel} subtitle={subtitle} initials={initials} />
         </div>
       </aside>
@@ -529,7 +529,7 @@ export function AppShell({
           className="fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white md:flex"
           style={{ width: sidebarWidth }}
         >
-          <div className="relative flex h-full w-full flex-col px-2.5 pb-2.5 pt-3.5">
+          <div className="relative flex h-full w-full flex-col px-2 pb-2 pt-2.5">
             <button
               type="button"
               onClick={() => setSidebarCollapsed((current) => !current)}
@@ -543,31 +543,31 @@ export function AppShell({
               )}
             </button>
 
-            <div className="flex h-[66px] items-center px-1">
+            <div className="flex h-11 items-center px-1">
               <BrandMark collapsed={collapsed} />
             </div>
 
             {!collapsed ? (
-              <div className="mt-5">
+              <div className="mt-2.5">
                 <SidebarSearch />
               </div>
             ) : (
-              <div className="mt-5 flex justify-center">
+              <div className="mt-2.5 flex justify-center">
                 <button
                   type="button"
-                  className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
                   aria-label="Search"
                 >
-                  <Search className="h-[17px] w-[17px]" strokeWidth={1.75} />
+                  <Search className="h-[15px] w-[15px]" strokeWidth={1.75} />
                 </button>
               </div>
             )}
 
-            <div className="mt-5 flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-hide pr-1">
-              <div className="space-y-5">
+            <div className="mt-2.5 flex min-h-0 flex-1 flex-col overflow-hidden pr-1">
+              <div className="space-y-2.5">
                 {navGroups.map((group, index) => (
                   <section key={group.label}>
-                    {index > 0 && !collapsed ? <div className="mb-5 border-t border-slate-200 pt-5" /> : null}
+                    {index > 0 && !collapsed ? <div className="mb-2.5 border-t border-slate-200 pt-2.5" /> : null}
                     <SidebarSection
                       label={group.label}
                       items={group.items}
@@ -580,7 +580,7 @@ export function AppShell({
                 ))}
               </div>
 
-              <div className="mt-auto pt-5">
+              <div className="mt-auto pt-2.5">
                 <SidebarFooter collapsed={collapsed} displayLabel={displayLabel} subtitle={subtitle} initials={initials} />
               </div>
             </div>
