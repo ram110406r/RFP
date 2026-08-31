@@ -185,7 +185,7 @@ export function FormFooter({ label = "Continue", busy, secondaryLabel, onSeconda
             </Button>
           ) : null}
         </div>
-        <Button type="submit" disabled={busy} size="lg" className="w-full sm:w-auto">
+        <Button type="submit" variant="secondary" disabled={busy} size="lg" className="w-full border-slate-300 text-black sm:w-auto">
           {busy ? "Saving..." : label}
           {!busy ? <ArrowIcon /> : null}
         </Button>
@@ -213,7 +213,7 @@ export function ErrorNotice({ error }: { error: string | null }) {
 
 export function PrimaryAction({ children, busy, onClick }: { children: ReactNode; busy: boolean; onClick: () => void }) {
   return (
-    <Button type="button" disabled={busy} onClick={onClick} size="lg" className="sticky bottom-4 z-20 w-full sm:w-auto">
+    <Button type="button" variant="secondary" disabled={busy} onClick={onClick} size="lg" className="sticky bottom-4 z-20 w-full border-slate-300 text-black sm:w-auto">
       {busy ? "Saving..." : children}
       {!busy ? <ArrowIcon /> : null}
     </Button>
