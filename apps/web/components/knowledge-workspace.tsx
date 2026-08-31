@@ -88,29 +88,6 @@ const QUICK_ACTIONS = [
   { label: "Ask Brain", href: "/knowledge?ask=1", detail: "Get AI-powered answers", icon: Sparkles },
 ];
 
-const DEMO_RECOMMENDATIONS = [
-  { title: "SOC 2 Type II Report", context: "Security Infrastructure Upgrade", match: 95 },
-  { title: "Disaster Recovery Plan", context: "Smart City Platform", match: 92 },
-  { title: "Penetration Testing Report", context: "Government Cloud Project", match: 89 },
-  { title: "Data Retention Policy", context: "Health System Modernization", match: 86 },
-];
-
-const DEMO_CATEGORY_COUNTS = [
-  { label: "Security", count: 428 },
-  { label: "Infrastructure", count: 362 },
-  { label: "Certifications", count: 298 },
-  { label: "IT Solutions", count: 274 },
-  { label: "Policies & SOPs", count: 186 },
-];
-
-const DEMO_ACTIVITY = [
-  { title: "Security Architecture Overview v3.2", detail: "Used in Security Infrastructure Upgrade", time: "4 min ago", icon: FileText },
-  { title: "ISO 27001:2022 Certificate", detail: "Verified by Sneha K.", time: "3 hours ago", icon: BadgeCheck },
-  { title: "New template added", detail: "Cybersecurity Compliance Template", time: "", icon: FilePlus2 },
-  { title: "Penetration Testing Report", detail: "Used in Government Cloud Project", time: "1 hour ago", icon: FileCheck2 },
-  { title: "SAML 2.0 Implementation Guide", detail: "Updated by Rohit M.", time: "3 hours ago", icon: History },
-];
-
 const PAGE_SIZE = 10;
 const AGGREGATE_PAGE_SIZE = 100;
 
@@ -490,23 +467,31 @@ function KnowledgeBrowser() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F2F4F7]">
-                  {(usageRows.length > 0 ? usageRows : buildFallbackUsageRows()).map((row) => (
-                    <tr key={row.title} className="align-top text-[13px] text-[#344054]">
-                      <td className="px-4 py-4">
-                        <Link href={`/knowledge/${row.id ?? row.title}`} className="font-semibold text-[#101828] hover:text-[#155EEF]">
-                          {row.title}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-4">
-                        <Pill tone="neutral">{row.type}</Pill>
-                      </td>
-                      <td className="px-3 py-4 text-xs text-[#344054]">{row.usedIn}</td>
-                      <td className="whitespace-nowrap px-3 py-4 text-xs text-[#344054]">{row.lastUsed}</td>
-                      <td className="px-4 py-4">
-                        <Pill tone={row.impact === "High" ? "success" : row.impact === "Medium" ? "warning" : "neutral"}>{row.impact}</Pill>
+                  {usageRows.length > 0 ? (
+                    usageRows.map((row) => (
+                      <tr key={row.title} className="align-top text-[13px] text-[#344054]">
+                        <td className="px-4 py-4">
+                          <Link href={`/knowledge/${row.id ?? row.title}`} className="font-semibold text-[#101828] hover:text-[#155EEF]">
+                            {row.title}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-4">
+                          <Pill tone="neutral">{row.type}</Pill>
+                        </td>
+                        <td className="px-3 py-4 text-xs text-[#344054]">{row.usedIn}</td>
+                        <td className="whitespace-nowrap px-3 py-4 text-xs text-[#344054]">{row.lastUsed}</td>
+                        <td className="px-4 py-4">
+                          <Pill tone={row.impact === "High" ? "success" : row.impact === "Medium" ? "warning" : "neutral"}>{row.impact}</Pill>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-sm text-[#667085]">
+                        No usage data available yet.
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -517,22 +502,28 @@ function KnowledgeBrowser() {
           <Panel title="SMART RECOMMENDATIONS" actionHref="/knowledge" actionLabel="View All">
             <p className="-mt-2 mb-4 text-sm text-[#667085]">AI-recommended for active applications</p>
             <div className="space-y-2">
-              {(recommendations.length > 0 ? recommendations : DEMO_RECOMMENDATIONS).map((item) => (
-                <Link
-                  key={`${item.title}-${item.context}`}
-                  href="/knowledge"
-                  className="flex items-center gap-3 rounded-[10px] border border-[#E4E7EC] bg-white px-3 py-3 transition hover:border-[#155EEF] hover:bg-[#FCFCFD]"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[#155EEF]">
-                    <FileText className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-[#101828]">{item.title}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-[#667085]">{item.context}</span>
-                  </span>
-                  <span className="text-right text-xs font-semibold text-[#155EEF]">{item.match}%</span>
-                </Link>
-              ))}
+              {recommendations.length > 0 ? (
+                recommendations.map((item) => (
+                  <Link
+                    key={`${item.title}-${item.context}`}
+                    href="/knowledge"
+                    className="flex items-center gap-3 rounded-[10px] border border-[#E4E7EC] bg-white px-3 py-3 transition hover:border-[#155EEF] hover:bg-[#FCFCFD]"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[#155EEF]">
+                      <FileText className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-[#101828]">{item.title}</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-[#667085]">{item.context}</span>
+                    </span>
+                    <span className="text-right text-xs font-semibold text-[#155EEF]">{item.match}%</span>
+                  </Link>
+                ))
+              ) : (
+                <p className="rounded-[10px] border border-dashed border-[#D0D5DD] px-3 py-4 text-sm text-[#667085]">
+                  No recommendations yet.
+                </p>
+              )}
             </div>
             <Link href="/knowledge" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-[#155EEF]">
               Explore More Recommendations
@@ -542,25 +533,31 @@ function KnowledgeBrowser() {
 
           <Panel title="POPULAR CATEGORIES" actionHref="/knowledge" actionLabel="View All">
             <div className="space-y-1">
-              {(categoryCounts.length > 0 ? categoryCounts : DEMO_CATEGORY_COUNTS).map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab("all");
-                    setOwnerFilter("all");
-                    setVerificationFilter("all");
-                    setStatusFilter("all");
-                    setSearchText(item.label);
-                    updateUrl({ q: item.label, tab: null });
-                    searchInputRef.current?.focus();
-                  }}
-                  className="flex w-full items-center justify-between rounded-[8px] px-2 py-2 text-left transition hover:bg-[#F8FAFC]"
-                >
-                  <span className="text-sm font-medium text-[#101828]">{item.label}</span>
-                  <span className="text-sm text-[#667085]">{item.count}</span>
-                </button>
-              ))}
+              {categoryCounts.length > 0 ? (
+                categoryCounts.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("all");
+                      setOwnerFilter("all");
+                      setVerificationFilter("all");
+                      setStatusFilter("all");
+                      setSearchText(item.label);
+                      updateUrl({ q: item.label, tab: null });
+                      searchInputRef.current?.focus();
+                    }}
+                    className="flex w-full items-center justify-between rounded-[8px] px-2 py-2 text-left transition hover:bg-[#F8FAFC]"
+                  >
+                    <span className="text-sm font-medium text-[#101828]">{item.label}</span>
+                    <span className="text-sm text-[#667085]">{item.count}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="rounded-[8px] border border-dashed border-[#D0D5DD] px-3 py-4 text-sm text-[#667085]">
+                  No categories available yet.
+                </p>
+              )}
             </div>
           </Panel>
 
@@ -578,21 +575,27 @@ function KnowledgeBrowser() {
 
           <Panel title="ACTIVITY FEED" actionHref="/knowledge" actionLabel="View All">
             <div className="space-y-2">
-              {(activityFeed.length > 0 ? activityFeed : DEMO_ACTIVITY).map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div key={`${item.title}-${item.time}-${item.detail}`} className="flex items-start gap-3 rounded-[10px] border border-[#F2F4F7] bg-white p-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[#155EEF]">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-[#101828]">{item.title}</span>
-                      <span className="mt-0.5 block truncate text-[11px] text-[#667085]">{item.detail}</span>
-                    </span>
-                    {item.time ? <span className="whitespace-nowrap text-[11px] text-[#98A2B3]">{item.time}</span> : null}
-                  </div>
-                );
-              })}
+              {activityFeed.length > 0 ? (
+                activityFeed.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={`${item.title}-${item.time}-${item.detail}`} className="flex items-start gap-3 rounded-[10px] border border-[#F2F4F7] bg-white p-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[#155EEF]">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-[#101828]">{item.title}</span>
+                        <span className="mt-0.5 block truncate text-[11px] text-[#667085]">{item.detail}</span>
+                      </span>
+                      {item.time ? <span className="whitespace-nowrap text-[11px] text-[#98A2B3]">{item.time}</span> : null}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="rounded-[10px] border border-dashed border-[#D0D5DD] px-3 py-4 text-sm text-[#667085]">
+                  No recent knowledge activity.
+                </p>
+              )}
             </div>
           </Panel>
         </aside>
@@ -1272,7 +1275,6 @@ function buildRecommendations(items: KnowledgeItem[], activeTenders: DashboardOv
   const contexts = [
     ...(dashboard?.attention.filter((entry) => entry.kind === "knowledge").map((entry) => entry.detail) ?? []),
     ...activeTenders.map((row) => row.tender.title),
-    ...DEMO_RECOMMENDATIONS.map((item) => item.context),
   ];
 
   return topItems.map((item, index) => ({
@@ -1341,16 +1343,6 @@ function buildUsageRows(items: KnowledgeItem[]): UsageRow[] {
       lastUsed: formatRelativeShort(item.updatedAt),
       impact: usageCount(item) >= 10 || item.authority === "high" ? "High" : usageCount(item) >= 4 ? "Medium" : "Low",
     }));
-}
-
-function buildFallbackUsageRows(): UsageRow[] {
-  return [
-    { id: "demo-1", title: "Security Architecture Overview v3.2", type: "Evidence", usedIn: "14 applications", lastUsed: "1 hour ago", impact: "High" },
-    { id: "demo-2", title: "SAML 2.0 Implementation Guide", type: "Evidence", usedIn: "9 applications", lastUsed: "3 hours ago", impact: "High" },
-    { id: "demo-3", title: "ISO 27001:2022 Certificate", type: "Certification", usedIn: "21 applications", lastUsed: "Yesterday", impact: "High" },
-    { id: "demo-4", title: "ERP System - Past Response", type: "Past Response", usedIn: "6 applications", lastUsed: "Yesterday", impact: "Medium" },
-    { id: "demo-5", title: "Data Center Infrastructure Details", type: "Evidence", usedIn: "12 applications", lastUsed: "5 hours ago", impact: "High" },
-  ];
 }
 
 function buildUsedInReferences(item: KnowledgeItem | null, activities: ActivityItem[]) {

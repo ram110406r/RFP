@@ -27,6 +27,7 @@ import { RfpEmptyState, RfpStatusBadge, statusTone } from "../../components/rfp-
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import type { DashboardTenderCard } from "../../lib/models";
 import { useDashboardSummary } from "../../lib/queries";
+import { Button } from "@rfp-os/ui";
 
 type ApplicationTab = "all" | "mine" | "review" | "approval" | "ready" | "submitted" | "closed";
 
@@ -100,19 +101,23 @@ function ApplyInbox() {
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Apply" }]}>
       <div className="min-w-0 space-y-5 pb-6">
         <section className="flex flex-wrap items-center gap-3">
-          <Link href="/tenders/import" className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 hover:border-[#155EEF] hover:text-[#155EEF]">
-            <Upload className="h-4 w-4" />
-            Import RFP
-          </Link>
-          <Link href="/tenders/new" className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-[#155EEF] px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-[#0F4BD6]">
-            <FilePlus2 className="h-4 w-4 text-white" />
-            New application
-            <ChevronDown className="h-4 w-4 text-white" />
-          </Link>
-          <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700" aria-label="Notifications">
+          <Button asChild variant="secondary">
+            <Link href="/tenders/import">
+              <Upload className="h-4 w-4" />
+              Import RFP
+            </Link>
+          </Button>
+          <Button asChild variant="primary">
+            <Link href="/tenders/new">
+              <FilePlus2 className="h-4 w-4 text-white" />
+              New application
+              <ChevronDown className="h-4 w-4 text-white" />
+            </Link>
+          </Button>
+          <Button type="button" variant="icon" size="icon" className="relative" aria-label="Notifications">
             <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" />
             <Bell className="h-4 w-4" />
-          </button>
+          </Button>
           <div className="hidden items-center gap-2 sm:flex">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">{initials(userName)}</div>
             <div>

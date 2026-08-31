@@ -3,6 +3,8 @@
 import type { FormEvent, ReactNode } from "react";
 import Link from "next/link";
 
+import { Button } from "@rfp-os/ui";
+
 type ShellProps = {
   eyebrow: string;
   title: string;
@@ -175,10 +177,17 @@ export function CheckboxGroup({ legend, values, options, onChange }: { legend: s
 export function FormFooter({ label = "Continue", busy, secondaryLabel, onSecondary }: { label?: string; busy: boolean; secondaryLabel?: string; onSecondary?: () => void }) {
   return (
     <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
-      {secondaryLabel && onSecondary ? <button type="button" onClick={onSecondary} className="h-12 px-1 text-sm font-semibold text-slate-600 hover:text-slate-950">{secondaryLabel}</button> : <span />}
-      <button type="submit" disabled={busy} className="inline-flex h-12 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-5 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
-        {busy ? "Saving..." : label}{!busy ? <ArrowIcon /> : null}
-      </button>
+      {secondaryLabel && onSecondary ? (
+        <Button type="button" variant="ghost" size="md" onClick={onSecondary} className="px-2">
+          {secondaryLabel}
+        </Button>
+      ) : (
+        <span />
+      )}
+      <Button type="submit" disabled={busy} size="lg">
+        {busy ? "Saving..." : label}
+        {!busy ? <ArrowIcon /> : null}
+      </Button>
     </div>
   );
 }
@@ -201,7 +210,12 @@ export function ErrorNotice({ error }: { error: string | null }) {
 }
 
 export function PrimaryAction({ children, busy, onClick }: { children: ReactNode; busy: boolean; onClick: () => void }) {
-  return <button type="button" disabled={busy} onClick={onClick} className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60 sm:w-auto">{busy ? "Saving..." : children}{!busy ? <ArrowIcon /> : null}</button>;
+  return (
+    <Button type="button" disabled={busy} onClick={onClick} size="lg" className="w-full sm:w-auto">
+      {busy ? "Saving..." : children}
+      {!busy ? <ArrowIcon /> : null}
+    </Button>
+  );
 }
 
 export function displayValue(value: string) {

@@ -30,6 +30,7 @@ import { RfpEmptyState, RfpStatusBadge, statusTone } from "../../components/rfp-
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { useTender, useTenders } from "../../lib/queries";
 import type { TenderSummary } from "../../lib/models";
+import { Button } from "@rfp-os/ui";
 
 type SortKey = "updated" | "deadline" | "title";
 type TabKey = "all" | "saved" | "tracked" | "applied";
@@ -202,12 +203,12 @@ function TenderSearchPage() {
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by keyword, organization, ID, etc." className="min-w-0 flex-1 bg-transparent text-sm text-[#101828] outline-none placeholder:text-[#98A2B3]" />
               {search ? <button type="button" onClick={() => setSearch("")} className="text-[#98A2B3] hover:text-[#101828]" aria-label="Clear search"><X className="h-4 w-4" /></button> : null}
             </label>
-            <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-[9px] bg-[#155EEF] px-5 text-sm font-semibold text-white transition hover:bg-[#0F4BD6]">
-              <Search className="h-4 w-4" strokeWidth={1.8} /> Search
-            </button>
-            <button type="button" disabled title="Saved search persistence is not available in the current API" className="inline-flex h-11 items-center justify-center gap-2 rounded-[9px] border border-[#E4E7EC] bg-white px-4 text-sm font-semibold text-[#667085] disabled:cursor-not-allowed disabled:opacity-70">
-              Saved searches <ChevronDown className="h-4 w-4" strokeWidth={1.8} />
-            </button>
+          <Button type="button" size="lg">
+            <Search className="h-4 w-4" strokeWidth={1.8} /> Search
+          </Button>
+          <Button type="button" variant="secondary" size="lg" disabled title="Saved search persistence is not available in the current API">
+            Saved searches <ChevronDown className="h-4 w-4" strokeWidth={1.8} />
+          </Button>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#F2F4F7] pt-4">
@@ -219,7 +220,7 @@ function TenderSearchPage() {
                 The current API supports status, tender type, keyword search, and server-side pagination. Authority, location, value, and source filters will appear when supported by the data service.
               </div>
             </details>
-            {(status !== "all" || tenderType !== "all" || search) ? <button type="button" onClick={() => { setSearch(""); updateFilter("status", "all"); updateFilter("type", "all"); }} className="ml-auto text-xs font-semibold text-[#155EEF] hover:text-[#0F4BD6]">Clear all</button> : null}
+            {(status !== "all" || tenderType !== "all" || search) ? <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={() => { setSearch(""); updateFilter("status", "all"); updateFilter("type", "all"); }}>Clear all</Button> : null}
           </div>
         </section>
 
@@ -233,7 +234,7 @@ function TenderSearchPage() {
             <span className="font-medium">{tendersQuery.isLoading ? "Loading tenders..." : `${tab === "all" || tab === "applied" ? total : visibleRows.length} tender${(tab === "all" || tab === "applied" ? total : visibleRows.length) === 1 ? "" : "s"} found`}</span>
             <span className="inline-flex items-center gap-1.5 text-[#344054]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> LIVE</span>
             <span className="hidden md:inline">{lastUpdated ? `Updated ${relativeTime(lastUpdated)}` : "Waiting for refresh"}</span>
-            <button type="button" onClick={() => void tendersQuery.refetch()} className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#E4E7EC] text-[#667085] hover:text-[#155EEF]" aria-label="Refresh tenders"><RefreshCw className="h-3.5 w-3.5" strokeWidth={1.8} /></button>
+            <Button type="button" variant="icon" size="icon" onClick={() => void tendersQuery.refetch()} aria-label="Refresh tenders"><RefreshCw className="h-3.5 w-3.5" strokeWidth={1.8} /></Button>
             <label className="hidden items-center gap-2 md:flex">Sort:
               <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)} className="bg-transparent font-semibold text-[#344054] outline-none"><option value="updated">Last updated</option><option value="deadline">Deadline</option><option value="title">Title</option></select>
             </label>

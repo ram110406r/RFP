@@ -32,6 +32,7 @@ import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { fetchOnboardingStatus } from "../../lib/api";
 import { getFirebaseAuth, getFirebaseDb } from "../../lib/firebase";
 import { useActivities, useOrganizationCurrent, useOrganizationMembers } from "../../lib/queries";
+import { Button } from "@rfp-os/ui";
 
 type ProfileTab = "overview" | "preferences" | "security" | "sessions" | "api-keys" | "activity";
 
@@ -250,13 +251,12 @@ function ProfileWorkspace() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Link
-            href="/settings"
-            className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm transition hover:border-[#155EEF] hover:text-[#155EEF]"
-          >
-            <CircleHelp className="h-4 w-4" />
-            Help & Support
-          </Link>
+          <Button asChild variant="secondary">
+            <Link href="/settings">
+              <CircleHelp className="h-4 w-4" />
+              Help & Support
+            </Link>
+          </Button>
 
           <button
             type="button"
@@ -376,13 +376,12 @@ function ProfileWorkspace() {
               </div>
 
               <div className="flex shrink-0 flex-wrap gap-2">
-                <Link
-                  href="/organization"
-                  className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm transition hover:border-[#155EEF] hover:text-[#155EEF]"
-                >
-                  View organization
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+                <Button asChild variant="secondary">
+                  <Link href="/organization">
+                    View organization
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
               </div>
             </div>
           </section>
@@ -464,8 +463,9 @@ function ProfileWorkspace() {
                 </div>
 
                 <div className="flex flex-wrap justify-end gap-2 pt-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
                     onClick={() => {
                       if (hasPersonalChanges(personalDraft, profileSource.personal) && !window.confirm("Discard unsaved personal information changes?")) {
                         return;
@@ -473,17 +473,15 @@ function ProfileWorkspace() {
                       setPersonalEditing(false);
                       setPersonalDraft(profileSource.personal);
                     }}
-                    className="inline-flex h-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 transition hover:border-[#155EEF] hover:text-[#155EEF]"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="submit"
                     disabled={saveProfileMutation.isPending}
-                    className="inline-flex h-9 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {saveProfileMutation.isPending ? "Saving..." : "Save Changes"}
-                  </button>
+                  </Button>
                 </div>
               </form>
             ) : (
@@ -588,8 +586,9 @@ function ProfileWorkspace() {
                   />
                 </Field>
                 <div className="flex flex-wrap justify-end gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
                     onClick={() => {
                       if (hasSkillsChanges(skillsDraft, profileSource.skills.join(", ")) && !window.confirm("Discard unsaved skill changes?")) {
                         return;
@@ -597,11 +596,10 @@ function ProfileWorkspace() {
                       setSkillsEditing(false);
                       setSkillsDraft(profileSource.skills.join(", "));
                     }}
-                    className="inline-flex h-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 transition hover:border-[#155EEF] hover:text-[#155EEF]"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     disabled={saveProfileMutation.isPending}
                     onClick={async () => {
@@ -614,10 +612,9 @@ function ProfileWorkspace() {
                       await saveProfileMutation.mutateAsync({ skills: nextSkills });
                       setSkillsEditing(false);
                     }}
-                    className="inline-flex h-9 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {saveProfileMutation.isPending ? "Saving..." : "Save Changes"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -675,8 +672,9 @@ function ProfileWorkspace() {
                   onChange={(checked) => setPreferencesDraft({ ...preferencesDraft, marketingUpdates: checked })}
                 />
                 <div className="flex flex-wrap justify-end gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
                     onClick={() => {
                       if (hasPreferenceChanges(preferencesDraft, profileSource.preferences) && !window.confirm("Discard unsaved preference changes?")) {
                         return;
@@ -684,21 +682,19 @@ function ProfileWorkspace() {
                       setPreferencesEditing(false);
                       setPreferencesDraft(profileSource.preferences);
                     }}
-                    className="inline-flex h-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 transition hover:border-[#155EEF] hover:text-[#155EEF]"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     disabled={saveProfileMutation.isPending}
                     onClick={async () => {
                       await saveProfileMutation.mutateAsync({ notificationPreferences: preferencesDraft });
                       setPreferencesEditing(false);
                     }}
-                    className="inline-flex h-9 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {saveProfileMutation.isPending ? "Saving..." : "Save Changes"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -748,13 +744,12 @@ function ProfileWorkspace() {
                 title="No personal API keys"
                 description="TENDYY does not expose personal API keys from this profile yet."
               />
-              <Link
-                href="/settings"
-                className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 transition hover:border-[#155EEF] hover:text-[#155EEF]"
-              >
-                Open settings
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+              <Button asChild variant="secondary">
+                <Link href="/settings">
+                  Open settings
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
             </div>
           </section>
         </aside>

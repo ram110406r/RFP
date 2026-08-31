@@ -34,21 +34,12 @@ type Kpi = {
   loading?: boolean;
 };
 
-const fallbackPipeline = [
-  { id: "intake", label: "Intake", count: 0 },
-  { id: "answering", label: "Answering", count: 0 },
-  { id: "review", label: "Review", count: 0 },
-  { id: "approval", label: "Approval", count: 0 },
-  { id: "ready", label: "Ready", count: 0 },
-  { id: "submitted", label: "Submitted", count: 0 },
-];
-
 export function DashboardWorkspace() {
   const dashboardQuery = useDashboardSummary(6);
   const dashboard = dashboardQuery.data ?? null;
 
   const rows = useMemo<DashboardOverview["tenders"]>(
-    () => dashboard?.activeTenders ?? dashboard?.tenders ?? [],
+    () => dashboard?.activeTenders ?? [],
     [dashboard],
   );
 
@@ -59,7 +50,7 @@ export function DashboardWorkspace() {
   const submissionReady = metrics?.submissionReady ?? rows.filter((row) => row.ready).length;
   const blocked = metrics?.blockedFromSubmission ?? rows.reduce((sum, row) => sum + row.blockingIssueCount, 0);
   const highRisk = metrics?.highRiskItems ?? 0;
-  const pipeline = dashboard?.pipeline ?? fallbackPipeline;
+  const pipeline = dashboard?.pipeline ?? [];
   const attention = dashboard?.attention ?? [];
   const reviewQueue = dashboard?.reviewQueue.items ?? [];
   const dueItems = dashboard?.deadlines.dueThisWeek.items ?? [];
@@ -175,16 +166,20 @@ function PipelineSnapshot({ pipeline }: { pipeline: Array<{ id: string; label: s
   return (
     <article className="min-w-0 border border-[#E4E7EC] bg-white">
       <PanelHeader title="Pipeline snapshot" actionLabel="View pipeline" actionHref="/pipeline" />
-      <div className="overflow-x-auto px-4 pb-4 sm:px-5">
-        <div className="grid min-w-[680px] grid-cols-6 divide-x divide-[#E4E7EC] border-t border-[#E4E7EC]">
-          {pipeline.map((stage) => (
-            <div key={stage.id} className="min-w-0 px-3 pt-4 first:pl-0 last:pr-0 sm:px-4">
-              <p className="truncate text-xs font-medium text-[#667085]">{stage.label}</p>
-              <p className="mt-3 text-[19px] font-semibold text-[#101828]">{stage.count}</p>
-              <p className="mt-1 text-xs text-[#667085]">active items</p>
-            </div>
-          ))}
-        </div>
+      <div className="scrollbar-hide overflow-x-auto px-4 pb-4 sm:px-5">
+        {pipeline.length > 0 ? (
+          <div className="grid min-w-[680px] grid-cols-6 divide-x divide-[#E4E7EC] border-t border-[#E4E7EC]">
+            {pipeline.map((stage) => (
+              <div key={stage.id} className="min-w-0 px-3 pt-4 first:pl-0 last:pr-0 sm:px-4">
+                <p className="truncate text-xs font-medium text-[#667085]">{stage.label}</p>
+                <p className="mt-3 text-[19px] font-semibold text-[#101828]">{stage.count}</p>
+                <p className="mt-1 text-xs text-[#667085]">active items</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="border-t border-[#E4E7EC] py-8 text-sm text-[#667085]">No pipeline data available yet.</div>
+        )}
       </div>
     </article>
   );
@@ -234,7 +229,7 @@ function ActiveTenders({ rows, loading }: { rows: DashboardTenderCard[]; loading
   return (
     <article className="min-w-0 border border-[#E4E7EC] bg-white">
       <PanelHeader title={`Active tenders (${rows.length})`} actionLabel="View all" actionHref="/tenders" />
-      <div className="overflow-x-auto">
+      <div className="scrollbar-hide overflow-x-auto">
         <table className="min-w-[780px] w-full border-collapse text-left">
           <thead className="border-y border-[#F2F4F7] bg-[#FCFCFD] text-[11px] font-semibold uppercase tracking-[0.08em] text-[#667085]">
             <tr>

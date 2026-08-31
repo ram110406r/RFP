@@ -8,6 +8,7 @@ import { ArrowRight, Building2, ChevronRight, FileText, LayoutGrid, ShieldCheck,
 import { AppShell } from "../../components/app-shell";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { RfpEmptyState, RfpStatusBadge } from "../../components/rfp-foundation";
+import { Button } from "@rfp-os/ui";
 import {
   fetchTeamMembers,
   fetchWorkspaceMembers,
@@ -146,18 +147,20 @@ export default function OrganizationPage() {
             </div>
 
             <div className="flex flex-wrap gap-2.5">
-              <Link href="/settings" className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm">
-                Edit Organization
-                <ChevronRight className="h-4 w-4" />
-              </Link>
-              <button
+              <Button asChild variant="secondary">
+                <Link href="/settings">
+                  Edit Organization
+                  <ChevronRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button
                 type="button"
                 onClick={() => jumpTo("members")}
-                className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white shadow-sm"
+                variant="primary"
               >
                 Invite Members
                 <Users className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -538,19 +541,20 @@ export default function OrganizationPage() {
                 <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4">
                   <p className="text-[13px] font-semibold text-slate-900">Quick actions</p>
                   <div className="mt-3 flex flex-col gap-2.5">
-                    <Link href="/settings" className="inline-flex h-9 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white shadow-sm">
-                      Open settings
-                    </Link>
-                    <Link href="/profile" className="inline-flex h-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm">
-                      View profile
-                    </Link>
-                    <button
+                    <Button asChild variant="primary" className="w-full">
+                      <Link href="/settings">Open settings</Link>
+                    </Button>
+                    <Button asChild variant="secondary" className="w-full">
+                      <Link href="/profile">View profile</Link>
+                    </Button>
+                    <Button
                       type="button"
                       onClick={() => jumpTo("audits")}
-                      className="inline-flex h-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm"
+                      variant="secondary"
+                      className="w-full"
                     >
                       Review audit logs
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>

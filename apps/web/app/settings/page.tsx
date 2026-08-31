@@ -17,6 +17,7 @@ import {
 import { AppShell } from "../../components/app-shell";
 import { RfpStatusBadge } from "../../components/rfp-foundation";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import { Button } from "@rfp-os/ui";
 import { useDashboardSummary, useOrganizationCurrent, useOrganizationInvitations, useOrganizationMembers, useRoles, useTeams, useUpdateOrganization, useWorkspaces } from "../../lib/queries";
 
 const tabs = [
@@ -124,22 +125,13 @@ export default function SettingsPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2.5">
-            <button
-              type="button"
-              onClick={() => setActiveTab("general")}
-              className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm"
-            >
-              Help & Support
-              <ChevronRight className="h-4 w-4" />
-            </button>
-              <button
-                type="button"
-                onClick={() => void navigator.clipboard?.writeText(window.location.href)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700 shadow-sm"
-                aria-label="Copy settings link"
-              >
+              <Button type="button" variant="secondary" onClick={() => setActiveTab("general")}>
+                Help & Support
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="icon" size="icon" onClick={() => void navigator.clipboard?.writeText(window.location.href)} aria-label="Copy settings link">
                 <Copy className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
           </div>
         </header>
@@ -242,13 +234,9 @@ export default function SettingsPage() {
                   />
                 </Field>
                 <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={updateOrganization.isPending}
-                    className="inline-flex h-9 items-center justify-center rounded-[8px] bg-[#155EEF] px-4 text-[13px] font-semibold text-white shadow-sm disabled:opacity-60"
-                  >
+                  <Button type="submit" disabled={updateOrganization.isPending}>
                     {updateOrganization.isPending ? "Saving..." : "Save Changes"}
-                  </button>
+                  </Button>
                 </div>
               </form>
             </section>

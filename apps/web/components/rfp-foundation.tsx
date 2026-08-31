@@ -3,9 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { Button } from "@rfp-os/ui";
-
-import { cn } from "@rfp-os/ui";
+import { Button, cn } from "@rfp-os/ui";
 
 export type RfpTone = "success" | "warning" | "danger" | "neutral";
 
@@ -278,9 +276,9 @@ export function RfpEmptyState({
       <p className="mt-1.5 text-[13px] leading-6 text-slate-600">{description}</p>
       {actionLabel ? (
         actionHref ? (
-          <Link href={actionHref} className="mt-3 inline-flex items-center justify-center rounded-[6px] bg-blue-600 px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-blue-700">
-            {actionLabel}
-          </Link>
+          <Button asChild className="mt-3">
+            <Link href={actionHref}>{actionLabel}</Link>
+          </Button>
         ) : (
           <Button type="button" onClick={onAction} className="mt-4">
             {actionLabel}
@@ -472,20 +470,14 @@ function formatShortDate(value: string) {
 function HeaderActionControl({ action }: { action: HeaderAction }) {
   if (action.href) {
     return (
-      <Link
-        href={action.href}
-        className={cn(
-          "inline-flex items-center justify-center rounded-2xl px-4 py-2.5 text-sm font-semibold shadow-sm transition",
-          action.variant === "secondary"
-            ? "border border-[rgba(15,23,42,0.09)] bg-white text-slate-800 hover:bg-slate-50"
-            : action.variant === "ghost"
-              ? "bg-transparent text-slate-700 hover:bg-slate-100"
-              : "bg-blue-600 text-white hover:bg-blue-700",
-          action.disabled ? "pointer-events-none opacity-50" : "",
-        )}
+      <Button
+        asChild
+        variant={action.variant === "secondary" ? "secondary" : action.variant === "ghost" ? "ghost" : "primary"}
+        size="md"
+        className={cn(action.disabled ? "pointer-events-none opacity-50" : "")}
       >
-        {action.loading ? "Working..." : action.label}
-      </Link>
+        <Link href={action.href}>{action.loading ? "Working..." : action.label}</Link>
+      </Button>
     );
   }
 
@@ -495,10 +487,7 @@ function HeaderActionControl({ action }: { action: HeaderAction }) {
       onClick={action.onClick}
       disabled={action.disabled || action.loading}
       variant={action.variant === "secondary" ? "secondary" : action.variant === "ghost" ? "ghost" : "primary"}
-      className={cn(
-        "rounded-2xl px-4 py-2.5 text-sm font-semibold shadow-sm",
-        action.variant === "secondary" && "border border-[rgba(15,23,42,0.09)] bg-white text-slate-800 hover:bg-slate-50",
-      )}
+      size="md"
     >
       {action.loading ? "Working..." : action.label}
     </Button>

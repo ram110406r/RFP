@@ -31,6 +31,7 @@ import {
 import { AppShell } from "../../components/app-shell";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
+import { Button } from "@rfp-os/ui";
 import { fetchTeamMembers } from "../../lib/api";
 import type {
   ActivityItem,
@@ -159,26 +160,21 @@ export default function WorkspacePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/settings"
-              className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm transition hover:border-[#155EEF] hover:text-[#155EEF]"
-            >
-              <CircleHelp className="h-4 w-4" />
-              Help & Support
-            </Link>
+            <Button asChild variant="secondary">
+              <Link href="/settings">
+                <CircleHelp className="h-4 w-4" />
+                Help & Support
+              </Link>
+            </Button>
 
-            <button
-              type="button"
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700 shadow-sm"
-              aria-label="Notifications"
-            >
+            <Button type="button" variant="icon" size="icon" className="relative" aria-label="Notifications">
               <Bell className="h-4 w-4" />
               {notificationCount > 0 ? (
                 <span className="absolute right-2 top-1.5 h-2.5 min-w-2.5 rounded-full bg-[#155EEF] px-0.5 text-[9px] leading-4 text-white">
                   {Math.min(9, notificationCount)}
                 </span>
               ) : null}
-            </button>
+            </Button>
 
             <div className="flex items-center gap-2 rounded-[10px] border border-slate-200 bg-white px-3 py-2 shadow-sm">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">
@@ -324,13 +320,12 @@ function OverviewPanel({
               </div>
             </div>
 
-            <Link
-              href="/organization"
-              className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm transition hover:border-[#155EEF] hover:text-[#155EEF]"
-            >
-              <Pencil className="h-4 w-4" />
-              Edit Workspace
-            </Link>
+            <Button asChild variant="secondary">
+              <Link href="/organization">
+                <Pencil className="h-4 w-4" />
+                Edit Workspace
+              </Link>
+            </Button>
           </div>
         </section>
 
@@ -784,12 +779,12 @@ function SettingsPanel({
             This page keeps the workspace route complete while the deeper administration flows continue to evolve.
           </p>
           <div className="mt-4 flex flex-wrap gap-2.5">
-            <Link href="/organization" className="inline-flex h-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm transition hover:border-[#155EEF] hover:text-[#155EEF]">
-              Organization
-            </Link>
-            <Link href="/settings" className="inline-flex h-9 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white shadow-sm transition hover:bg-slate-800">
-              Settings
-            </Link>
+            <Button asChild variant="secondary">
+              <Link href="/organization">Organization</Link>
+            </Button>
+            <Button asChild variant="primary">
+              <Link href="/settings">Settings</Link>
+            </Button>
           </div>
         </section>
       </aside>
