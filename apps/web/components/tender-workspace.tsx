@@ -93,12 +93,12 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "RFPs", href: "/tenders" }, { label: tender?.title ?? "Tender" }]}>
       <div className="space-y-6">
-        <header className="rounded-[28px] border border-[rgba(72,52,31,0.12)] bg-white/85 p-6 shadow-[0_24px_70px_rgba(62,42,23,0.14)] backdrop-blur">
+        <header className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/85 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)] backdrop-blur">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-amber-900/80">Tender workspace</p>
-              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{tender?.title ?? "Loading tender workspace"}</h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">
+              <h1 className="text-[29px] font-semibold tracking-tight sm:text-[30px]">{tender?.title ?? "Loading tender workspace"}</h1>
+              <p className="mt-2 max-w-3xl text-[13px] leading-6 text-slate-600">
                 {tender
                   ? `${tender.name} | ${tender.tenderType} | ${tender.status} | Workspace ${tender.workspaceId}`
                   : "Fetching workspace data from the backend."}
@@ -133,7 +133,7 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-          <article className="rounded-[28px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-6 shadow-[0_24px_70px_rgba(62,42,23,0.14)]">
+          <article className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)]">
             <SectionTitle
               eyebrow="Tender brief"
               title="Evidence-aware briefing for contributors"
@@ -143,7 +143,7 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
             {brief ? <TenderBriefPanel brief={brief} sections={briefSections} /> : <PanelState label="Loading brief" />}
           </article>
 
-          <article className="rounded-[28px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-6 shadow-[0_24px_70px_rgba(62,42,23,0.14)]">
+          <article className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)]">
             <SectionTitle
               eyebrow="Validation"
               title="Workspace readiness"
@@ -156,7 +156,7 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
                   <div className="flex items-end justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium text-emerald-900">Current score</p>
-                      <p className="mt-1 text-4xl font-semibold text-emerald-950">{validation.score}</p>
+                      <p className="mt-1 text-[30px] font-semibold text-emerald-950">{validation.score}</p>
                     </div>
                     <StatusPill tone={validation.ready ? "success" : "warning"}>
                       {validation.ready ? "Ready" : "Needs work"}
@@ -185,7 +185,7 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-          <article className="rounded-[28px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-6 shadow-[0_24px_70px_rgba(62,42,23,0.14)]">
+          <article className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)]">
             <SectionTitle
               eyebrow="Requirements"
               title="Question and requirement map"
@@ -227,7 +227,7 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
             </div>
           </article>
 
-          <article className="rounded-[28px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-6 shadow-[0_24px_70px_rgba(62,42,23,0.14)]">
+          <article className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)]">
             <SectionTitle
               eyebrow="Sources"
               title="Tender sources and parse state"
@@ -237,10 +237,10 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {overviewQuery.data?.sections.map((section) => (
-                  <div key={section.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-medium text-slate-900">{section.label}</p>
+                  <div key={section.id} className="rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[13px] font-medium text-slate-900">{section.label}</p>
                     <p className="text-xs text-slate-500">{section.id}</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{section.items}</p>
+                    <p className="mt-1.5 text-[19px] font-semibold text-slate-900">{section.items}</p>
                   </div>
                 ))}
               </div>
@@ -501,7 +501,7 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
           <RfpCard>
             <div className="space-y-6">
               <RfpSectionHeader eyebrow="Question" title={question?.questionText ?? "No question linked"} />
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+              <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap gap-2">
                   <StatusPill tone="neutral">{requirement?.requirementType ?? "Requirement"}</StatusPill>
                   <StatusPill tone={currentAnswer ? reviewToneFromStatus(currentAnswer.status) : "neutral"}>
@@ -519,7 +519,7 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
                     value={editorValue}
                     onChange={(event) => setEditorValue(event.target.value)}
                     rows={12}
-                    className="min-h-[280px] w-full rounded-3xl border border-slate-300 bg-white p-4 text-sm leading-6 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                    className="min-h-[260px] w-full rounded-[10px] border border-slate-300 bg-white p-4 text-sm leading-6 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
                     placeholder="Write or refine the answer here."
                   />
                   <div className="flex flex-wrap gap-3">
@@ -540,7 +540,7 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
 
                 <div className="space-y-4">
                   <RfpSectionHeader eyebrow="AI assistant" title="Draft controls" />
-                  <div className="space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="space-y-3 rounded-[10px] border border-slate-200 bg-slate-50 p-4">
                     <label className="block text-sm font-medium text-slate-700">
                       Improve style
                       <select
@@ -708,7 +708,7 @@ function TenderBriefPanel({ brief, sections }: { brief: TenderBriefPayload["brie
         {sections.map((section) => (
           <div key={section.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm font-medium text-slate-900">{section.label}</p>
-            <p className="mt-1 text-3xl font-semibold text-slate-950">{section.items}</p>
+            <p className="mt-1 text-[19px] font-semibold text-slate-950">{section.items}</p>
           </div>
         ))}
       </div>
@@ -718,9 +718,9 @@ function TenderBriefPanel({ brief, sections }: { brief: TenderBriefPayload["brie
 
 function DetailList({ title, items }: { title: string; items: string[] }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</p>
-      <div className="mt-3 space-y-2">
+    <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4">
+      <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</p>
+      <div className="mt-2.5 space-y-2">
         {items.length > 0 ? (
           items.map((item) => (
             <div key={item} className="rounded-2xl bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
@@ -831,7 +831,7 @@ function AnalysisPanel({ analysis }: { analysis: AnswerAnalysisResult }) {
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Contradictions</p>
           <div className="mt-3 space-y-2">
             {(analysis.contradictions as Array<{ claim: string; reason: string }>).map((item) => (
-              <div key={`${item.claim}-${item.reason}`} className="rounded-2xl bg-white p-3 text-sm text-slate-700 shadow-sm">
+            <div key={`${item.claim}-${item.reason}`} className="rounded-[8px] bg-white p-3 text-[13px] text-slate-700 shadow-sm">
                 <p className="font-medium text-slate-900">{item.claim}</p>
                 <p className="mt-1">{item.reason}</p>
               </div>
@@ -840,11 +840,11 @@ function AnalysisPanel({ analysis }: { analysis: AnswerAnalysisResult }) {
         </div>
       ) : null}
       {Array.isArray(analysis.claims) && analysis.claims.length > 0 ? (
-        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Claims</p>
-          <div className="mt-3 space-y-2">
+        <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-slate-500">Claims</p>
+          <div className="mt-2.5 space-y-2">
             {(analysis.claims as Array<{ claim: string; reason: string }>).map((item) => (
-              <div key={`${item.claim}-${item.reason}`} className="rounded-2xl bg-white p-3 text-sm text-slate-700 shadow-sm">
+            <div key={`${item.claim}-${item.reason}`} className="rounded-[8px] bg-white p-3 text-[13px] text-slate-700 shadow-sm">
                 <p className="font-medium text-slate-900">{item.claim}</p>
                 <p className="mt-1">{item.reason}</p>
               </div>

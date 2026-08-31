@@ -5,7 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   analyzeRequirementAnswer,
   analyzeTender,
+  fetchAudits,
   fetchActivities,
+  fetchOrganizationCurrent,
+  fetchOrganizationInvitations,
+  fetchOrganizationMembers,
   fetchDashboardSummary,
   approveKnowledge,
   archiveKnowledge,
@@ -27,8 +31,12 @@ import {
   fetchTenderReviews,
   fetchTenderSources,
   fetchTenders,
+  fetchTeams,
   fetchWorkspaces,
   fetchWorkspaceOverview,
+  fetchRoles,
+  fetchTeamMembers,
+  fetchWorkspaceMembers,
   generateRequirementAnswer,
   improveRequirementAnswer,
   updateAnswer,
@@ -55,6 +63,14 @@ import type {
   TenderAnalysisPayload,
   TenderListPayload,
   WorkspaceOverview,
+  OrganizationSummary,
+  OrganizationMemberSummary,
+  OrganizationInvitationSummary,
+  RoleSummary,
+  TeamSummary,
+  WorkspaceMemberSummary,
+  TeamMemberSummary,
+  AuditLogSummary,
 } from "./models";
 
 export const tenderKeys = {
@@ -109,6 +125,25 @@ export const tenderListKeys = {
 
 export const workspaceKeys = {
   list: () => ["workspaces"] as const,
+};
+
+export const organizationKeys = {
+  current: () => ["organization", "current"] as const,
+  members: () => ["organization", "members"] as const,
+  invitations: () => ["organization", "invitations"] as const,
+  roles: () => ["organization", "roles"] as const,
+  teams: () => ["organization", "teams"] as const,
+  audits: (params?: { workspaceId?: string; q?: string; action?: string; entityType?: string; entityId?: string; actorId?: string }) =>
+    [
+      "organization",
+      "audits",
+      params?.workspaceId ?? "all-workspaces",
+      params?.q ?? "all-q",
+      params?.action ?? "all-actions",
+      params?.entityType ?? "all-entities",
+      params?.entityId ?? "all-ids",
+      params?.actorId ?? "all-actors",
+    ] as const,
 };
 
 export function useTender(tenderId: string, initialData?: TenderSummary | null) {
@@ -268,6 +303,83 @@ export function useWorkspaces() {
   return useQuery({
     queryKey: workspaceKeys.list(),
     queryFn: () => fetchWorkspaces(),
+  });
+}
+
+export function useOrganizationCurrent(initialData?: OrganizationSummary | null) {
+  return useQuery({
+    queryKey: organizationKeys.current(),
+    queryFn: () => fetchOrganizationCurrent(),
+    initialData: initialData ?? undefined,
+    retry: false,
+  });
+}
+
+export function useOrganizationMembers(initialData?: { members: OrganizationMemberSummary[] } | null) {
+  return useQuery({
+    queryKey: organizationKeys.members(),
+    queryFn: () => fetchOrganizationMembers(),
+    initialData: initialData ?? undefined,
+    retry: false,
+  });
+}
+
+export function useOrganizationInvitations(initialData?: { invitations: OrganizationInvitationSummary[] } | null) {
+  return useQuery({
+    queryKey: organizationKeys.invitations(),
+    queryFn: () => fetchOrganizationInvitations(),
+    initialData: initialData ?? undefined,
+    retry: false,
+  });
+}
+
+export function useRoles(initialData?: { items: RoleSummary[] } | null) {
+  return useQuery({
+    queryKey: organizationKeys.roles(),
+    queryFn: () => fetchRoles(),
+    initialData: initialData ?? undefined,
+    retry: false,
+  });
+}
+
+export function useTeams(initialData?: { items: TeamSummary[] } | null) {
+  return useQuery({
+    queryKey: organizationKeys.teams(),
+    queryFn: () => fetchTeams(),
+    initialData: initialData ?? undefined,
+    retry: false,
+  });
+}
+
+export function useWorkspaceMembers(workspaceId: string | null | undefined, initialData?: { items: WorkspaceMemberSummary[] } | null) {
+  return useQuery({
+    queryKey: ["workspace", workspaceId ?? "none", "members"] as const,
+    queryFn: () => fetchWorkspaceMembers(workspaceId ?? ""),
+    enabled: Boolean(workspaceId),
+    initialData: initialData ?? undefined,
+    retry: false,
+  });
+}
+
+export function useTeamMembers(teamId: string | null | undefined, initialData?: { items: TeamMemberSummary[] } | null) {
+  return useQuery({
+    queryKey: ["team", teamId ?? "none", "members"] as const,
+    queryFn: () => fetchTeamMembers(teamId ?? ""),
+    enabled: Boolean(teamId),
+    initialData: initialData ?? undefined,
+    retry: false,
+  });
+}
+
+export function useAudits(
+  params: { workspaceId?: string; q?: string; action?: string; entityType?: string; entityId?: string; actorId?: string } = {},
+  initialData?: { items: AuditLogSummary[] } | null,
+) {
+  return useQuery({
+    queryKey: organizationKeys.audits(params),
+    queryFn: () => fetchAudits(params),
+    initialData: initialData ?? undefined,
+    retry: false,
   });
 }
 

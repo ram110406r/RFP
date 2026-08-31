@@ -6,9 +6,14 @@ import type { User } from "firebase/auth";
 
 import type {
   AnswerGenerationPayload,
+  AuditLogSummary,
   KnowledgeItem,
   KnowledgeListPayload,
   DashboardOverview,
+  OrganizationInvitationSummary,
+  OrganizationMemberSummary,
+  OrganizationSummary,
+  RoleSummary,
   RequirementEvidenceSearchPayload,
   TenderAnswer,
   TenderAnswerEvidence,
@@ -22,6 +27,9 @@ import type {
   TenderReview,
   WorkspaceSummary,
   WorkspaceOverview,
+  TeamSummary,
+  TeamMemberSummary,
+  WorkspaceMemberSummary,
 } from "./models";
 
 const VERSION_PREFIX = "/api/v1";
@@ -80,6 +88,46 @@ export type OnboardingStatus = {
 
 export function fetchOnboardingStatus(init?: ApiInit) {
   return requestJson<OnboardingStatus>("/onboarding/status", init);
+}
+
+export async function fetchOrganizationCurrent(init?: ApiInit) {
+  return requestJson<OrganizationSummary>("/organizations/current", init);
+}
+
+export async function fetchOrganizationMembers(init?: ApiInit) {
+  return requestJson<{ members: OrganizationMemberSummary[] }>("/organizations/current/members", init);
+}
+
+export async function fetchOrganizationInvitations(init?: ApiInit) {
+  return requestJson<{ invitations: OrganizationInvitationSummary[] }>("/organizations/current/invitations", init);
+}
+
+export async function fetchRoles(init?: ApiInit) {
+  return requestJson<{ items: RoleSummary[] }>("/roles", init);
+}
+
+export async function fetchTeams(init?: ApiInit) {
+  return requestJson<{ items: TeamSummary[] }>("/teams", init);
+}
+
+export async function fetchWorkspaceMembers(workspaceId: string, init?: ApiInit) {
+  return requestJson<{ items: WorkspaceMemberSummary[] }>(`/workspaces/${workspaceId}/members`, init);
+}
+
+export async function fetchTeamMembers(teamId: string, init?: ApiInit) {
+  return requestJson<{ items: TeamMemberSummary[] }>(`/teams/${teamId}/members`, init);
+}
+
+export async function fetchAudits(
+  params: { workspaceId?: string; q?: string; action?: string; entityType?: string; entityId?: string; actorId?: string } = {},
+  init?: ApiInit,
+) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return requestJson<{ items: AuditLogSummary[] }>(`/audits${suffix}`, init);
 }
 
 export function startOnboarding(body: { journey: "COMPANY" | "EMPLOYEE"; invitationId?: string }, init?: ApiInit) {

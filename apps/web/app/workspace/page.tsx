@@ -11,11 +11,11 @@ export default function WorkspacePage() {
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Workspace" }]}>
-      <div className="space-y-6">
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Workspace</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">{workspaceName}</h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+      <div className="space-y-5">
+        <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Workspace</p>
+          <h1 className="mt-2 text-[29px] font-semibold tracking-tight text-slate-950">{workspaceName}</h1>
+          <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">
             Quick access to the core areas of the app from one workspace overview.
           </p>
         </section>
@@ -27,16 +27,16 @@ export default function WorkspacePage() {
           <QuickLink title="Pipeline" href="/pipeline" detail="Track opportunities by stage and risk." />
         </section>
 
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <h2 className="text-xl font-semibold tracking-tight text-slate-950">Workspace notes</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+        <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+          <h2 className="text-[19px] font-semibold tracking-tight text-slate-950">Workspace notes</h2>
+          <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">
             This page keeps the sidebar route set complete while the deeper workspace administration flows continue to evolve.
           </p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link href="/organization" className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm">
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            <Link href="/organization" className="inline-flex h-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm">
               Organization
             </Link>
-            <Link href="/settings" className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm">
+            <Link href="/settings" className="inline-flex h-9 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white shadow-sm">
               Settings
             </Link>
           </div>
@@ -48,9 +48,9 @@ export default function WorkspacePage() {
 
 function QuickLink({ title, href, detail }: { title: string; href: string; detail: string }) {
   return (
-    <Link href={href} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_24px_70px_rgba(15,23,42,0.09)]">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
-      <p className="mt-3 text-sm leading-6 text-slate-600">{detail}</p>
+    <Link href={href} className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_20px_55px_rgba(15,23,42,0.08)]">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
+      <p className="mt-2 text-[13px] leading-6 text-slate-600">{detail}</p>
     </Link>
   );
 }

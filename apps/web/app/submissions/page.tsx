@@ -12,11 +12,11 @@ export default function SubmissionsPage() {
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Submissions" }]}>
-      <div className="space-y-6">
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Delivery</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">Submissions</h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+      <div className="space-y-5">
+        <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-700">Delivery</p>
+          <h1 className="mt-2 text-[29px] font-semibold tracking-tight text-slate-950">Submissions</h1>
+          <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">
             Track submission readiness from the current workspace validation.
           </p>
         </section>
@@ -28,8 +28,8 @@ export default function SubmissionsPage() {
           <StatCard title="Open blockers" value={String(rows.reduce((sum, row) => sum + row.blockingIssueCount, 0))} detail="Blocking validation issues across visible tenders." />
         </section>
 
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <div className="overflow-hidden rounded-[24px] border border-slate-200">
+        <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+          <div className="overflow-hidden rounded-[10px] border border-slate-200">
             <div className="overflow-x-auto">
               <table className="min-w-[860px] w-full border-separate border-spacing-0">
                 <thead className="bg-slate-100/80 text-left text-[13px] uppercase tracking-[0.14em] text-slate-500">
@@ -87,16 +87,16 @@ export default function SubmissionsPage() {
 
 function StatCard({ title, value, detail }: { title: string; value: string; detail: string }) {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
-      <p className="mt-3 text-sm leading-6 text-slate-600">{detail}</p>
+    <div className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
+      <p className="mt-2 text-[24px] font-semibold tracking-tight text-slate-950">{value}</p>
+      <p className="mt-2 text-[13px] leading-6 text-slate-600">{detail}</p>
     </div>
   );
 }
 
 function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-4 font-semibold">{children}</th>;
+  return <th className="px-4 py-3 font-semibold">{children}</th>;
 }
 
 function Td({ children }: { children: React.ReactNode }) {

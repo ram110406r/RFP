@@ -52,8 +52,8 @@ type NavItem = {
 
 type Viewport = "mobile" | "tablet" | "desktop";
 
-const SIDEBAR_WIDTH_EXPANDED = 248;
-const SIDEBAR_WIDTH_COLLAPSED = 72;
+const SIDEBAR_WIDTH_EXPANDED = 232;
+const SIDEBAR_WIDTH_COLLAPSED = 68;
 
 function maskEmail(email: string | null) {
   if (!email) return "signed in";
@@ -124,10 +124,10 @@ const navGroups: { label: string; items: NavItem[] }[] = [
 
 function SidebarSearch({ shortcut = "⌘ S" }: { shortcut?: string }) {
   return (
-    <label className="flex h-[44px] items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-3 text-slate-500">
+    <label className="flex h-[38px] items-center gap-2.5 rounded-[8px] border border-[#E5E7EB] bg-white px-3 text-slate-500">
       <Search className="h-[18px] w-[18px] shrink-0 text-slate-400" strokeWidth={1.75} />
-      <span className="min-w-0 flex-1 truncate text-sm text-slate-500">Search</span>
-      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+      <span className="min-w-0 flex-1 truncate text-[13px] text-slate-500">Search</span>
+      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
         {shortcut}
       </span>
     </label>
@@ -178,7 +178,7 @@ function NavLink({
           onNavigate?.();
         }}
         className={[
-          "grid h-[44px] items-center rounded-[10px] px-3 text-[15px] font-medium transition",
+          "grid h-[40px] items-center rounded-[8px] px-3 text-[13px] font-medium transition",
           collapsed ? "grid-cols-[20px] justify-items-center px-0" : "grid-cols-[20px_minmax(0,1fr)] gap-3",
           active || flyoutOpen ? "bg-[#EFF5FF] text-[#0F172A]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
         ].join(" ")}
@@ -196,7 +196,7 @@ function NavLink({
 
       {flyoutOpen ? (
         <div className="absolute left-full top-1/2 z-40 ml-3 w-64 -translate-y-1/2">
-          <div className="rounded-[16px] border border-slate-200 bg-white p-2 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+          <div className="rounded-[10px] border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.08)]">
             {item.submenu?.map((subItem) => {
               const subActive =
                 pathname === subItem.href ||
@@ -210,7 +210,7 @@ function NavLink({
                   href={subItem.href}
                   onClick={onNavigate}
                   className={[
-                    "flex h-[44px] items-center gap-3 rounded-[10px] px-3 text-sm transition",
+                    "flex h-[40px] items-center gap-3 rounded-[8px] px-3 text-[13px] transition",
                     subActive ? "bg-[#EFF5FF] text-[#155EEF]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
                   ].join(" ")}
                 >
@@ -246,8 +246,8 @@ function SidebarSection({
   onNavigate?: () => void;
 }) {
   return (
-    <section className="space-y-2">
-      {!collapsed ? <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p> : null}
+    <section className="space-y-1.5">
+      {!collapsed ? <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p> : null}
       <nav className="space-y-1">
         {items.map((item) => (
           <NavLink
@@ -268,10 +268,10 @@ function SidebarSection({
 function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#155EEF] text-[13px] font-semibold text-white">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#155EEF] text-[12px] font-semibold text-white">
         T
       </div>
-      {!collapsed ? <span className="text-[18px] font-semibold tracking-[-0.02em] text-slate-950">TENDYY</span> : null}
+      {!collapsed ? <span className="text-[19px] font-semibold tracking-[-0.02em] text-slate-950">TENDYY</span> : null}
     </div>
   );
 }
@@ -292,18 +292,18 @@ function SidebarFooter({
       href="/profile"
       aria-label="Open profile"
       className={[
-        "flex items-center rounded-[12px] border border-slate-200 bg-white transition hover:bg-slate-50",
-        collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-3",
+        "flex items-center rounded-[10px] border border-slate-200 bg-white transition hover:bg-slate-50",
+        collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2.5",
       ].join(" ")}
     >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[11px] font-semibold text-[#155EEF]">
         {initials}
       </div>
       {!collapsed ? (
         <>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-slate-950">{displayLabel}</p>
-            <p className="truncate text-xs text-slate-500">{subtitle}</p>
+            <p className="truncate text-[13px] font-medium text-slate-950">{displayLabel}</p>
+            <p className="truncate text-[11px] text-slate-500">{subtitle}</p>
           </div>
           <span className="text-slate-400">
             <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
@@ -329,29 +329,29 @@ function ShellHeader({
 }) {
   return (
     <header className="sticky top-0 z-20 border-b border-[#E8ECF2] bg-white">
-      <div className="flex h-[72px] items-center gap-4 px-4 sm:px-6 lg:px-8">
+      <div className="flex h-[60px] items-center gap-4 px-4 sm:px-5 lg:px-6">
         {isMobile ? (
           <>
             <button
               type="button"
               onClick={onMobileMenuOpen}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-700"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
               aria-label="Open navigation"
             >
-              <Menu className="h-5 w-5" strokeWidth={1.75} />
+              <Menu className="h-4 w-4" strokeWidth={1.75} />
             </button>
 
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-950">{pageTitle}</p>
-              <p className="truncate text-xs text-slate-500">Application shell</p>
+              <p className="truncate text-[13px] font-semibold text-slate-950">{pageTitle}</p>
+              <p className="truncate text-[11px] text-slate-500">Application shell</p>
             </div>
 
             <button
               type="button"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-700"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
               aria-label="Profile"
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">
+              <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[11px] font-semibold text-[#155EEF]">
                 {initials}
               </div>
             </button>
@@ -377,10 +377,10 @@ function ShellHeader({
               </div>
             </div>
 
-            <label className="hidden h-11 w-[min(34vw,360px)] items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-slate-500 md:flex xl:hidden">
+            <label className="hidden h-[38px] w-[min(34vw,340px)] items-center gap-3 rounded-[8px] border border-[#E5E7EB] bg-white px-3.5 text-slate-500 md:flex xl:hidden">
               <Search className="h-[18px] w-[18px] shrink-0 text-slate-400" strokeWidth={1.75} />
-              <span className="text-sm text-slate-500">Search</span>
-              <span className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+              <span className="text-[13px] text-slate-500">Search</span>
+              <span className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
                 <span>⌘</span>
                 <span>K</span>
               </span>
@@ -388,10 +388,10 @@ function ShellHeader({
 
             <button
               type="button"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-700"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
               aria-label="Profile"
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">
+              <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[11px] font-semibold text-[#155EEF]">
                 {initials}
               </div>
             </button>
@@ -425,15 +425,15 @@ function MobileDrawer({
         className="flex h-full w-[280px] flex-col border-r border-slate-200 bg-white p-3"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex h-[72px] items-center justify-between px-1">
+        <div className="flex h-[64px] items-center justify-between px-1">
           <BrandMark />
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-700"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
             aria-label="Close navigation"
           >
-            <X className="h-5 w-5" strokeWidth={1.75} />
+            <X className="h-4 w-4" strokeWidth={1.75} />
           </button>
         </div>
 
@@ -441,7 +441,7 @@ function MobileDrawer({
           <SidebarSearch />
         </div>
 
-        <div className="mt-6 flex-1 space-y-6 overflow-y-auto scrollbar-hide pr-1">
+        <div className="mt-5 flex-1 space-y-5 overflow-y-auto scrollbar-hide pr-1">
           {navGroups.map((group) => (
             <SidebarSection
               key={group.label}
@@ -529,21 +529,21 @@ export function AppShell({
           className="fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white md:flex"
           style={{ width: sidebarWidth }}
         >
-          <div className="relative flex h-full w-full flex-col px-3 pb-3 pt-4">
+          <div className="relative flex h-full w-full flex-col px-2.5 pb-2.5 pt-3.5">
             <button
               type="button"
               onClick={() => setSidebarCollapsed((current) => !current)}
-              className="absolute -right-3 top-[22px] inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
+              className="absolute -right-3 top-[18px] inline-flex h-[26px] w-[26px] items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
               aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
             >
               {collapsed ? (
-                <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+                <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.75} />
               ) : (
-                <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
+                <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
               )}
             </button>
 
-            <div className="flex h-[72px] items-center px-1">
+            <div className="flex h-[66px] items-center px-1">
               <BrandMark collapsed={collapsed} />
             </div>
 
@@ -555,19 +555,19 @@ export function AppShell({
               <div className="mt-5 flex justify-center">
                 <button
                   type="button"
-                  className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-[10px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+                  className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
                   aria-label="Search"
                 >
-                  <Search className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                  <Search className="h-[17px] w-[17px]" strokeWidth={1.75} />
                 </button>
               </div>
             )}
 
-            <div className="mt-6 flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-hide pr-1">
-              <div className="space-y-6">
+            <div className="mt-5 flex min-h-0 flex-1 flex-col overflow-y-auto scrollbar-hide pr-1">
+              <div className="space-y-5">
                 {navGroups.map((group, index) => (
                   <section key={group.label}>
-                    {index > 0 && !collapsed ? <div className="mb-6 border-t border-slate-200 pt-6" /> : null}
+                    {index > 0 && !collapsed ? <div className="mb-5 border-t border-slate-200 pt-5" /> : null}
                     <SidebarSection
                       label={group.label}
                       items={group.items}
@@ -580,7 +580,7 @@ export function AppShell({
                 ))}
               </div>
 
-              <div className="mt-auto pt-6">
+              <div className="mt-auto pt-5">
                 <SidebarFooter collapsed={collapsed} displayLabel={displayLabel} subtitle={subtitle} initials={initials} />
               </div>
             </div>

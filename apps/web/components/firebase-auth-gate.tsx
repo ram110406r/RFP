@@ -193,7 +193,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#eff6ff_0%,_#ffffff_55%,_#f8fafc_100%)] px-6">
-        <div className="rounded-[28px] border border-slate-200 bg-white/90 px-6 py-5 text-sm text-slate-600 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+        <div className="rounded-[10px] border border-slate-200 bg-white/90 px-4 py-3 text-sm text-slate-600 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
           Initializing Firebase session...
         </div>
       </div>
@@ -335,14 +335,14 @@ function AuthShell({
 }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#eff6ff_0%,_#ffffff_55%,_#f8fafc_100%)] px-4 py-10">
-      <div className="w-full max-w-md rounded-[32px] border border-slate-200 bg-white/95 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-        <div className="mb-8">
-          <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#155EEF] text-xl font-semibold text-white">
+      <div className="w-full max-w-md rounded-[12px] border border-slate-200 bg-white/95 p-6 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+        <div className="mb-6">
+          <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#155EEF] text-lg font-semibold text-white">
             T
           </div>
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-sky-700">TENDYY</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{heading}</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">{description}</p>
+          <h1 className="mt-2 text-[26px] font-semibold tracking-tight text-slate-950">{heading}</h1>
+          <p className="mt-2 text-[13px] leading-6 text-slate-600">{description}</p>
         </div>
 
         {children}

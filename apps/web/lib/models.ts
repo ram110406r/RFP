@@ -125,8 +125,114 @@ export interface WorkspaceSummary {
   name: string;
   slug: string;
   description: string;
+  status: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  legalName: string;
+  slug: string | null;
+  status: string;
+  domain: string;
+  plan: string;
+  seats: number;
+  industry: string | null;
+  country: string;
+  operatingRegion: string;
+  profile: Record<string, unknown>;
+  logoInitials: string | null;
+  createdAt: string;
+  updatedAt: string;
+  memberCount: number;
+}
+
+export interface OrganizationMemberSummary {
+  userId: string;
+  role: string;
+  status: string;
+  joinedAt: string;
+  name: string;
+  email: string;
+  jobTitle: string;
+  team: string;
+}
+
+export interface OrganizationInvitationSummary {
+  id: string;
+  email: string;
+  role: string;
+  workspaceId: string | null;
+  proposedDepartment: string | null;
+  proposedTeamId: string | null;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface RoleSummary {
+  id: string;
+  name: string;
+  description: string;
+  isSystem: boolean;
+  organizationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  permissionKeys: string[];
+  assignmentCount: number;
+  organizationAssignmentCount: number;
+  workspaceAssignmentCount: number;
+}
+
+export interface TeamSummary {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  name: string;
+  description: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceMemberSummary {
+  workspaceMemberId: string;
+  organizationMemberId: string;
+  status: string;
+  userId: string;
+  name: string;
+  email: string;
+}
+
+export interface TeamMemberSummary {
+  teamMemberId: string;
+  organizationMemberId: string;
+  userId: string;
+  name: string;
+  email: string;
+}
+
+export interface AuditLogSummary {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  actorId: string | null;
+  actorType: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  previousValue: unknown;
+  newValue: unknown;
+  beforeState: unknown;
+  afterState: unknown;
+  metadata: unknown;
+  ipAddress: string | null;
+  userAgent: string | null;
+  requestId: string | null;
+  correlationId: string | null;
+  createdAt: string;
 }
 
 export interface TenderQuestion {

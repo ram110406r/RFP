@@ -36,11 +36,11 @@ export default function ReviewsPage() {
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Reviews" }]}>
-      <div className="space-y-6">
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Review queue</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">Reviews</h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+      <div className="space-y-5">
+        <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-700">Review queue</p>
+          <h1 className="mt-2 text-[29px] font-semibold tracking-tight text-slate-950">Reviews</h1>
+          <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">
             Current review items surfaced from the live tender workspace data.
           </p>
         </section>
@@ -48,13 +48,13 @@ export default function ReviewsPage() {
         {items.length > 0 ? (
           <div className="grid gap-4 xl:grid-cols-2">
             {items.map(({ tender, review, readiness }) => (
-              <article key={review.id} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+              <article key={review.id} className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <Link href={`/tenders/${tender.id}`} className="text-lg font-semibold text-slate-950 hover:text-sky-800">
+                    <Link href={`/tenders/${tender.id}`} className="text-[16px] font-semibold text-slate-950 hover:text-sky-800">
                       {tender.title}
                     </Link>
-                    <p className="mt-1 text-sm text-slate-600">{review.comment || "No reviewer note yet."}</p>
+                    <p className="mt-1 text-[13px] leading-6 text-slate-600">{review.comment || "No reviewer note yet."}</p>
                   </div>
                   <Badge tone={reviewTone(review.status)}>{review.status}</Badge>
                 </div>

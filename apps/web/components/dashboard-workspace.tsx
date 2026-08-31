@@ -132,10 +132,10 @@ export function DashboardWorkspace() {
 
 function DashboardHeader({ generatedAt }: { generatedAt?: string }) {
   return (
-    <header className="flex flex-col gap-5 border-b border-[#E4E7EC] pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <header className="flex flex-col gap-4 border-b border-[#E4E7EC] pb-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">RFP operations</p>
-        <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[#101828] sm:text-[32px]">Dashboard</h1>
+        <h1 className="mt-2 text-[29px] font-semibold tracking-[-0.03em] text-[#101828] sm:text-[30px]">Dashboard</h1>
         <p className="mt-1 text-sm text-[#667085]">Overview of your tender and RFP activities</p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -158,7 +158,7 @@ function DashboardHeader({ generatedAt }: { generatedAt?: string }) {
 
 function KpiCard({ label, value, detail, icon, loading }: Kpi & { loading?: boolean }) {
   return (
-    <article className="min-w-0 border border-[#E4E7EC] bg-white p-5">
+    <article className="min-w-0 border border-[#E4E7EC] bg-white p-4">
       <div className="flex items-start gap-3">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-[#EFF5FF] text-[#155EEF]">{icon}</span>
         <div className="min-w-0">
@@ -180,7 +180,7 @@ function PipelineSnapshot({ pipeline }: { pipeline: Array<{ id: string; label: s
           {pipeline.map((stage) => (
             <div key={stage.id} className="min-w-0 px-3 pt-4 first:pl-0 last:pr-0 sm:px-4">
               <p className="truncate text-xs font-medium text-[#667085]">{stage.label}</p>
-              <p className="mt-3 text-xl font-semibold text-[#101828]">{stage.count}</p>
+              <p className="mt-3 text-[19px] font-semibold text-[#101828]">{stage.count}</p>
               <p className="mt-1 text-xs text-[#667085]">active items</p>
             </div>
           ))}

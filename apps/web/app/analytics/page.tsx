@@ -15,11 +15,11 @@ export default function AnalyticsPage() {
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Analytics" }]}>
-      <div className="space-y-6">
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Insights</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">Analytics</h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+      <div className="space-y-5">
+        <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-700">Insights</p>
+          <h1 className="mt-2 text-[29px] font-semibold tracking-tight text-slate-950">Analytics</h1>
+          <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">
             A lightweight analytics view based on the current number of tenders, validation scores, and knowledge sources.
           </p>
         </section>
@@ -32,9 +32,9 @@ export default function AnalyticsPage() {
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <article className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-            <h2 className="text-xl font-semibold tracking-tight text-slate-950">Readiness spread</h2>
-            <div className="mt-6 space-y-4">
+          <article className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <h2 className="text-[19px] font-semibold tracking-tight text-slate-950">Readiness spread</h2>
+            <div className="mt-4 space-y-3.5">
               {tenders.length > 0 ? (
                 tenders.map((row) => (
                   <div key={row.tender.id} className="flex items-center gap-4">
@@ -51,7 +51,7 @@ export default function AnalyticsPage() {
             </div>
           </article>
 
-          <aside className="space-y-6">
+          <aside className="space-y-4">
             <Card title="Knowledge health" value={String(knowledgeCounts.active)} detail="Active items available for answers" />
             <Card title="Draft knowledge" value={String(knowledgeCounts.draft)} detail="Pending approval in the lifecycle" />
             <Card title="Next step" value="Open dashboard" detail="Use the dashboard to jump into RFP detail pages." />

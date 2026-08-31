@@ -15,11 +15,11 @@ export default function ProfilePage() {
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Profile" }]}>
-      <div className="space-y-6">
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Profile</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">{name}</h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+      <div className="space-y-5">
+        <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Profile</p>
+          <h1 className="mt-2 text-[29px] font-semibold tracking-tight text-slate-950">{name}</h1>
+          <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">
             Your account profile, access role, and organization details are shown here.
           </p>
         </section>
@@ -31,19 +31,19 @@ export default function ProfilePage() {
           <InfoCard title="Status" value={profile ? "Connected" : "Guest"} />
         </section>
 
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <h2 className="text-xl font-semibold tracking-tight text-slate-950">Account actions</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+        <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+          <h2 className="text-[19px] font-semibold tracking-tight text-slate-950">Account actions</h2>
+          <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">
             This page is a home for profile-level settings, sign-out, and identity controls.
           </p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link href="/settings" className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm">
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            <Link href="/settings" className="inline-flex h-9 items-center justify-center rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white shadow-sm">
               Open settings
             </Link>
             <button
               type="button"
               onClick={() => void session?.signOut()}
-              className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm"
+              className="inline-flex h-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm"
             >
               Sign out
             </button>
@@ -56,9 +56,9 @@ export default function ProfilePage() {
 
 function InfoCard({ title, value }: { title: string; value: string }) {
   return (
-    <article className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
-      <p className="mt-3 break-words text-lg font-semibold tracking-tight text-slate-950">{value}</p>
+    <article className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</p>
+      <p className="mt-2 break-words text-[17px] font-semibold tracking-tight text-slate-950">{value}</p>
     </article>
   );
 }
