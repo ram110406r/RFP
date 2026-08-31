@@ -21,6 +21,18 @@ import {
   notifications,
   organizationMembers,
   organizations,
+  teamMembers,
+  teams,
+  tenderAnswerReviews,
+  tenderAnswers,
+  tenderQuestions,
+  tenderQuestionRequirements,
+  tenderRequirements,
+  tenderStatusHistory,
+  tenderValidationRuns,
+  tenders,
+  workspaceMembers,
+  workspaces,
   permissions,
   rfpAnswers,
   rfpAssignments,
@@ -232,14 +244,79 @@ export async function seedDevelopmentData() {
       Viewer: "VIEWER",
     } as const;
 
-    await db.insert(organizationMembers).values(
-      PEOPLE.map((p, index) => ({
+    const organizationMemberRows = await db
+      .insert(organizationMembers)
+      .values(
+        PEOPLE.map((p, index) => ({
+          organizationId,
+          userId: userByEmail.get(p.email)!,
+          role: index === 0 ? ("OWNER" as const) : ROLE_TO_ORG_ROLE[p.role],
+          status: "active" as const,
+        })),
+      )
+      .returning();
+    const organizationMemberByEmail = new Map<string, string>();
+    for (const member of organizationMemberRows) {
+      const email = PEOPLE.find((p) => userByEmail.get(p.email) === member.userId)?.email;
+      if (email) organizationMemberByEmail.set(email, member.id);
+    }
+
+    const [workspace] = await db
+      .insert(workspaces)
+      .values({
         organizationId,
-        userId: userByEmail.get(p.email)!,
-        role: index === 0 ? ("OWNER" as const) : ROLE_TO_ORG_ROLE[p.role],
+        name: "Delivery Workspace",
+        slug: "delivery-workspace",
+        description: "Primary workspace for live opportunities, pipeline, and submissions.",
+        status: "active",
+      })
+      .returning();
+    if (!workspace) throw new Error("Failed to seed workspace.");
+    const workspaceId = workspace.id;
+
+    await db.insert(workspaceMembers).values(
+      PEOPLE.map((p) => ({
+        workspaceId: workspace.id,
+        organizationMemberId: organizationMemberByEmail.get(p.email)!,
         status: "active" as const,
       })),
     );
+
+    const [bidOpsTeam] = await db
+      .insert(teams)
+      .values({
+        organizationId,
+        workspaceId: workspace.id,
+        name: "Bid Operations",
+        description: "Owns intake, pipeline movement, and submission coordination.",
+        status: "active",
+      })
+      .returning();
+    const [governanceTeam] = await db
+      .insert(teams)
+      .values({
+        organizationId,
+        workspaceId: workspace.id,
+        name: "Governance & Review",
+        description: "Reviews answers, evidence, and risk before submission.",
+        status: "active",
+      })
+      .returning();
+
+    if (bidOpsTeam) {
+      await db.insert(teamMembers).values([
+        { teamId: bidOpsTeam.id, organizationMemberId: organizationMemberByEmail.get("priya.nair@halcyonsystems.com")! },
+        { teamId: bidOpsTeam.id, organizationMemberId: organizationMemberByEmail.get("david.okafor@halcyonsystems.com")! },
+        { teamId: bidOpsTeam.id, organizationMemberId: organizationMemberByEmail.get("sana.raza@halcyonsystems.com")! },
+      ]);
+    }
+    if (governanceTeam) {
+      await db.insert(teamMembers).values([
+        { teamId: governanceTeam.id, organizationMemberId: organizationMemberByEmail.get("marcus.webb@halcyonsystems.com")! },
+        { teamId: governanceTeam.id, organizationMemberId: organizationMemberByEmail.get("elena.fischer@halcyonsystems.com")! },
+        { teamId: governanceTeam.id, organizationMemberId: organizationMemberByEmail.get("aisha.malik@halcyonsystems.com")! },
+      ]);
+    }
     const priya = userByEmail.get("priya.nair@halcyonsystems.com")!;
     const marcus = userByEmail.get("marcus.webb@halcyonsystems.com")!;
     const elena = userByEmail.get("elena.fischer@halcyonsystems.com")!;
@@ -724,6 +801,417 @@ export async function seedDevelopmentData() {
       },
     ]);
 
+    // --- Tender pipeline ---------------------------------------------------
+    const DEMO_NOW = new Date("2026-08-31T09:00:00Z");
+    const daysFromDemoNow = (days: number) => new Date(DEMO_NOW.getTime() + days * 86400000);
+
+    const [vertex] = await db
+      .insert(customers)
+      .values({
+        organizationId,
+        name: "Vertex Logistics",
+        industry: "Transportation",
+      })
+      .returning();
+    if (!vertex) throw new Error("Failed to seed third customer.");
+
+    async function seedTenderDetails(input: {
+      tenderId: string;
+      ownerId: string;
+      reviewerId: string;
+      questionNumber: string;
+      questionText: string;
+      requirementCode: string;
+      requirementTitle: string;
+      requirementDescription: string;
+      requirementType: NonNullable<(typeof tenderRequirements.$inferInsert)["requirementType"]>;
+      answerText: string;
+      answerStatus: NonNullable<(typeof tenderAnswers.$inferInsert)["status"]>;
+      reviewStatus: NonNullable<(typeof tenderAnswerReviews.$inferInsert)["status"]>;
+      score: number;
+      ready: boolean;
+      issueTitle: string;
+      issueDetail: string;
+      pipelineStage: string;
+    }) {
+      const [question] = await db
+        .insert(tenderQuestions)
+        .values({
+          organizationId,
+          workspaceId,
+          tenderId: input.tenderId,
+          questionNumber: input.questionNumber,
+          section: "Overview",
+          questionText: input.questionText,
+          questionType: "TEXT",
+          required: true,
+          status: "ANSWERED",
+          sourceReference: { section: "overview", questionNumber: input.questionNumber },
+          sortOrder: 1,
+          metadata: {},
+        })
+        .returning();
+      const [requirement] = await db
+        .insert(tenderRequirements)
+        .values({
+          organizationId,
+          workspaceId,
+          tenderId: input.tenderId,
+          requirementCode: input.requirementCode,
+          title: input.requirementTitle,
+          description: input.requirementDescription,
+          requirementType: input.requirementType,
+          mandatory: true,
+          status: "APPROVED",
+          sourceReference: { section: "overview", requirementCode: input.requirementCode },
+          metadata: { pipelineStage: input.pipelineStage },
+        })
+        .returning();
+      if (question && requirement) {
+        await db.insert(tenderQuestionRequirements).values({
+          organizationId,
+          workspaceId,
+          questionId: question.id,
+          requirementId: requirement.id,
+        });
+        const [answer] = await db
+          .insert(tenderAnswers)
+          .values({
+            organizationId,
+            workspaceId,
+            tenderId: input.tenderId,
+            questionId: question.id,
+            answerText: input.answerText,
+            status: input.answerStatus,
+            source: input.answerStatus === "FINAL" ? "MANUAL" : "AI_GENERATED",
+            confidence: input.answerStatus === "FINAL" ? "0.94" : "0.78",
+            createdBy: input.ownerId,
+            updatedBy: input.ownerId,
+            metadata: { pipelineStage: input.pipelineStage },
+          })
+          .returning();
+        if (answer) {
+          await db.insert(tenderAnswerReviews).values({
+            organizationId,
+            workspaceId,
+            tenderId: input.tenderId,
+            answerId: answer.id,
+            reviewerId: input.reviewerId,
+            status: input.reviewStatus,
+            comment:
+              input.reviewStatus === "APPROVED"
+                ? "Approved for demo submission."
+                : "Needs one more pass before submission.",
+          });
+        }
+      }
+
+      await db.insert(tenderValidationRuns).values({
+        organizationId,
+        workspaceId,
+        tenderId: input.tenderId,
+        score: input.score,
+        ready: input.ready,
+        categories: [
+          {
+            id: "coverage",
+            label: "Coverage",
+            value: Math.max(1, input.score - 18),
+            total: 100,
+            tone: "success",
+            hint: "Answered questions and requirement coverage.",
+          },
+          {
+            id: "risk",
+            label: "Risk",
+            value: input.score < 70 ? 42 : 12,
+            total: 100,
+            tone: input.score < 70 ? "warning" : "success",
+            hint: "Outstanding review and evidence risk.",
+          },
+        ],
+        issues: [
+          {
+            id: `${input.tenderId}-issue`,
+            severity: input.ready ? "LOW" : "HIGH",
+            title: input.issueTitle,
+            detail: input.issueDetail,
+            recommendation: input.ready
+              ? "Continue monitoring readiness."
+              : "Resolve the open review before submission.",
+            blocking: !input.ready,
+          },
+        ],
+        result: {
+          tenderId: input.tenderId,
+          score: input.score,
+          ready: input.ready,
+          issues: input.ready ? 0 : 1,
+          pipelineStage: input.pipelineStage,
+        },
+        createdBy: input.ownerId,
+      });
+    }
+
+    const tenderDefs = [
+      {
+        customerId: meridian.id,
+        name: "Meridian Health Systems",
+        title: "Enterprise Cloud Platform RFP",
+        referenceNumber: "TH-26-001",
+        description: "Migration and managed services for the core patient platform.",
+        tenderType: "DOCUMENT" as const,
+        sourceType: "DOCUMENT_UPLOAD" as const,
+        sourceReference: { channel: "portal", intake: "uploaded" },
+        sourceUrl: null,
+        status: "IN_PROGRESS" as const,
+        ownerId: priya,
+        createdBy: priya,
+        receivedAt: daysFromDemoNow(-21),
+        dueAt: daysFromDemoNow(24),
+        timezone: "Asia/Kolkata",
+        metadata: {
+          estimatedValue: 25000000,
+          location: "Bengaluru, India",
+          pipelineStage: "applying",
+        },
+        detail: {
+          questionNumber: "Q-01",
+          questionText: "Describe your encryption-at-rest controls and key management.",
+          requirementCode: "MH-SEC-01",
+          requirementTitle: "Encryption at rest",
+          requirementDescription: "Confirm encryption and KMS ownership for production data.",
+          requirementType: "SECURITY" as const,
+          answerText: "All production data is encrypted with AES-256 and tenant-scoped keys in a managed KMS.",
+          answerStatus: "IN_REVIEW" as const,
+          reviewStatus: "CHANGES_REQUESTED" as const,
+          score: 68,
+          ready: false,
+          issueTitle: "Security review still open",
+          issueDetail: "The draft answer needs reviewer sign-off before submission.",
+          pipelineStage: "applying",
+          reviewerId: marcus,
+        },
+      },
+      {
+        customerId: northwind.id,
+        name: "Northwind Retail Group",
+        title: "Customer Data Platform RFP",
+        referenceNumber: "NW-26-014",
+        description: "Replacement CDP for ecommerce segmentation and campaign activation.",
+        tenderType: "DOCUMENT" as const,
+        sourceType: "EMAIL_IMPORT" as const,
+        sourceReference: { channel: "email", inbox: "rfp@northwind.example" },
+        sourceUrl: null,
+        status: "REVIEW" as const,
+        ownerId: priya,
+        createdBy: priya,
+        receivedAt: daysFromDemoNow(-17),
+        dueAt: daysFromDemoNow(12),
+        timezone: "Asia/Kolkata",
+        metadata: {
+          estimatedValue: 9800000,
+          location: "Mumbai, India",
+          pipelineStage: "response",
+        },
+        detail: {
+          questionNumber: "Q-02",
+          questionText: "What is your remediation SLA for critical vulnerabilities?",
+          requirementCode: "NW-SEC-02",
+          requirementTitle: "Critical vulnerability remediation",
+          requirementDescription: "State the SLA for critical security issues.",
+          requirementType: "SECURITY" as const,
+          answerText: "Critical vulnerabilities are remediated within seven calendar days of verification.",
+          answerStatus: "APPROVED" as const,
+          reviewStatus: "APPROVED" as const,
+          score: 84,
+          ready: true,
+          issueTitle: "Ready for executive review",
+          issueDetail: "Only final quality checks remain before submission.",
+          pipelineStage: "response",
+          reviewerId: marcus,
+        },
+      },
+      {
+        customerId: vertex.id,
+        name: "Vertex Logistics",
+        title: "Managed Security Services RFP",
+        referenceNumber: "VX-26-008",
+        description: "24x7 managed security operations and incident response support.",
+        tenderType: "ONLINE" as const,
+        sourceType: "PORTAL" as const,
+        sourceReference: { channel: "portal", intake: "live form" },
+        sourceUrl: "https://vertex.example/rfp",
+        status: "APPROVED" as const,
+        ownerId: priya,
+        createdBy: priya,
+        receivedAt: daysFromDemoNow(-14),
+        dueAt: daysFromDemoNow(6),
+        timezone: "Asia/Kolkata",
+        metadata: {
+          estimatedValue: 18000000,
+          location: "Delhi, India",
+          pipelineStage: "approval",
+        },
+        detail: {
+          questionNumber: "Q-03",
+          questionText: "What is your customer incident notification SLA?",
+          requirementCode: "VX-SEC-05",
+          requirementTitle: "Incident notification SLA",
+          requirementDescription: "Define the notification window for confirmed incidents.",
+          requirementType: "SECURITY" as const,
+          answerText: "Customers are notified within 72 hours of a confirmed incident affecting their environment.",
+          answerStatus: "FINAL" as const,
+          reviewStatus: "APPROVED" as const,
+          score: 91,
+          ready: true,
+          issueTitle: "Approved for submission prep",
+          issueDetail: "The response is fully approved and ready for final packaging.",
+          pipelineStage: "approval",
+          reviewerId: marcus,
+        },
+      },
+      {
+        customerId: meridian.id,
+        name: "Meridian Health Systems",
+        title: "Identity and Access Renewal",
+        referenceNumber: "TH-26-004",
+        description: "Renewal for IAM support and privileged access reviews.",
+        tenderType: "DOCUMENT" as const,
+        sourceType: "MANUAL" as const,
+        sourceReference: { intake: "manual" },
+        sourceUrl: null,
+        status: "READY" as const,
+        ownerId: priya,
+        createdBy: priya,
+        receivedAt: daysFromDemoNow(-9),
+        dueAt: daysFromDemoNow(2),
+        timezone: "Asia/Kolkata",
+        metadata: {
+          estimatedValue: 6400000,
+          location: "Pune, India",
+          pipelineStage: "ready",
+        },
+      },
+      {
+        customerId: northwind.id,
+        name: "Northwind Retail Group",
+        title: "Retail Analytics Platform Renewal",
+        referenceNumber: "NW-26-017",
+        description: "Annual renewal for analytics and reporting services.",
+        tenderType: "DOCUMENT" as const,
+        sourceType: "DOCUMENT_UPLOAD" as const,
+        sourceReference: { channel: "portal", intake: "upload" },
+        sourceUrl: null,
+        status: "PROCESSING" as const,
+        ownerId: priya,
+        createdBy: priya,
+        receivedAt: daysFromDemoNow(-6),
+        dueAt: daysFromDemoNow(18),
+        timezone: "Asia/Kolkata",
+        metadata: {
+          estimatedValue: 4200000,
+          location: "Chennai, India",
+          pipelineStage: "intake",
+        },
+      },
+      {
+        customerId: vertex.id,
+        name: "Vertex Logistics",
+        title: "Procurement Analytics Pilot",
+        referenceNumber: "VX-26-011",
+        description: "Pilot contract for procurement analytics and spend visibility.",
+        tenderType: "ONLINE" as const,
+        sourceType: "PORTAL" as const,
+        sourceReference: { channel: "portal", intake: "live form" },
+        sourceUrl: "https://vertex.example/pilot",
+        status: "SUBMITTED" as const,
+        ownerId: priya,
+        createdBy: priya,
+        receivedAt: daysFromDemoNow(-27),
+        dueAt: daysFromDemoNow(-3),
+        timezone: "Asia/Kolkata",
+        metadata: {
+          estimatedValue: 11000000,
+          location: "Hyderabad, India",
+          pipelineStage: "submitted",
+        },
+      },
+    ] as const;
+
+    for (const [index, def] of tenderDefs.entries()) {
+      const [tender] = await db
+        .insert(tenders)
+        .values({
+          organizationId,
+          workspaceId: workspace.id,
+          name: def.name,
+          title: def.title,
+          referenceNumber: def.referenceNumber,
+          description: def.description,
+          tenderType: def.tenderType,
+          sourceType: def.sourceType,
+          sourceReference: def.sourceReference,
+          sourceUrl: def.sourceUrl,
+          status: def.status,
+          ownerId: def.ownerId,
+          createdBy: def.createdBy,
+          receivedAt: def.receivedAt,
+          dueAt: def.dueAt,
+          timezone: def.timezone,
+          metadata: def.metadata,
+        })
+        .returning();
+      if (!tender) continue;
+
+      if ("detail" in def && def.detail) {
+        await seedTenderDetails({
+          tenderId: tender.id,
+          ownerId: def.ownerId,
+          reviewerId: def.detail.reviewerId,
+          questionNumber: def.detail.questionNumber,
+          questionText: def.detail.questionText,
+          requirementCode: def.detail.requirementCode,
+          requirementTitle: def.detail.requirementTitle,
+          requirementDescription: def.detail.requirementDescription,
+          requirementType: def.detail.requirementType,
+          answerText: def.detail.answerText,
+          answerStatus: def.detail.answerStatus,
+          reviewStatus: def.detail.reviewStatus,
+          score: def.detail.score,
+          ready: def.detail.ready,
+          issueTitle: def.detail.issueTitle,
+          issueDetail: def.detail.issueDetail,
+          pipelineStage: def.detail.pipelineStage,
+        });
+      }
+
+      await db.insert(tenderStatusHistory).values({
+        organizationId,
+        workspaceId,
+        tenderId: tender.id,
+        fromStatus: null,
+        toStatus: def.status,
+        actorId: def.createdBy,
+        reason: index === 0 ? "Initial import" : "Seeded demo opportunity",
+        metadata: { pipelineStage: def.metadata.pipelineStage },
+      });
+
+      await db.insert(activities).values({
+        organizationId,
+          workspaceId,
+        actorId: def.createdBy,
+        actorLabel: "Seeded Demo",
+        kind: "generated",
+        label: `Pipeline opportunity loaded - ${def.title}`,
+        action: "tender.created",
+        entityType: "tender",
+        entityId: tender.id,
+        summary: `${def.title} is available in the pipeline`,
+        metadata: { tenderId: tender.id, status: def.status, pipelineStage: def.metadata.pipelineStage },
+      });
+    }
+
     // --- Notifications for the default seeded user (Priya) -----------------
     await db.insert(notifications).values([
       {
@@ -752,6 +1240,15 @@ export async function seedDevelopmentData() {
         detail: "Key rotation interval conflicts across two knowledge sources.",
         severity: "warning",
         read: true,
+      },
+      {
+        organizationId: organizationId,
+        userId: priya,
+        category: "Assignments",
+        title: "Pipeline review queued",
+        detail: "Managed Security Services RFP is approved and ready for final packaging.",
+        severity: "info",
+        read: false,
       },
     ]);
 
