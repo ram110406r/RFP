@@ -108,9 +108,10 @@ export default function PipelinePage() {
   const metrics = summary?.metrics;
 
   useEffect(() => {
-    const firstRow = rows[0];
-    if (!selectedId && firstRow) setSelectedId(firstRow.tender.id);
-    if (selectedId && firstRow && !rows.some((row) => row.tender.id === selectedId)) setSelectedId(firstRow.tender.id);
+    if (!selectedId) return;
+    if (!rows.some((row) => row.tender.id === selectedId)) {
+      setSelectedId(rows[0]?.tender.id ?? null);
+    }
   }, [rows, selectedId]);
 
   function clearFilters() {
