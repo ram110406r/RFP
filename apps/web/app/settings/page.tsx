@@ -114,17 +114,21 @@ export default function SettingsPage() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="max-w-3xl">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-700">Settings</p>
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                <h1 className="text-[29px] font-semibold tracking-tight text-slate-950">Workspace settings</h1>
-                <RfpStatusBadge tone={organization?.status === "active" ? "success" : "neutral"}>
-                  {organization ? formatStatus(organization.status) : "Active"}
-                </RfpStatusBadge>
+              <div className="mt-2 flex flex-wrap items-start gap-3">
+                <h1 className="max-w-[11ch] text-[clamp(2.15rem,3.9vw,2.9rem)] font-semibold leading-[0.98] tracking-[-0.04em] text-slate-950">
+                  Workspace settings
+                </h1>
+                <span className="mt-1.5 inline-flex">
+                  <RfpStatusBadge tone={organization?.status === "active" ? "success" : "neutral"}>
+                    {organization ? formatStatus(organization.status) : "Active"}
+                  </RfpStatusBadge>
+                </span>
               </div>
               <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">
                 Configure TENDYY to match your workflows and team operations.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2.5">
+            <div className="flex flex-wrap items-start gap-2.5 xl:pt-1">
               <Button type="button" variant="secondary" onClick={() => setActiveTab("general")}>
                 Help & Support
                 <ChevronRight className="h-4 w-4" />
@@ -540,14 +544,14 @@ function SectionHeader({
   actionHref?: string;
 }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">{eyebrow}</p>
-        <h2 className="mt-2 text-[19px] font-semibold tracking-tight text-slate-950">{title}</h2>
+        <h2 className="mt-2 text-[19px] font-semibold leading-[1.05] tracking-tight text-slate-950">{title}</h2>
         {description ? <p className="mt-2 max-w-3xl text-[13px] leading-6 text-slate-600">{description}</p> : null}
       </div>
       {actionLabel && actionHref ? (
-        <Link href={actionHref} className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#155EEF]">
+        <Link href={actionHref} className="inline-flex items-center gap-1 self-start pt-0.5 text-[13px] font-semibold text-[#155EEF]">
           {actionLabel}
           <ArrowRight className="h-4 w-4" />
         </Link>
@@ -581,9 +585,9 @@ function Metric({ label, value }: { label: string; value: string }) {
 function CardBlock({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4">
-      <div className="flex items-center gap-2 text-slate-500">
+      <div className="flex items-start gap-2 text-slate-500">
         {icon}
-        <p className="text-[13px] font-semibold text-slate-900">{title}</p>
+        <p className="pt-0.5 text-[13px] font-semibold leading-5 text-slate-900">{title}</p>
       </div>
       <div className="mt-3">{children}</div>
     </div>
@@ -655,11 +659,13 @@ function QuickAction({ label, href }: { label: string; href: string }) {
 function IntegrationCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[13px] font-medium text-slate-900">{label}</span>
-        <RfpStatusBadge tone={value === "Connected" || value === "Enabled" ? "success" : "neutral"}>{value}</RfpStatusBadge>
+      <div className="flex items-start justify-between gap-3">
+        <span className="min-w-0 pt-0.5 text-[13px] font-medium leading-5 text-slate-900">{label}</span>
+        <span className="shrink-0">
+          <RfpStatusBadge tone={value === "Connected" || value === "Enabled" ? "success" : "neutral"}>{value}</RfpStatusBadge>
+        </span>
       </div>
-      <div className="mt-3 flex items-center gap-2 text-[12px] text-slate-500">
+      <div className="mt-3 flex items-center gap-2 text-[12px] leading-5 text-slate-500">
         <Link2 className="h-4 w-4" />
         <span>Live integration state</span>
       </div>

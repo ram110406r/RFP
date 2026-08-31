@@ -435,19 +435,19 @@ function KnowledgeBrowser() {
           </Panel>
 
           <Panel title="QUICK ACCESS">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {QUICK_ACTIONS.map((action) => (
                 <Link
                   key={action.label}
                   href={action.href}
-                  className="flex items-start gap-3 rounded-[10px] border border-[#E4E7EC] bg-white p-3 transition hover:border-[#155EEF] hover:bg-[#FCFCFD]"
+                  className="flex min-h-[168px] flex-col rounded-[10px] border border-[#E4E7EC] bg-white p-4 text-center transition hover:border-[#155EEF] hover:bg-[#FCFCFD]"
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[#155EEF]">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#EFF5FF] text-[#155EEF]">
                     <action.icon className="h-4 w-4" />
                   </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-[#101828]">{action.label}</span>
-                    <span className="mt-1 block text-[11px] text-[#667085]">{action.detail}</span>
+                  <span className="mt-4 flex flex-1 min-w-0 flex-col items-center justify-start">
+                    <span className="block max-w-[11ch] text-[15px] font-semibold leading-5 text-[#101828]">{action.label}</span>
+                    <span className="mt-2 block min-h-[40px] text-[13px] leading-5 text-[#667085]">{action.detail}</span>
                   </span>
                 </Link>
               ))}
