@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { ArrowRight, Building2, ChevronRight, FileText, LayoutGrid, ShieldCheck, Users } from "lucide-react";
 
@@ -112,6 +112,7 @@ export default function OrganizationPage() {
     loading: teamMemberQueries[index]?.isLoading ?? false,
     error: teamMemberQueries[index]?.isError ?? false,
   }));
+  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("overview");
 
   const memberStatusCounts = [
     { label: "Active", value: activeMembers.length, tone: "success" as const },
@@ -203,8 +204,14 @@ export default function OrganizationPage() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => jumpTo(tab.id)}
-              className="whitespace-nowrap border-b-2 border-transparent px-1 pb-2 text-[13px] font-semibold text-slate-700 transition hover:text-slate-950"
+              onClick={() => setActiveTab(tab.id)}
+              aria-selected={activeTab === tab.id}
+              className={[
+                "whitespace-nowrap border-b-2 px-1 pb-2 text-[13px] font-semibold transition",
+                activeTab === tab.id
+                  ? "border-[#155EEF] text-[#155EEF]"
+                  : "border-transparent text-slate-700 hover:text-slate-950",
+              ].join(" ")}
             >
               {tab.label}
             </button>
@@ -213,7 +220,13 @@ export default function OrganizationPage() {
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-5">
-            <section id="overview" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="overview"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "overview" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader
                 eyebrow="Overview"
                 title="Workspace structure"
@@ -239,7 +252,13 @@ export default function OrganizationPage() {
               </div>
             </section>
 
-            <section id="members" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="members"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "members" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Members" title="Organization members" description="Active membership rows, roles, and team affiliations from the org service." actionLabel="View invitations" actionHref="#settings" />
 
               {membersQuery.isError ? (
@@ -340,7 +359,13 @@ export default function OrganizationPage() {
               </div>
             </section>
 
-            <section id="teams" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="teams"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "teams" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Teams" title="Team overview" description="Team membership is resolved from the team endpoints and live workspace links." />
 
               {teamsQuery.isError ? (
@@ -394,7 +419,13 @@ export default function OrganizationPage() {
               )}
             </section>
 
-            <section id="roles" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="roles"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "roles" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Roles" title="Roles and permissions" description="Role definitions, assignment totals, and the permission catalog are pulled from the live role API." />
 
               {rolesQuery.isError ? (
@@ -432,7 +463,13 @@ export default function OrganizationPage() {
               )}
             </section>
 
-            <section id="workspaces" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="workspaces"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "workspaces" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Workspaces" title="Workspace inventory" description="Workspace rows are combined with live membership counts from each workspace endpoint." />
 
               {workspacesQuery.isError ? (
@@ -479,7 +516,13 @@ export default function OrganizationPage() {
               )}
             </section>
 
-            <section id="settings" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="settings"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "settings" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Settings" title="Organization settings" description="This area keeps the shell route complete while surfacing the live org configuration." />
               <div className="mt-4 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
                 <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4">
@@ -513,7 +556,13 @@ export default function OrganizationPage() {
               </div>
             </section>
 
-            <section id="audits" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="audits"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "audits" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Audit Logs" title="Organization activity trail" description="Audit entries preserve the compliance record, while the activity feed keeps a human timeline." />
 
               <div className="mt-4 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">

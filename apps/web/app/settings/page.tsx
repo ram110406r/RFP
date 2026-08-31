@@ -49,6 +49,7 @@ export default function SettingsPage() {
   const teams = teamsQuery.data?.items ?? [];
   const workspaces = workspacesQuery.data?.items ?? [];
   const dashboard = dashboardQuery.data ?? null;
+  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("general");
 
   const [form, setForm] = useState({
     name: organization?.name ?? session?.profile?.organizationName ?? "TENDYY organization",
@@ -123,14 +124,14 @@ export default function SettingsPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2.5">
-              <button
-                type="button"
-                onClick={() => jumpTo("general")}
-                className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm"
-              >
-                Help & Support
-                <ChevronRight className="h-4 w-4" />
-              </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("general")}
+              className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 shadow-sm"
+            >
+              Help & Support
+              <ChevronRight className="h-4 w-4" />
+            </button>
               <button
                 type="button"
                 onClick={() => void navigator.clipboard?.writeText(window.location.href)}
@@ -148,8 +149,14 @@ export default function SettingsPage() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => jumpTo(tab.id)}
-              className="whitespace-nowrap border-b-2 border-transparent px-1 pb-2 text-[13px] font-semibold text-slate-700 transition hover:text-slate-950"
+              onClick={() => setActiveTab(tab.id)}
+              aria-selected={activeTab === tab.id}
+              className={[
+                "whitespace-nowrap border-b-2 px-1 pb-2 text-[13px] font-semibold transition",
+                activeTab === tab.id
+                  ? "border-[#155EEF] text-[#155EEF]"
+                  : "border-transparent text-slate-700 hover:text-slate-950",
+              ].join(" ")}
             >
               {tab.label}
             </button>
@@ -158,7 +165,13 @@ export default function SettingsPage() {
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="space-y-5">
-            <section id="general" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="general"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "general" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader
                 eyebrow="Workspace Details"
                 title="Workspace details"
@@ -240,7 +253,13 @@ export default function SettingsPage() {
               </form>
             </section>
 
-            <section id="members" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="members"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "members" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Members & Access" title="Members & access" description="Current membership rows and invite state from the organization service." />
               <div className="mt-4 grid gap-4 lg:grid-cols-3">
                 <Metric label="Total members" value={formatCount(organization?.memberCount ?? members.length)} />
@@ -283,7 +302,13 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section id="roles" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="roles"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "roles" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Roles & Permissions" title="Roles & permissions" description="Org roles, workspace roles, and the permissions they carry." />
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <CardBlock title="Default roles" icon={<ShieldCheck className="h-4 w-4" />}>
@@ -301,7 +326,13 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section id="workflows" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="workflows"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "workflows" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Workflows" title="Workflow defaults" description="These defaults shape how opportunities move through the workspace." />
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4">
@@ -338,7 +369,13 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section id="notifications" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="notifications"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "notifications" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Notifications" title="Notification preferences" description="Notification routing is organized here, even where the backend is still evolving." />
               <div className="mt-4 grid gap-3">
                 {[
@@ -351,7 +388,13 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section id="security" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="security"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "security" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Security" title="Security status" description="A concise health overview for the controls that protect the organization." />
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4">
@@ -379,7 +422,13 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section id="integrations" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="integrations"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "integrations" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Integrations" title="Integrations" description="Keep the shell route complete while surfacing the services your team connects." />
               <div className="mt-4 grid gap-3 lg:grid-cols-3">
                 {[
@@ -392,7 +441,13 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section id="billing" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="billing"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "billing" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Billing" title="Billing & usage" description="A compact snapshot of plan and seat usage." />
               <div className="mt-4 grid gap-4 lg:grid-cols-3">
                 <Metric label="Plan" value={organization?.plan ?? "Starter"} />
@@ -401,7 +456,13 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section id="data" className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+            <section
+              id="data"
+              className={[
+                "rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)] transition-opacity duration-200",
+                activeTab === "data" ? "opacity-100" : "hidden opacity-0",
+              ].join(" ")}
+            >
               <SectionHeader eyebrow="Data & Retention" title="Data & retention" description="Retention and lifecycle controls are summarized here." />
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <CardBlock title="Retention policy" icon={<Database className="h-4 w-4" />}>

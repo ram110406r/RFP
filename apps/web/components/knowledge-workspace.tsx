@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "./app-shell";
-import { PageHero } from "./page-hero";
 import { ApiError } from "../lib/api";
 import { useActivities, useDashboardSummary, useKnowledgeItem, useKnowledgeList, useKnowledgeSummary, useApproveKnowledge, useArchiveKnowledge } from "../lib/queries";
 import type { ActivityItem, DashboardOverview, KnowledgeItem } from "../lib/models";
@@ -262,75 +261,68 @@ function KnowledgeBrowser() {
 
   return (
     <div className="min-w-0 space-y-5 pb-8">
-      <PageHero
-        eyebrow="Knowledge repository"
-        title="Knowledge Brain"
-        description="Your intelligent knowledge hub for evidence, answers, and insights."
-        actions={
-          <>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setAddMenuOpen((current) => !current)}
-                className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white transition hover:bg-slate-800"
-              >
-                <FilePlus2 className="h-4 w-4" />
-                Add Knowledge
-                <ChevronDown className="h-4 w-4" strokeWidth={1.75} />
-              </button>
+      <section className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setAddMenuOpen((current) => !current)}
+            className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white transition hover:bg-slate-800"
+          >
+            <FilePlus2 className="h-4 w-4" />
+            Add Knowledge
+            <ChevronDown className="h-4 w-4" strokeWidth={1.75} />
+          </button>
 
-              {addMenuOpen ? (
-                <div className="absolute right-0 top-12 z-30 w-64 rounded-[10px] border border-slate-200 bg-white p-2 shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
-                  {ADD_KNOWLEDGE_ITEMS.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <Link
-                        key={item.label}
-                        href={item.href}
-                        onClick={() => setAddMenuOpen(false)}
-                        className="flex items-center gap-3 rounded-[8px] px-3 py-2.5 transition hover:bg-slate-50"
-                      >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[#155EEF]">
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-sm font-semibold text-[#101828]">{item.label}</span>
-                          <span className="block text-[11px] text-[#667085]">{item.detail}</span>
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : null}
+          {addMenuOpen ? (
+            <div className="absolute left-0 top-12 z-30 w-64 rounded-[10px] border border-slate-200 bg-white p-2 shadow-[0_16px_40px_rgba(16,24,40,0.12)]">
+              {ADD_KNOWLEDGE_ITEMS.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    onClick={() => setAddMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-[8px] px-3 py-2.5 transition hover:bg-slate-50"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[#155EEF]">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-[#101828]">{item.label}</span>
+                      <span className="block text-[11px] text-[#667085]">{item.detail}</span>
+                    </span>
+                  </Link>
+                );
+              })}
             </div>
+          ) : null}
+        </div>
 
-            <button type="button" onClick={onAskBrain} className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 transition hover:border-[#155EEF] hover:text-[#155EEF]">
-              <Sparkles className="h-4 w-4" />
-              Ask Brain
-            </button>
+        <button type="button" onClick={onAskBrain} className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 transition hover:border-[#155EEF] hover:text-[#155EEF]">
+          <Sparkles className="h-4 w-4" />
+          Ask Brain
+        </button>
 
-            <button
-              type="button"
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
-              aria-label="Notifications"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" />
-            </button>
+        <button
+          type="button"
+          className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
+          aria-label="Notifications"
+        >
+          <Bell className="h-4 w-4" />
+          <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" />
+        </button>
 
-            <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">
-                {initials(session?.profile?.displayName ?? session?.user?.displayName ?? "User")}
-              </div>
-              <div className="hidden sm:block">
-                <p className="text-[13px] font-semibold text-slate-950">{session?.profile?.displayName ?? session?.user?.displayName ?? "Workspace Admin"}</p>
-                <p className="text-[11px] text-slate-500">{session?.profile?.role ?? "Workspace Admin"}</p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-slate-400" />
-            </div>
-          </>
-        }
-      />
+        <div className="flex items-center gap-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">
+            {initials(session?.profile?.displayName ?? session?.user?.displayName ?? "User")}
+          </div>
+          <div className="hidden sm:block">
+            <p className="text-[13px] font-semibold text-slate-950">{session?.profile?.displayName ?? session?.user?.displayName ?? "Workspace Admin"}</p>
+            <p className="text-[11px] text-slate-500">{session?.profile?.role ?? "Workspace Admin"}</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-slate-400" />
+        </div>
+      </section>
 
       <section className="grid gap-3 rounded-[10px] border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(16,24,40,0.04)] lg:grid-cols-[minmax(0,1fr)_160px]">
         <label className="flex h-12 items-center gap-3 rounded-[8px] border border-[#D0D5DD] px-4 text-[#667085] focus-within:border-[#155EEF]">
