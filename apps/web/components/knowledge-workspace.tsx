@@ -153,8 +153,11 @@ function KnowledgeBrowser() {
   const activityQuery = useActivities({ entityType: "knowledge_source", q: "knowledge" });
 
   const knowledgeSummary = summaryQuery.data ?? null;
-  const aggregateItems = allKnowledgeQuery.data?.items ?? knowledgeSummary?.items ?? [];
-  const paginatedItems = listQuery.data?.items ?? [];
+  const aggregateItems = useMemo(
+    () => allKnowledgeQuery.data?.items ?? knowledgeSummary?.items ?? [],
+    [allKnowledgeQuery.data?.items, knowledgeSummary?.items],
+  );
+  const paginatedItems = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items]);
   const total = listQuery.data?.total ?? knowledgeSummary?.counts.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const filteredItems = useMemo(
@@ -169,7 +172,7 @@ function KnowledgeBrowser() {
   );
 
   const visibleCount = filteredItems.length;
-  const activeTenders = dashboardQuery.data?.activeTenders ?? [];
+  const activeTenders = useMemo(() => dashboardQuery.data?.activeTenders ?? [], [dashboardQuery.data?.activeTenders]);
   const recommendations = useMemo(
     () => buildRecommendations(aggregateItems, activeTenders, dashboardQuery.data ?? null),
     [aggregateItems, activeTenders, dashboardQuery.data],

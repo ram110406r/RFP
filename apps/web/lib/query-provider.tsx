@@ -9,8 +9,12 @@ export function AppQueryProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 15_000,
+            // Keep stable workspace data warm between route changes. Mutations
+            // invalidate affected keys explicitly when fresh data matters.
+            staleTime: 60_000,
+            gcTime: 10 * 60_000,
             refetchOnWindowFocus: false,
+            refetchOnReconnect: true,
             retry: false,
           },
           mutations: {

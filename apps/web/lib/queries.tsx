@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   analyzeRequirementAnswer,
@@ -266,6 +266,7 @@ export function useKnowledgeList(
         pageSize: params.pageSize,
       }),
     initialData: initialData ?? undefined,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -297,6 +298,7 @@ export function useTenders(
     queryKey: tenderListKeys.list(params),
     queryFn: () => fetchTenders(params),
     initialData: initialData ?? undefined,
+    placeholderData: keepPreviousData,
   });
 }
 
