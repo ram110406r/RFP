@@ -140,8 +140,8 @@ export default function PipelinePage() {
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Pipeline" }]}>
       <div className="min-w-0 space-y-5 pb-8">
         <section className="flex flex-wrap items-center gap-3">
-          <Link href="/tenders/new" className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white hover:bg-slate-800">
-            <Plus className="h-4 w-4" />
+          <Link href="/tenders/new" className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-[#155EEF] px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-[#0F4BD6]">
+            <Plus className="h-4 w-4 text-white" />
             Add opportunity
           </Link>
           <button type="button" onClick={exportRows} className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 hover:border-[#155EEF] hover:text-[#155EEF]">

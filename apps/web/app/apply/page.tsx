@@ -104,10 +104,10 @@ function ApplyInbox() {
             <Upload className="h-4 w-4" />
             Import RFP
           </Link>
-          <Link href="/tenders/new" className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white hover:bg-slate-800">
-            <FilePlus2 className="h-4 w-4" />
+          <Link href="/tenders/new" className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-[#155EEF] px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-[#0F4BD6]">
+            <FilePlus2 className="h-4 w-4 text-white" />
             New application
-            <ChevronDown className="h-4 w-4" />
+            <ChevronDown className="h-4 w-4 text-white" />
           </Link>
           <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700" aria-label="Notifications">
             <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" />
