@@ -108,7 +108,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         ],
       },
       { href: "/pipeline", label: "Pipeline", icon: GitBranch, section: "main", exact: true },
-      { href: "/knowledge", label: "Knowledge Brain", icon: Brain, section: "main", exact: true },
+      { href: "/knowledge", label: "Knowledge Brain", icon: Brain, section: "main" },
       { href: "/organization", label: "Organization", icon: Building2, section: "main", exact: true },
     ],
   },
