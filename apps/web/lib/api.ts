@@ -94,6 +94,22 @@ export async function fetchOrganizationCurrent(init?: ApiInit) {
   return requestJson<OrganizationSummary>("/organizations/current", init);
 }
 
+export async function updateOrganizationCurrent(
+  body: {
+    name?: string;
+    domain?: string;
+    industry?: string;
+    logoInitials?: string;
+  },
+  init?: ApiInit,
+) {
+  return requestJson<OrganizationSummary>("/organizations/current", {
+    ...init,
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function fetchOrganizationMembers(init?: ApiInit) {
   return requestJson<{ members: OrganizationMemberSummary[] }>("/organizations/current/members", init);
 }

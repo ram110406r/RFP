@@ -42,6 +42,7 @@ import {
   updateAnswer,
   updateKnowledge,
   updateReview,
+  updateOrganizationCurrent,
   parseTenderSource,
   transitionTender,
 } from "./api";
@@ -312,6 +313,22 @@ export function useOrganizationCurrent(initialData?: OrganizationSummary | null)
     queryFn: () => fetchOrganizationCurrent(),
     initialData: initialData ?? undefined,
     retry: false,
+  });
+}
+
+export function useUpdateOrganization() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name?: string; domain?: string; industry?: string; logoInitials?: string }) =>
+      updateOrganizationCurrent(body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: organizationKeys.current() }),
+        queryClient.invalidateQueries({ queryKey: organizationKeys.members() }),
+        queryClient.invalidateQueries({ queryKey: organizationKeys.invitations() }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+      ]);
+    },
   });
 }
 
