@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
-import { PageHero } from "../../components/page-hero";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
 import type { ActivityItem, DashboardTenderCard, TenderSummary } from "../../lib/models";
@@ -138,29 +137,22 @@ export default function PipelinePage() {
   }
 
   return (
-    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Pipeline" }]} hideDesktopHeader>
+    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Pipeline" }]}>
       <div className="min-w-0 space-y-5 pb-8">
-        <PageHero
-          eyebrow="Opportunity management"
-          title="Pipeline"
-          description="Track every opportunity from discovery to outcome."
-          actions={
-            <>
-              <Link href="/tenders/new" className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white hover:bg-slate-800">
-                <Plus className="h-4 w-4" />
-                Add opportunity
-              </Link>
-              <button type="button" onClick={exportRows} className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 hover:border-[#155EEF] hover:text-[#155EEF]">
-                <Download className="h-4 w-4" />
-                Export
-              </button>
-              <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700" aria-label="Notifications">
-                <Bell className="h-4 w-4" />
-                <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" />
-              </button>
-            </>
-          }
-        />
+        <section className="flex flex-wrap items-center gap-3">
+          <Link href="/tenders/new" className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-slate-950 px-4 text-[13px] font-semibold text-white hover:bg-slate-800">
+            <Plus className="h-4 w-4" />
+            Add opportunity
+          </Link>
+          <button type="button" onClick={exportRows} className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-800 hover:border-[#155EEF] hover:text-[#155EEF]">
+            <Download className="h-4 w-4" />
+            Export
+          </button>
+          <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700" aria-label="Notifications">
+            <Bell className="h-4 w-4" />
+            <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" />
+          </button>
+        </section>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Pipeline summary">
           <Metric label="Pipeline value" value={formatValue(pipelineValue)} detail="Across loaded active stages" icon={<CircleDollarSign className="h-5 w-5" />} />
