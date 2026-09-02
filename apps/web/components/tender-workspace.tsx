@@ -32,6 +32,7 @@ import type {
 import {
   useAnalyzeAnswer,
   useAnalyzeTenderMutation,
+  useApproveTender,
   useAnswerEvidence,
   useAnswerVersions,
   useGenerateAnswer,
@@ -40,6 +41,7 @@ import {
   useRequirementEvidence,
   useSaveAnswer,
   useSubmitReview,
+  useSubmitTender,
   useTenderAnswers,
   useTenderBrief,
   useTenderBriefRefresh,
@@ -49,6 +51,8 @@ import {
   useTenderSources,
   useParseTenderSource,
   useTenderWorkspace,
+  useRfpApplyProgress,
+  useRunRfpApply,
 } from "../lib/queries";
 import { getGenerationId, getGenerationMeta, reviewToneFromStatus } from "../lib/workspace-utils";
 
@@ -79,6 +83,10 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
   const refreshBrief = useTenderBriefRefresh(tenderId);
   const analyzeTenderMutation = useAnalyzeTenderMutation(tenderId);
   const parseSourceMutation = useParseTenderSource(tenderId);
+  const applyProgressQuery = useRfpApplyProgress(tenderId);
+  const runApplyMutation = useRunRfpApply(tenderId);
+  const approveTenderMutation = useApproveTender(tenderId);
+  const submitTenderMutation = useSubmitTender(tenderId);
 
   const tender = overviewQuery.data?.tender;
   const requirements = requirementsQuery.data?.items ?? [];
@@ -130,6 +138,66 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
           <MetricCard label="Requirements" value={overviewQuery.data?.counts.requirements ?? requirements.length} />
           <MetricCard label="Answers" value={overviewQuery.data?.counts.answers ?? answers.length} />
           <MetricCard label="Reviews" value={overviewQuery.data?.counts.reviews ?? reviews.length} />
+        </section>
+
+        <section className="rounded-[10px] border border-[#155EEF]/20 bg-[#F8FAFF] p-4 shadow-[0_12px_30px_rgba(21,94,239,0.08)]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#155EEF]">Application workflow</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">Prepare this tender for review</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Analyze the tender, generate grounded drafts for up to ten requirements, and run validation.
+              </p>
+            </div>
+            <ActionButton
+              onClick={() => runApplyMutation.mutate({ phase: "FULL", limit: 10 })}
+              loading={runApplyMutation.isPending}
+            >
+              {runApplyMutation.isPending ? "Preparing..." : "Prepare application"}
+            </ActionButton>
+          </div>
+
+          {applyProgressQuery.data ? (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
+              {Object.entries(applyProgressQuery.data.phases).map(([phase, value]) => {
+                const status = value.status;
+                const complete = status === "COMPLETE";
+                return (
+                  <div key={phase} className="rounded-[9px] border border-[#D9E2F3] bg-white px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">{phase}</p>
+                    <p className={`mt-1 text-xs font-semibold ${complete ? "text-emerald-700" : status === "FAILED" ? "text-rose-700" : "text-amber-700"}`}>
+                      {status.replaceAll("_", " ")}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {applyProgressQuery.error ? <div className="mt-3"><ErrorBanner error={applyProgressQuery.error} /></div> : null}
+          {runApplyMutation.error ? <div className="mt-3"><ErrorBanner error={runApplyMutation.error} /></div> : null}
+          {approveTenderMutation.error ? <div className="mt-3"><ErrorBanner error={approveTenderMutation.error} /></div> : null}
+          {submitTenderMutation.error ? <div className="mt-3"><ErrorBanner error={submitTenderMutation.error} /></div> : null}
+          {applyProgressQuery.data?.phases.validation.ready ? (
+            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#D9E2F3] pt-4">
+              <p className="mr-auto text-xs text-slate-600">Validation is ready. Complete review before approval.</p>
+              <ActionButton
+                onClick={() => approveTenderMutation.mutate()}
+                loading={approveTenderMutation.isPending}
+                variant="secondary"
+                disabled={applyProgressQuery.data.phases.approval.status === "COMPLETE"}
+              >
+                {applyProgressQuery.data.phases.approval.status === "COMPLETE" ? "Approved" : "Approve tender"}
+              </ActionButton>
+              <ActionButton
+                onClick={() => submitTenderMutation.mutate()}
+                loading={submitTenderMutation.isPending}
+                disabled={applyProgressQuery.data.phases.submission.status === "COMPLETE"}
+              >
+                {applyProgressQuery.data.phases.submission.status === "COMPLETE" ? "Submitted" : "Submit tender"}
+              </ActionButton>
+            </div>
+          ) : null}
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">

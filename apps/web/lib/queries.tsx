@@ -5,6 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import {
   analyzeRequirementAnswer,
   analyzeTender,
+  approveTender,
   fetchAudits,
   fetchActivities,
   fetchOrganizationCurrent,
@@ -34,6 +35,7 @@ import {
   fetchTeams,
   fetchWorkspaces,
   fetchWorkspaceOverview,
+  fetchRfpApplyProgress,
   fetchRoles,
   fetchTeamMembers,
   fetchWorkspaceMembers,
@@ -45,6 +47,8 @@ import {
   updateOrganizationCurrent,
   parseTenderSource,
   transitionTender,
+  runRfpApply,
+  submitTender,
 } from "./api";
 import type {
   DashboardOverview,
@@ -64,6 +68,7 @@ import type {
   TenderAnalysisPayload,
   TenderListPayload,
   WorkspaceOverview,
+  RfpApplyProgress,
   OrganizationSummary,
   OrganizationMemberSummary,
   OrganizationInvitationSummary,
@@ -72,11 +77,13 @@ import type {
   WorkspaceMemberSummary,
   TeamMemberSummary,
   AuditLogSummary,
+  RfpApplyRunResult,
 } from "./models";
 
 export const tenderKeys = {
   detail: (tenderId: string) => ["tender", tenderId] as const,
   workspace: (tenderId: string) => ["tender", tenderId, "workspace"] as const,
+  applyProgress: (tenderId: string) => ["tender", tenderId, "apply", "progress"] as const,
   brief: (tenderId: string) => ["tender", tenderId, "brief"] as const,
   analysis: (tenderId: string) => ["tender", tenderId, "analysis"] as const,
   questions: (tenderId: string) => ["tender", tenderId, "questions"] as const,
@@ -161,6 +168,14 @@ export function useTenderWorkspace(tenderId: string, initialData?: WorkspaceOver
     queryKey: tenderKeys.workspace(tenderId),
     queryFn: () => fetchWorkspaceOverview(tenderId),
     initialData: initialData ?? undefined,
+  });
+}
+
+export function useRfpApplyProgress(tenderId: string) {
+  return useQuery({
+    queryKey: tenderKeys.applyProgress(tenderId),
+    queryFn: () => fetchRfpApplyProgress(tenderId),
+    enabled: Boolean(tenderId),
   });
 }
 
@@ -471,6 +486,48 @@ export function useGenerateAnswer(tenderId: string) {
       ]);
     },
   });
+}
+
+export function useRunRfpApply(tenderId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { phase?: "ANALYZE" | "GENERATE" | "VALIDATE" | "FULL"; requirementIds?: string[]; limit?: number }) =>
+      runRfpApply(tenderId, input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenderKeys.applyProgress(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.workspace(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.answers(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.reviews(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.analysis(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+      ]);
+    },
+  });
+}
+
+function useTenderLifecycleMutation(tenderId: string, mutationFn: () => Promise<unknown>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenderKeys.applyProgress(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.workspace(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.detail(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderListKeys.list() }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+      ]);
+    },
+  });
+}
+
+export function useApproveTender(tenderId: string) {
+  return useTenderLifecycleMutation(tenderId, () => approveTender(tenderId));
+}
+
+export function useSubmitTender(tenderId: string) {
+  return useTenderLifecycleMutation(tenderId, () => submitTender(tenderId));
 }
 
 export function useRegenerateAnswer(tenderId: string) {

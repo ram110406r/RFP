@@ -96,6 +96,28 @@ export interface WorkspaceOverview {
   sections: Array<{ id: string; label: string; items: number }>;
 }
 
+export interface RfpApplyProgress {
+  tenderId: string;
+  status: string;
+  phases: {
+    intake: { status: string; count: number };
+    analysis: { status: string; count: number };
+    response: { status: string; count: number };
+    review: { status: string; count: number };
+    validation: { status: string; score: number; ready: boolean; issueCount: number };
+    approval: { status: string };
+    submission: { status: string };
+  };
+}
+
+export interface RfpApplyRunResult {
+  phase: "ANALYZE" | "GENERATE" | "VALIDATE" | "FULL";
+  result: unknown;
+  generated: Array<{ requirementId: string; result?: unknown; error?: string }>;
+  progress: RfpApplyProgress;
+  nextAction: string | null;
+}
+
 export interface TenderListPayload {
   items: TenderSummary[];
   total: number;

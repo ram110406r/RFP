@@ -27,6 +27,8 @@ import type {
   TenderReview,
   WorkspaceSummary,
   WorkspaceOverview,
+  RfpApplyProgress,
+  RfpApplyRunResult,
   TeamSummary,
   TeamMemberSummary,
   WorkspaceMemberSummary,
@@ -266,6 +268,22 @@ async function requestJson<T>(path: string, init: ApiInit = {}): Promise<T> {
 
 export async function fetchWorkspaceOverview(tenderId: string, init?: ApiInit) {
   return requestJson<WorkspaceOverview>(`/tenders/${tenderId}/workspace`, init);
+}
+
+export async function fetchRfpApplyProgress(tenderId: string, init?: ApiInit) {
+  return requestJson<RfpApplyProgress>(`/rfp-apply/${tenderId}/progress`, init);
+}
+
+export async function runRfpApply(
+  tenderId: string,
+  body: { phase?: "ANALYZE" | "GENERATE" | "VALIDATE" | "FULL"; requirementIds?: string[]; limit?: number },
+  init?: ApiInit,
+) {
+  return requestJson<RfpApplyRunResult>(`/rfp-apply/${tenderId}/run`, {
+    ...init,
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function fetchDashboardSummary(
@@ -600,6 +618,13 @@ export async function updateReview(reviewId: string, body: { status?: string; co
 
 export async function submitTender(tenderId: string, init?: ApiInit) {
   return requestJson<{ id: string; status: string; previousStatus: string | null; reason: string | null }>(`/tenders/${tenderId}/submit`, {
+    ...init,
+    method: "POST",
+  });
+}
+
+export async function approveTender(tenderId: string, init?: ApiInit) {
+  return requestJson<{ id: string; status: string; previousStatus: string | null; reason: string | null }>(`/tenders/${tenderId}/approve`, {
     ...init,
     method: "POST",
   });

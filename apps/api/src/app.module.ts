@@ -33,6 +33,7 @@ import { RolesModule } from "./modules/roles";
 import { TeamsModule } from "./modules/teams";
 import { WorkspacesModule } from "./modules/workspaces";
 import { OnboardingModule } from "./modules/onboarding/onboarding.module";
+import { RfpApplyModule } from "./modules/rfp-apply/rfp-apply.module";
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { OnboardingModule } from "./modules/onboarding/onboarding.module";
     ActivitiesModule,
     AuditsModule,
     TendersModule,
+    RfpApplyModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
