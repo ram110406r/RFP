@@ -115,6 +115,20 @@ export function validateEnv(config: Record<string, unknown>): Env {
     if (!result.data.STORAGE_ACCESS_KEY_ID || !result.data.STORAGE_SECRET_ACCESS_KEY) {
       missing.push("STORAGE_ACCESS_KEY_ID / STORAGE_SECRET_ACCESS_KEY: both required in production");
     }
+    if (result.data.STORAGE_ENDPOINT && !result.data.STORAGE_PUBLIC_ENDPOINT) {
+      missing.push("STORAGE_PUBLIC_ENDPOINT: required when using S3-compatible storage in production");
+    }
+    if (result.data.STORAGE_PUBLIC_ENDPOINT) {
+      try {
+        if (new URL(result.data.STORAGE_PUBLIC_ENDPOINT).protocol !== "https:") {
+          missing.push("STORAGE_PUBLIC_ENDPOINT: must use HTTPS in production");
+        }
+      } catch {
+        // The Zod URL check above normally handles this; keep the production
+        // error explicit if configuration is transformed unexpectedly.
+        missing.push("STORAGE_PUBLIC_ENDPOINT: must be a valid HTTPS URL");
+      }
+    }
     if (missing.length > 0) {
       const issues = missing.map((entry) => `  - ${entry}`).join("\n");
       throw new Error(`Invalid environment configuration:\n${issues}`);

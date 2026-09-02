@@ -119,10 +119,10 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-rfp-os_dokploy_auth_secret_20260830_fallback}
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: http://minio:9000
-      # Set this to the public HTTPS MinIO/S3 URL in Dokploy. The internal
-      # fallback keeps the stack deployable, but browser uploads need the
-      # public value to avoid mixed-content errors.
-      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-http://minio:9000}
+      # This must be the HTTPS MinIO/S3 URL reachable by the browser. The API
+      # uses STORAGE_ENDPOINT for Docker-internal access and this value only
+      # when signing browser upload/download URLs.
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:?STORAGE_PUBLIC_ENDPOINT is required}
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
       STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
