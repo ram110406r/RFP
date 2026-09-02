@@ -171,14 +171,7 @@ function NavLink({
         aria-current={active ? "page" : undefined}
         aria-label={collapsed ? item.label : undefined}
         title={collapsed ? item.label : undefined}
-        onClick={(event) => {
-          if (hasSubmenu && collapsed) {
-            event.preventDefault();
-            setActiveFlyout(activeFlyout === item.href ? null : item.href);
-            return;
-          }
-          onNavigate?.();
-        }}
+        onClick={onNavigate}
         className={[
           "grid h-8 items-center rounded-[8px] px-2 text-[11px] font-medium transition",
           collapsed ? "grid-cols-[18px] justify-items-center px-0" : "grid-cols-[18px_minmax(0,1fr)] gap-2.5",
@@ -484,6 +477,7 @@ export function AppShell({
   const session = useFirebaseSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarReady, setSidebarReady] = useState(false);
   const [viewport, setViewport] = useState<Viewport>("desktop");
   const [activeFlyout, setActiveFlyout] = useState<string | null>(null);
 
@@ -505,12 +499,16 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
-    const storedValue = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
-    if (storedValue !== null) {
-      setSidebarCollapsed(storedValue === "true");
-    }
+    try {
+      const storedValue = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+      if (storedValue !== null) {
+        setSidebarCollapsed(storedValue === "true");
+      }
 
-    setMobileNavOpen(window.sessionStorage.getItem(MOBILE_NAV_STORAGE_KEY) === "true");
+      setMobileNavOpen(window.sessionStorage.getItem(MOBILE_NAV_STORAGE_KEY) === "true");
+    } finally {
+      setSidebarReady(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -543,13 +541,17 @@ export function AppShell({
   const isMobile = viewport === "mobile";
   const collapsed = !isMobile && sidebarCollapsed;
   const sidebarWidth = collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED;
-  const contentStyle = isMobile ? undefined : { marginLeft: sidebarWidth };
+  const contentStyle = isMobile
+    ? undefined
+    : { marginLeft: sidebarReady ? sidebarWidth : SIDEBAR_WIDTH_COLLAPSED };
 
   return (
     <div className="min-h-screen bg-white text-slate-950">
       {!isMobile ? (
         <aside
-          className="fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white transition-[width] duration-300 ease-out md:flex"
+          className={`fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white transition-[width] duration-300 ease-out md:flex ${
+            sidebarReady ? "visible" : "invisible"
+          }`}
           style={{ width: sidebarWidth }}
         >
           <div className="relative flex h-full w-full flex-col px-2 pb-2 pt-2.5">
