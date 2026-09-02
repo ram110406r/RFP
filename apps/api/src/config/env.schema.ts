@@ -51,9 +51,9 @@ export const envSchema = z.object({
    * readiness check reports "skipped" and upload endpoints fail loudly rather
    * than the API refusing to boot.
    */
-  STORAGE_ENDPOINT: z.string().url().optional(),
+  STORAGE_ENDPOINT: blankToUndefined(z.string().url()),
   /** Browser-reachable endpoint used for presigned URLs. */
-  STORAGE_PUBLIC_ENDPOINT: z.string().url().optional(),
+  STORAGE_PUBLIC_ENDPOINT: blankToUndefined(z.string().url()),
   STORAGE_REGION: z.string().default("us-east-1"),
   STORAGE_BUCKET: z.string().default("rfp-os-documents"),
   STORAGE_ACCESS_KEY_ID: blankToUndefined(z.string().min(1)),
@@ -112,13 +112,14 @@ export function validateEnv(config: Record<string, unknown>): Env {
      * in production a missing credential would only surface when someone first
      * tried to upload – a real document, rather than the deploy.
      */
-    if (!result.data.STORAGE_ACCESS_KEY_ID || !result.data.STORAGE_SECRET_ACCESS_KEY) {
+    const hasStorage = Boolean(result.data.STORAGE_ENDPOINT);
+    if (hasStorage && (!result.data.STORAGE_ACCESS_KEY_ID || !result.data.STORAGE_SECRET_ACCESS_KEY)) {
       missing.push("STORAGE_ACCESS_KEY_ID / STORAGE_SECRET_ACCESS_KEY: both required in production");
     }
-    if (result.data.STORAGE_ENDPOINT && !result.data.STORAGE_PUBLIC_ENDPOINT) {
+    if (hasStorage && !result.data.STORAGE_PUBLIC_ENDPOINT) {
       missing.push("STORAGE_PUBLIC_ENDPOINT: required when using S3-compatible storage in production");
     }
-    if (result.data.STORAGE_PUBLIC_ENDPOINT) {
+    if (hasStorage && result.data.STORAGE_PUBLIC_ENDPOINT) {
       try {
         if (new URL(result.data.STORAGE_PUBLIC_ENDPOINT).protocol !== "https:") {
           missing.push("STORAGE_PUBLIC_ENDPOINT: must use HTTPS in production");

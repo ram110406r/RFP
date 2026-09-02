@@ -60,7 +60,7 @@ export class HealthService {
   }
 
   private async checkStorage(): Promise<CheckStatus> {
-    if (this.config.get("NODE_ENV", { infer: true }) !== "production" && !this.config.get("STORAGE_ENDPOINT", { infer: true })) {
+    if (!this.config.get("STORAGE_ENDPOINT", { infer: true })) {
       return "skipped";
     }
     return (await this.storage.bucketReachable()) ? "ok" : "error";
