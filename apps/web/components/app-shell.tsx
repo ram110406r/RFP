@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 
+import { useAppShellState } from "./app-shell-state-provider";
 import { useFirebaseSession } from "./firebase-auth-gate";
 
 type Breadcrumb = {
@@ -54,8 +55,6 @@ type Viewport = "mobile" | "tablet" | "desktop";
 
 const SIDEBAR_WIDTH_EXPANDED = 216;
 const SIDEBAR_WIDTH_COLLAPSED = 68;
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "tendyy.sidebar-collapsed";
-const MOBILE_NAV_STORAGE_KEY = "tendyy.mobile-nav-open";
 
 function maskEmail(email: string | null) {
   if (!email) return "signed in";
@@ -475,9 +474,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const session = useFirebaseSession();
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarReady, setSidebarReady] = useState(false);
+  const { mobileNavOpen, setMobileNavOpen, sidebarCollapsed, sidebarReady, setSidebarCollapsed } = useAppShellState();
   const [viewport, setViewport] = useState<Viewport>("desktop");
   const [activeFlyout, setActiveFlyout] = useState<string | null>(null);
 
@@ -499,19 +496,6 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
-    try {
-      const storedValue = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
-      if (storedValue !== null) {
-        setSidebarCollapsed(storedValue === "true");
-      }
-
-      setMobileNavOpen(window.sessionStorage.getItem(MOBILE_NAV_STORAGE_KEY) === "true");
-    } finally {
-      setSidebarReady(true);
-    }
-  }, []);
-
-  useEffect(() => {
     if (viewport === "mobile") {
       return;
     }
@@ -524,14 +508,6 @@ export function AppShell({
   useEffect(() => {
     setActiveFlyout(null);
   }, [pathname]);
-
-  useEffect(() => {
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
-  }, [sidebarCollapsed]);
-
-  useEffect(() => {
-    window.sessionStorage.setItem(MOBILE_NAV_STORAGE_KEY, String(mobileNavOpen));
-  }, [mobileNavOpen]);
 
   const accountEmail = session?.profile?.email ?? session?.user?.email ?? null;
   const displayLabel = maskEmail(accountEmail);

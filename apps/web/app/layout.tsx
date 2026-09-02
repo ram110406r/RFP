@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { AppShellStateProvider } from "../components/app-shell-state-provider";
 import { FirebaseAuthGate } from "../components/firebase-auth-gate";
 import { AppQueryProvider } from "../lib/query-provider";
 import "./globals.css";
@@ -14,7 +15,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <AppQueryProvider>
-          <FirebaseAuthGate>{children}</FirebaseAuthGate>
+          <AppShellStateProvider>
+            <FirebaseAuthGate>{children}</FirebaseAuthGate>
+          </AppShellStateProvider>
         </AppQueryProvider>
       </body>
     </html>
