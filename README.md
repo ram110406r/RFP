@@ -16,10 +16,8 @@ apps/
   worker      Bun + BullMQ — background/async job processing
   mcp         Model Context Protocol server — exposes RFP OS to MCP clients
   extension   Plasmo — browser extension
-  legacy-web  Previous TanStack Start frontend prototype, kept for reference
-              during migration. Not actively developed.
-  legacy-api  Previous Bun + Elysia API, kept for reference during migration.
-              Not actively developed.
+  legacy-web  Previous TanStack Start frontend, retained for rollback only.
+  legacy-api  Previous Bun + Elysia API, retained for rollback only.
 
 packages/
   ui              Shared React component library (consumed by apps/web)
@@ -50,10 +48,9 @@ packages/
 - **MCP**: separate server app (`apps/mcp`), not embedded in the API
 
 `apps/legacy-web` and `apps/legacy-api` are the previous prototype
-implementation (TanStack Start + Bun/Elysia), preserved so nothing already
-built is lost. RFP domain functionality is migrated from there into
-`apps/web` / `apps/api` in subsequent phases; they are not part of the
-target architecture and should not receive new feature work.
+implementation, retained temporarily for rollback and migration verification.
+The active target architecture is `apps/web` + `apps/api`; legacy applications
+should not receive new feature work.
 
 ## Getting started
 

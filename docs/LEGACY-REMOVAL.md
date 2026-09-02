@@ -1,9 +1,9 @@
 # Legacy Removal
 
-## Removed
+## Pending Removal
 
-- `apps/legacy-web`
-- `apps/legacy-api`
+- `apps/legacy-web` remains available for rollback only.
+- `apps/legacy-api` remains available for rollback only.
 
 ## What remains
 
@@ -14,12 +14,13 @@
 
 ## Why anything remains
 
-- The active stack does not import or depend on the legacy apps.
-- The legacy code was transitional and duplicated the current product surface.
+- The active NestJS stack no longer registers the legacy `rfp` or document controllers.
+- The legacy code is transitional and duplicated the current product surface.
 - Shared schema and package references remain only where they support the active stack or historical migration context.
 
-## What can be removed later
+## Removal Gate
 
-- Stale references in docs, comments, and historical notes
-- Legacy package metadata entries if the repository is fully re-baselined and lockfiles are regenerated
-- Any remaining migration-era comments that only describe the deleted legacy apps
+- Confirm no deployment references either legacy service.
+- Export and verify legacy database rows before removing their tables.
+- Remove the two legacy apps, workspace metadata, Dockerfiles, and lockfile entries.
+- Remove stale references in docs, comments, and historical notes.

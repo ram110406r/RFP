@@ -233,7 +233,15 @@ export class TenderAiService {
   }
 
   async analyzeAnswer(context: TenderAiAnalysisContext): Promise<AnswerAnalysisResult> {
-    return deriveAnswerAnalysisFallback(context, "");
+    try {
+      const response = await this.router.complete(buildPromptRequest("AnswerAnalysisPrompt", context));
+      return normalizeAnswerAnalysis(analysisSchema.parse(parseJson(response.content)));
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw error;
+      }
+      return deriveAnswerAnalysisFallback(context, error instanceof Error ? error.message : String(error));
+    }
   }
 
   async getTenderBrief(context: TenderAiBriefContext): Promise<TenderBriefResult> {
@@ -250,6 +258,22 @@ export class TenderAiService {
     const response = await this.router.complete(buildPromptRequest("ClarificationPrompt", context));
     return clarificationSchema.parse(parseJson(response.content));
   }
+}
+
+function normalizeAnswerAnalysis(value: z.infer<typeof analysisSchema>): AnswerAnalysisResult {
+  const contradictions = Array.isArray(value.contradictions) ? value.contradictions : [];
+  return {
+    coverage: normalizeRatio(value.coverage ?? value.evidenceCoverage),
+    supportedClaims: normalizeCount(value.supportedClaims),
+    unsupportedClaims: normalizeCount(value.unsupportedClaims),
+    contradictions,
+    missingEvidence: value.missingEvidence,
+    risk: normalizeRisk(value.risk),
+    readiness: normalizeReadiness(value.readiness),
+    warnings: value.warnings,
+    claims: value.claims,
+    metadata: value.metadata,
+  };
 }
 
 function parseJson(content: string) {

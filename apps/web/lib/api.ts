@@ -278,13 +278,6 @@ export async function fetchDashboardSummary(
   return requestJson<DashboardOverview>(`/dashboard/summary${suffix}`, init);
 }
 
-export async function fetchDashboardOverview(
-  params: { pageSize?: number } = {},
-  init?: ApiInit,
-) {
-  return fetchDashboardSummary(params, init);
-}
-
 export async function fetchTenders(
   params: {
     workspaceId?: string;

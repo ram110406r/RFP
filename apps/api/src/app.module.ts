@@ -24,12 +24,10 @@ import { AuthModule } from "./modules/auth";
 import { ActivitiesModule } from "./modules/activities";
 import { AssignmentsModule } from "./modules/assignments";
 import { AuditsModule } from "./modules/audits";
-import { DocumentsModule } from "./modules/documents";
 import { OrganizationsModule } from "./modules/organizations";
 import { PoliciesModule } from "./modules/policies";
 import { KnowledgeModule } from "./modules/knowledge";
 import { DashboardModule } from "./modules/dashboard";
-import { RfpModule } from "./modules/rfp";
 import { TendersModule } from "./modules/tenders";
 import { RolesModule } from "./modules/roles";
 import { TeamsModule } from "./modules/teams";
@@ -70,9 +68,7 @@ import { OnboardingModule } from "./modules/onboarding/onboarding.module";
     AssignmentsModule,
     ActivitiesModule,
     AuditsModule,
-    RfpModule,
     TendersModule,
-    DocumentsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

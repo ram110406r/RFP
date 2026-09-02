@@ -96,6 +96,14 @@ export class AnswerGenerationService {
       }
     }
 
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        modelFallbackReason
+          ? `AI answer generation unavailable: ${modelFallbackReason}`
+          : "AI answer generation returned an invalid response.",
+      );
+    }
+
     const fallback = buildDeterministicFallbackAnswer(context, {
       risk,
       status,

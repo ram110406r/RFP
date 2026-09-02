@@ -172,15 +172,6 @@ export function useTenderBrief(tenderId: string, initialData?: TenderBriefPayloa
   });
 }
 
-export function useTenderAnalysis(tenderId: string, enabled = true, initialData?: TenderAnalysisPayload | null) {
-  return useQuery({
-    queryKey: tenderKeys.analysis(tenderId),
-    queryFn: () => analyzeTender(tenderId),
-    enabled,
-    initialData: initialData ?? undefined,
-  });
-}
-
 export function useTenderQuestions(tenderId: string, initialData?: { items: TenderQuestion[] } | null) {
   return useQuery({
     queryKey: tenderKeys.questions(tenderId),
@@ -268,10 +259,6 @@ export function useKnowledgeList(
     initialData: initialData ?? undefined,
     placeholderData: keepPreviousData,
   });
-}
-
-export function useDashboardOverview(pageSize = 6, initialData?: DashboardOverview | null) {
-  return useDashboardSummary(pageSize, initialData);
 }
 
 export function useDashboardSummary(pageSize = 6, initialData?: DashboardOverview | null) {

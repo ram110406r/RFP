@@ -63,24 +63,21 @@ This is the structural fact that explains most of the repository.
 
 | System | What it is | Status |
 | --- | --- | --- |
-| `apps/legacy-web` | The full 16-screen React frontend. Everything a user sees today. | Live |
-| `apps/legacy-api` | A small Elysia API, 49 routes, serving that frontend from the real database. | Live |
-| `apps/api` | The real backend being built: NestJS, proper auth, permissions, audit, a state machine. | Live |
-| `apps/web` | The frontend that will replace legacy-web. **Currently zero files.** | Planned |
+| `apps/legacy-web` | Previous TanStack frontend retained for rollback only. | Pending removal |
+| `apps/legacy-api` | Previous Elysia API retained for rollback only. | Pending removal |
+| `apps/api` | Active NestJS backend with auth, permissions, audit, lifecycle, tender, knowledge, and workspace APIs. | Live |
+| `apps/web` | Active Next.js frontend for the current product surface. | Live |
 
-The `legacy-*` pair is a prototype built first to prove the product shape. It
-works, it is deployed, and it is what you demo. It has no real authentication —
-everyone who gets past the password gate is the same seeded user.
+The `legacy-*` pair is the previous prototype retained temporarily for rollback
+and data migration checks. It is no longer registered by the active NestJS API
+and should not receive new feature work.
 
-`apps/api` is the rebuild, done properly, phase by phase. It has genuine
-multi-tenant isolation, role-based permissions, an audit trail, and a lifecycle
-state machine. Nothing in the deployed demo talks to it yet.
+`apps/api` is the active backend. It provides genuine multi-tenant isolation,
+role-based permissions, an audit trail, lifecycle control, and the canonical
+tender APIs used by the current UI.
 
-**Why both exist at once:** deleting the prototype before the replacement is
-ready would leave nothing to show. The plan is to finish `apps/api`, build
-`apps/web` against it, then retire both legacy apps. Until then two backends
-share one database — safe because they read the same tables and only the legacy
-one is exposed.
+The active UI calls the NestJS API through `/api/v1`; the legacy applications
+remain only until deployment usage and legacy database rows have been verified.
 
 ---
 
@@ -794,9 +791,9 @@ Collected in one place, so nothing on this list surprises you in a demo.
 
 | Feature | What actually happens |
 | --- | --- |
-| AI answer generation | Prepends one of three canned phrases to the existing answer. No model call. |
-| Confidence scores | A stored number that rises by 0.04 per regeneration. |
-| Risk classification | Seeded values. Nothing assesses risk. |
+| AI answer generation | Uses the configured provider; deterministic fallback is limited to development/test environments. |
+| Confidence scores | Provider output is normalized, but confidence still requires product evaluation. |
+| Risk classification | Provider output is normalized; seeded records remain for existing data. |
 | Intelligence panel | Rule-based output presented as insight. |
 | Conflict detection | Seeded conflicts. Nothing detects them. |
 | Package generation | Creates a version record and checklist. Produces no file. |
@@ -806,7 +803,7 @@ Collected in one place, so nothing on this list surprises you in a demo.
 ### Honestly empty
 
 - `apps/web` — the replacement frontend. Zero files.
-- `@rfp-os/ai` — interfaces only; no provider registered.
+- `@rfp-os/ai` — provider abstraction used by the active tender AI services.
 - `@rfp-os/ui` — scaffold.
 - MCP server — one `ping` tool.
 - Browser extension — a placeholder popup.
