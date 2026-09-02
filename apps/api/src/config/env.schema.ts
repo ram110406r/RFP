@@ -52,6 +52,8 @@ export const envSchema = z.object({
    * than the API refusing to boot.
    */
   STORAGE_ENDPOINT: z.string().url().optional(),
+  /** Browser-reachable endpoint used for presigned URLs. */
+  STORAGE_PUBLIC_ENDPOINT: z.string().url().optional(),
   STORAGE_REGION: z.string().default("us-east-1"),
   STORAGE_BUCKET: z.string().default("rfp-os-documents"),
   STORAGE_ACCESS_KEY_ID: blankToUndefined(z.string().min(1)),

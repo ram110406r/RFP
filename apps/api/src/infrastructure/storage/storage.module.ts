@@ -25,6 +25,7 @@ import type { Env } from "../../config/env.schema";
       useFactory: (config: ConfigService<Env, true>) =>
         new ObjectStorage({
           endpoint: config.get("STORAGE_ENDPOINT", { infer: true }),
+          publicEndpoint: config.get("STORAGE_PUBLIC_ENDPOINT", { infer: true }),
           region: config.get("STORAGE_REGION", { infer: true }),
           bucket: config.get("STORAGE_BUCKET", { infer: true }),
           accessKeyId: config.get("STORAGE_ACCESS_KEY_ID", { infer: true }),

@@ -54,6 +54,8 @@ type Viewport = "mobile" | "tablet" | "desktop";
 
 const SIDEBAR_WIDTH_EXPANDED = 216;
 const SIDEBAR_WIDTH_COLLAPSED = 68;
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "tendyy.sidebar-collapsed";
+const MOBILE_NAV_STORAGE_KEY = "tendyy.mobile-nav-open";
 
 function maskEmail(email: string | null) {
   if (!email) return "signed in";
@@ -417,12 +419,18 @@ function MobileDrawer({
   subtitle: string;
   onClose: () => void;
 }) {
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-40 bg-slate-950/30 md:hidden" onClick={onClose}>
+    <div
+      className={`fixed inset-0 z-40 transition-opacity duration-300 ease-out md:hidden ${
+        open ? "pointer-events-auto bg-slate-950/30 opacity-100" : "pointer-events-none bg-slate-950/0 opacity-0"
+      }`}
+      onClick={onClose}
+      aria-hidden={!open}
+    >
       <aside
-        className="flex h-full w-[280px] flex-col border-r border-slate-200 bg-white p-3"
+        className={`flex h-full w-[280px] flex-col border-r border-slate-200 bg-white p-3 transition-transform duration-300 ease-out ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex h-12 items-center justify-between px-1">
@@ -451,7 +459,6 @@ function MobileDrawer({
               pathname={pathname}
               activeFlyout={null}
               setActiveFlyout={() => undefined}
-              onNavigate={onClose}
             />
           ))}
         </div>
@@ -498,19 +505,35 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
+    const storedValue = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+    if (storedValue !== null) {
+      setSidebarCollapsed(storedValue === "true");
+    }
+
+    setMobileNavOpen(window.sessionStorage.getItem(MOBILE_NAV_STORAGE_KEY) === "true");
+  }, []);
+
+  useEffect(() => {
     if (viewport === "mobile") {
-      setMobileNavOpen(false);
       return;
     }
 
-    setSidebarCollapsed(viewport !== "desktop");
-    setMobileNavOpen(false);
+    if (viewport !== "desktop") {
+      setSidebarCollapsed(true);
+    }
   }, [viewport]);
 
   useEffect(() => {
-    setMobileNavOpen(false);
     setActiveFlyout(null);
   }, [pathname]);
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    window.sessionStorage.setItem(MOBILE_NAV_STORAGE_KEY, String(mobileNavOpen));
+  }, [mobileNavOpen]);
 
   const accountEmail = session?.profile?.email ?? session?.user?.email ?? null;
   const displayLabel = maskEmail(accountEmail);
@@ -526,7 +549,7 @@ export function AppShell({
     <div className="min-h-screen bg-white text-slate-950">
       {!isMobile ? (
         <aside
-          className="fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white md:flex"
+          className="fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white transition-[width] duration-300 ease-out md:flex"
           style={{ width: sidebarWidth }}
         >
           <div className="relative flex h-full w-full flex-col px-2 pb-2 pt-2.5">
@@ -597,7 +620,7 @@ export function AppShell({
         onClose={() => setMobileNavOpen(false)}
       />
 
-      <div className="min-w-0" style={contentStyle}>
+      <div className="min-w-0 transition-[margin] duration-300 ease-out" style={contentStyle}>
         {!hideDesktopHeader || isMobile ? (
           <ShellHeader
             breadcrumbs={breadcrumbs}

@@ -120,7 +120,8 @@ function ProfileWorkspace() {
   });
   const organizationQuery = useOrganizationCurrent();
   const membersQuery = useOrganizationMembers();
-  const activitiesQuery = useActivities({ actorId: user?.uid ?? undefined });
+  // Firebase UIDs are not the API's canonical database user UUIDs.
+  const activitiesQuery = useActivities({ actorId: user ? "me" : undefined });
   const organization = organizationQuery.data ?? null;
   const members = membersQuery.data?.members ?? [];
   const activityItems = activitiesQuery.data?.items ?? [];

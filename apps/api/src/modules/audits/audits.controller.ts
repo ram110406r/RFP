@@ -1,5 +1,6 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Query } from "@nestjs/common";
 import type { AuthContext } from "@rfp-os/types";
+import { z } from "zod";
 
 import { CurrentAuth, RequirePermissions } from "../../common/auth";
 import { AuditsService } from "./audits.service";
@@ -19,6 +20,10 @@ export class AuditsController {
     @Query("entityId") entityId?: string,
     @Query("actorId") actorId?: string,
   ) {
+    if (actorId && actorId !== "me" && !z.string().uuid().safeParse(actorId).success) {
+      throw new BadRequestException({ code: "INVALID_QUERY", message: "actorId must be a user UUID or 'me'." });
+    }
+
     return {
       items: await this.audits.search(auth, {
         workspaceId,
@@ -26,7 +31,7 @@ export class AuditsController {
         action,
         entityType,
         entityId,
-        actorId,
+        actorId: actorId === "me" ? auth.userId : actorId,
       }),
     };
   }

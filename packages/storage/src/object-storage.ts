@@ -24,6 +24,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 export interface ObjectStorageConfig {
   /** Absent means real AWS S3; set for MinIO or any S3-compatible host. */
   endpoint?: string | undefined;
+  /** Browser-reachable endpoint used only for presigned URLs. */
+  publicEndpoint?: string | undefined;
   region: string;
   bucket: string;
   accessKeyId?: string | undefined;
@@ -58,6 +60,7 @@ export interface PresignGetInput {
 
 export class ObjectStorage {
   private readonly client: S3Client;
+  private readonly presignClient: S3Client;
   readonly bucket: string;
 
   constructor(private readonly config: ObjectStorageConfig) {
@@ -75,6 +78,16 @@ export class ObjectStorage {
           }
         : {}),
     });
+    this.presignClient = config.publicEndpoint
+      ? new S3Client({
+          region: config.region,
+          endpoint: config.publicEndpoint,
+          forcePathStyle: config.forcePathStyle ?? true,
+          ...(config.accessKeyId && config.secretAccessKey
+            ? { credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey } }
+            : {}),
+        })
+      : this.client;
   }
 
   /**
@@ -92,7 +105,7 @@ export class ObjectStorage {
       Key: input.objectKey,
       ContentType: input.mimeType,
     });
-    return getSignedUrl(this.client, command, { expiresIn: input.expiresInSeconds });
+    return getSignedUrl(this.presignClient, command, { expiresIn: input.expiresInSeconds });
   }
 
   presignGet(input: PresignGetInput): Promise<string> {
@@ -107,7 +120,7 @@ export class ObjectStorage {
           }
         : {}),
     });
-    return getSignedUrl(this.client, command, { expiresIn: input.expiresInSeconds });
+    return getSignedUrl(this.presignClient, command, { expiresIn: input.expiresInSeconds });
   }
 
   /**
