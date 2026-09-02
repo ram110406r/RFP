@@ -35,7 +35,7 @@ export function AppTopbar({ onOpenCommandPalette }: { onOpenCommandPalette: () =
         </Button>
         <SheetContent side="left" className="w-64 bg-sidebar p-0 text-sidebar-foreground">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <SidebarNav onNavigate={() => setMobileNavOpen(false)} />
+          <SidebarNav />
         </SheetContent>
       </Sheet>
 
