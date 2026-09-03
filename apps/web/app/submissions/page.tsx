@@ -38,6 +38,7 @@ export default function SubmissionsPage() {
                     <Th>Readiness</Th>
                     <Th>Issues</Th>
                     <Th>Status</Th>
+                    <Th>Action</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -45,7 +46,7 @@ export default function SubmissionsPage() {
                     rows.map((row) => (
                       <tr key={row.tender.id} className="bg-white align-top">
                         <Td>
-                          <Link href={`/tenders/${row.tender.id}`} className="block py-4 pr-4">
+                          <Link href={`/apply/${row.tender.id}`} className="block py-4 pr-4">
                             <p className="font-semibold text-slate-950">{row.tender.title}</p>
                             <p className="mt-1 text-sm text-slate-600">{row.tender.name}</p>
                           </Link>
@@ -56,6 +57,13 @@ export default function SubmissionsPage() {
                               <div className="h-2.5 rounded-full bg-sky-700" style={{ width: `${Math.max(8, row.readiness ?? 0)}%` }} />
                             </div>
                             <span className="text-sm font-medium text-slate-900">{row.readiness ?? "-"}%</span>
+                          </div>
+                        </Td>
+                        <Td>
+                          <div className="py-4">
+                            <Link href={`/apply/${row.tender.id}`} className="inline-flex rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100">
+                              {row.ready ? "Review submission" : "Resolve blockers"}
+                            </Link>
                           </div>
                         </Td>
                         <Td>
@@ -70,7 +78,7 @@ export default function SubmissionsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={4} className="px-6 py-10 text-sm text-slate-500">
+                      <td colSpan={5} className="px-6 py-10 text-sm text-slate-500">
                         No submissions are available yet.
                       </td>
                     </tr>

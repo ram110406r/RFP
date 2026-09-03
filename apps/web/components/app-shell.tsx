@@ -100,18 +100,19 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         label: "Apply",
         icon: FilePenLine,
         section: "main",
-        matches: ["/tenders/new", "/tenders/import"],
+        matches: ["/tenders/new", "/tenders/import", "/requirements", "/responses", "/reviews", "/submissions"],
         submenu: [
           { href: "/apply", label: "Overview", icon: Home },
           { href: "/tenders", label: "Active Tenders", icon: FileText },
-          { href: "/tenders/new?view=requirements", label: "Requirements", icon: ClipboardList },
-          { href: "/reviews", label: "Responses", icon: MessageSquare },
+          { href: "/requirements", label: "Requirements", icon: ClipboardList },
+          { href: "/responses", label: "Responses", icon: MessageSquare },
           { href: "/reviews", label: "Reviews", icon: Star },
           { href: "/submissions", label: "Submissions", icon: Send },
         ],
       },
       { href: "/pipeline", label: "Pipeline", icon: GitBranch, section: "main", exact: true },
-      { href: "/knowledge", label: "Knowledge Brain", icon: Brain, section: "main" },
+      { href: "/analytics", label: "Analytics", icon: PanelsTopLeft, section: "main", exact: true },
+      { href: "/knowledge", label: "Knowledge Brain", icon: Brain, section: "main", submenu: [{ href: "/knowledge", label: "Knowledge library", icon: Brain }, { href: "/templates", label: "Response templates", icon: ClipboardList }] },
       { href: "/organization", label: "Organization", icon: Building2, section: "main", exact: true },
     ],
   },
@@ -121,6 +122,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { href: "/settings", label: "Settings", icon: Settings, section: "system", exact: true },
       { href: "/profile", label: "Profile", icon: User, section: "system", exact: true },
       { href: "/workspace", label: "Workspace", icon: PanelsTopLeft, section: "system", exact: true },
+      { href: "/notifications", label: "Notifications", icon: MessageSquare, section: "system", exact: true },
+      { href: "/audits", label: "Audit log", icon: ClipboardList, section: "system", exact: true },
     ],
   },
 ];
@@ -218,6 +221,29 @@ function NavLink({
               );
             })}
           </div>
+        </div>
+      ) : null}
+
+      {!collapsed && hasSubmenu ? (
+        <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
+          {item.submenu?.map((subItem) => {
+            const subActive = pathname === subItem.href || pathname.startsWith(`${subItem.href}/`) || pathname.startsWith(`${subItem.href}?`);
+            const SubIcon = subItem.icon;
+            return (
+              <Link
+                key={subItem.href}
+                href={subItem.href}
+                onClick={onNavigate}
+                className={[
+                  "flex h-7 items-center gap-2 rounded-[7px] px-2 text-[10px] transition",
+                  subActive ? "bg-[#EFF5FF] font-medium text-[#155EEF]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950",
+                ].join(" ")}
+              >
+                <SubIcon className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <span className="truncate">{subItem.label}</span>
+              </Link>
+            );
+          })}
         </div>
       ) : null}
     </div>
