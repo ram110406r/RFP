@@ -12,11 +12,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
   primary: "bg-[#05091A] text-white shadow-[0_1px_2px_rgba(16,24,40,0.08)] hover:bg-[#0B1028] active:bg-[#02050F]",
-  secondary: "border border-[#D0D5DD] bg-white text-[#101828] hover:border-[#B6C2D1] hover:bg-[#F8FAFC] active:bg-[#F2F4F7]",
-  ghost: "bg-transparent text-[#344054] hover:bg-[#F8FAFC] active:bg-[#F2F4F7]",
+  secondary: "border border-[#D0D5DD] bg-white text-black hover:border-[#B6C2D1] hover:bg-[#F8FAFC] active:bg-[#F2F4F7]",
+  ghost: "bg-transparent text-black hover:bg-[#F8FAFC] active:bg-[#F2F4F7]",
   destructive: "bg-[#D92D20] text-white hover:bg-[#B42318] active:bg-[#912018]",
-  outline: "border border-[#D0D5DD] bg-transparent text-[#101828] hover:border-[#B6C2D1] hover:bg-[#F8FAFC]",
-  icon: "border border-[#D0D5DD] bg-white text-[#344054] hover:border-[#B6C2D1] hover:bg-[#F8FAFC]",
+  outline: "border border-[#D0D5DD] bg-transparent text-black hover:border-[#B6C2D1] hover:bg-[#F8FAFC]",
+  icon: "border border-[#D0D5DD] bg-white text-black hover:border-[#B6C2D1] hover:bg-[#F8FAFC]",
   compact: "bg-[#05091A] text-white shadow-[0_1px_2px_rgba(16,24,40,0.08)] hover:bg-[#0B1028] active:bg-[#02050F]",
 };
 
