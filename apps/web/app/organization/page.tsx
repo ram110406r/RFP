@@ -184,6 +184,14 @@ export default function OrganizationPage() {
             </div>
 
             <div className="flex flex-wrap items-start gap-2.5 xl:pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setActiveTab("workspaces")}
+              >
+                Manage Workspaces
+                <Building2 className="h-4 w-4" />
+              </Button>
               <Button asChild variant="secondary">
                 <Link href="/settings">
                   Edit Organization
