@@ -212,6 +212,13 @@ export class OnboardingService {
       throw new ConflictException("This account already has an active organization membership.");
     }
 
+    // A join link can be opened again from a browser history entry. Once the
+    // employee has completed their profile, accepting the same consumed token
+    // must be a no-op instead of reopening onboarding.
+    if (retryingOwnAcceptedInvitation && state.progress.completed) {
+      return state.progress;
+    }
+
     const accepted = await this.organizationsService.acceptInvitation(userId, token);
     const [updated] = await this.db
       .update(onboardingProgress)

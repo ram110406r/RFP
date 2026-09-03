@@ -16,7 +16,8 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import { OnboardingService } from "./onboarding.service";
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const db = getDb();
+// Database scenarios are skipped locally unless a disposable DATABASE_URL is supplied.
+const db = process.env.DATABASE_URL ? getDb() : (undefined as never);
 const suffix = randomUUID().slice(0, 8);
 const employeeEmail = `employee-v2-${suffix}@example.invalid`;
 const attackerEmail = `attacker-v2-${suffix}@example.invalid`;
@@ -118,6 +119,10 @@ describe("OnboardingService employee journey", () => {
     const completed = await service.status(employeeId);
     expect(completed.needsOnboarding).toBe(false);
 
+    const retryAfterCompletion = await service.acceptInvitationToken(employeeId, invitation!.token);
+    expect(retryAfterCompletion?.completed).toBe(true);
+    expect((await service.status(employeeId)).needsOnboarding).toBe(false);
+
     const [membership] = await db.select().from(organizationMembers).where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.userId, employeeId)));
     const [workspaceMembership] = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspace!.id), eq(workspaceMembers.organizationMemberId, membership!.id)));
     const [persistedUser] = await db.select({ accountType: users.accountType, department: users.department, jobTitle: users.jobTitle, timezone: users.timezone }).from(users).where(eq(users.id, employeeId));
@@ -134,6 +139,7 @@ describe("OnboardingService employee journey", () => {
 });
 
 afterAll(async () => {
+  if (!process.env.DATABASE_URL) return;
   const userIds = [ownerId, employeeId, attackerId].filter(Boolean);
   if (userIds.length) await db.delete(onboardingProgress).where(inArray(onboardingProgress.userId, userIds));
   if (organizationId) await db.delete(organizations).where(eq(organizations.id, organizationId));

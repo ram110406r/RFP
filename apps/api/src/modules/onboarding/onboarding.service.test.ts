@@ -16,7 +16,8 @@ import { OnboardingService } from "./onboarding.service";
 import type { OrganizationsService } from "../organizations/organizations.service";
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const db = getDb();
+// Database scenarios are skipped locally unless a disposable DATABASE_URL is supplied.
+const db = process.env.DATABASE_URL ? getDb() : (undefined as never);
 const service = new OnboardingService(db, {} as OrganizationsService);
 const suffix = randomUUID().slice(0, 8);
 const email = `onboarding-${suffix}@example.invalid`;
@@ -117,6 +118,7 @@ describe("OnboardingService database flow", () => {
 });
 
 afterAll(async () => {
+  if (!process.env.DATABASE_URL) return;
   if (userId) await db.delete(onboardingProgress).where(eq(onboardingProgress.userId, userId));
   if (organizationId) await db.delete(organizations).where(eq(organizations.id, organizationId));
   if (userId) await db.delete(users).where(eq(users.id, userId));

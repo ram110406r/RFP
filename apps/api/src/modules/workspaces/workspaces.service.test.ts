@@ -47,7 +47,8 @@ const config = {
 } as never;
 
 describeDb("WorkspacesService tenant isolation", () => {
-  const db = getDb();
+// Database scenarios are skipped locally unless a disposable DATABASE_URL is supplied.
+const db = process.env.DATABASE_URL ? getDb() : (undefined as never);
   const authService = new AuthService(db, config);
   const service = new WorkspacesService(db, new ActivityService(db), new AuditService(db));
 
@@ -95,8 +96,9 @@ describeDb("WorkspacesService tenant isolation", () => {
     });
   });
 
-  afterAll(async () => {
-    await db.delete(workspaceMembers).where(eq(workspaceMembers.organizationMemberId, membershipAId));
+afterAll(async () => {
+  if (!process.env.DATABASE_URL) return;
+  await db.delete(workspaceMembers).where(eq(workspaceMembers.organizationMemberId, membershipAId));
     await db.delete(organizationMembers).where(inArray(organizationMembers.organizationId, [orgA, orgB]));
     await db.delete(workspaces).where(inArray(workspaces.id, [workspaceA, workspaceB]));
     await db.delete(users).where(inArray(users.id, [userA, userB]));

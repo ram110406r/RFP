@@ -99,6 +99,9 @@ export function validateEnv(config: Record<string, unknown>): Env {
     if (!result.data.BETTER_AUTH_SECRET) {
       missing.push("BETTER_AUTH_SECRET: required in production (min 32 characters)");
     }
+    if (!result.data.FIREBASE_PROJECT_ID) {
+      missing.push("FIREBASE_PROJECT_ID: required in production for Firebase token verification");
+    }
     if (!hasDatabaseUrl && !hasPostgresEnv) {
       missing.push(
         "DATABASE_URL or POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB: required in production",
