@@ -125,7 +125,10 @@ export class OnboardingService {
     const pendingInvitations = invitationRows.filter((invitation) => invitation.status === "pending");
     const journey = (progress.journey ?? (progress.organizationId && !progress.completed ? "COMPANY" : null)) as Journey | null;
     const employeeInProgress = journey === "EMPLOYEE" && !progress.completed;
-    const companyInProgress = journey === "COMPANY" && !progress.completed;
+    // A company is ready for normal login as soon as its owner has the first
+    // active workspace. Older progress rows may still contain optional setup
+    // steps, but they must not trap an established owner in onboarding.
+    const companyInProgress = journey === "COMPANY" && !progress.completed && !(membership && workspaceAccess.length > 0);
 
     let accountState = "NO_ORGANIZATION";
     if (membership && !employeeInProgress && !companyInProgress) {
@@ -263,7 +266,7 @@ export class OnboardingService {
       if (!member || !workspace) throw new ConflictException("Workspace could not be created.");
       await tx.insert(workspaceMembers).values({ workspaceId: workspace.id, organizationMemberId: member.id, status: "active" });
       await tx.update(users).set({ organizationId: organization.id, accountType: "COMPANY_OWNER", memberRole: "Admin", timezone: input.timezone, updatedAt: new Date() }).where(eq(users.id, userId));
-      const [updated] = await tx.update(onboardingProgress).set({ organizationId: organization.id, workspaceId: workspace.id, currentState: "PROFILE", currentStep: 4, updatedAt: new Date() }).where(eq(onboardingProgress.id, progress.id)).returning();
+      const [updated] = await tx.update(onboardingProgress).set({ organizationId: organization.id, workspaceId: workspace.id, currentState: "COMPLETE", currentStep: 4, completed: true, completedAt: new Date(), updatedAt: new Date() }).where(eq(onboardingProgress.id, progress.id)).returning();
       return { organization, workspace, progress: updated };
     });
   }

@@ -66,7 +66,8 @@ describe("OnboardingService database flow", () => {
 
     const inProgress = await service.status(userId);
     expect(inProgress.hasMembership).toBe(true);
-    expect(inProgress.needsOnboarding).toBe(true);
+    expect(inProgress.needsOnboarding).toBe(false);
+    expect(inProgress.progress.completed).toBe(true);
 
     await service.saveProfile(userId, {
       name: "Onboarding Owner",
