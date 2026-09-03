@@ -792,6 +792,10 @@ export default function OrganizationPage() {
         adding={addWorkspaceMemberMutation.isPending}
         removing={removeWorkspaceMemberMutation.isPending}
         onClose={() => setWorkspacePeopleId(null)}
+        onInvite={() => {
+          setWorkspacePeopleId(null);
+          setInviteOpen(true);
+        }}
         onAdd={(workspaceId, organizationMemberId) => addWorkspaceMemberMutation.mutate({ workspaceId, organizationMemberId })}
         onRemove={(workspaceId, organizationMemberId) => removeWorkspaceMemberMutation.mutate({ workspaceId, organizationMemberId })}
       />
@@ -816,6 +820,7 @@ function WorkspacePeopleDialog({
   adding,
   removing,
   onClose,
+  onInvite,
   onAdd,
   onRemove,
 }: {
@@ -825,6 +830,7 @@ function WorkspacePeopleDialog({
   adding: boolean;
   removing: boolean;
   onClose: () => void;
+  onInvite: () => void;
   onAdd: (workspaceId: string, organizationMemberId: string) => void;
   onRemove: (workspaceId: string, organizationMemberId: string) => void;
 }) {
@@ -837,7 +843,7 @@ function WorkspacePeopleDialog({
         <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#155EEF]">Workspace access</p><h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{workspace.name} people</h2><p className="mt-2 text-sm text-slate-600">Adding access does not change company membership. Removing the final workspace leaves the member in an access-required state.</p></div><button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100">Close</button></div>
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           <div><p className="text-sm font-semibold text-slate-900">Current access</p><div className="mt-2 space-y-2">{workspaceMembers.filter((member) => member.status === "active").map((member) => <div key={member.organizationMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="truncate text-xs text-slate-500">{member.email}</p></div><button type="button" disabled={removing} onClick={() => onRemove(workspace.id, member.organizationMemberId)} className="text-xs font-semibold text-rose-700 disabled:opacity-60">Remove</button></div>)}{workspaceMembers.filter((member) => member.status === "active").length === 0 ? <p className="text-sm text-slate-500">No active workspace members.</p> : null}</div></div>
-          <div><p className="text-sm font-semibold text-slate-900">Add company member</p><div className="mt-2 space-y-2">{activeMembers.filter((member) => !assignedMemberIds.has(member.organizationMemberId)).map((member) => <div key={member.organizationMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="truncate text-xs text-slate-500">{formatRole(member.role)} - {member.email}</p></div><button type="button" disabled={adding} onClick={() => onAdd(workspace.id, member.organizationMemberId)} className="text-xs font-semibold text-[#155EEF] disabled:opacity-60">Add</button></div>)}{activeMembers.filter((member) => !assignedMemberIds.has(member.organizationMemberId)).length === 0 ? <p className="text-sm text-slate-500">Every active company member already has access.</p> : null}</div></div>
+          <div><p className="text-sm font-semibold text-slate-900">Add company member</p><div className="mt-2 space-y-2">{activeMembers.filter((member) => !assignedMemberIds.has(member.organizationMemberId)).map((member) => <div key={member.organizationMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="truncate text-xs text-slate-500">{formatRole(member.role)} - {member.email}</p></div><button type="button" disabled={adding} onClick={() => onAdd(workspace.id, member.organizationMemberId)} className="text-xs font-semibold text-[#155EEF] disabled:opacity-60">Add</button></div>)}{activeMembers.filter((member) => !assignedMemberIds.has(member.organizationMemberId)).length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3"><p className="text-sm text-slate-600">Every active company member already has access.</p><button type="button" onClick={onInvite} className="mt-2 text-sm font-semibold text-[#155EEF] hover:text-[#0b4bb3]">Invite a company member</button></div> : null}</div></div>
         </div>
       </section>
     </div>
