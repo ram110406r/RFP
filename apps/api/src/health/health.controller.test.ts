@@ -1,10 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const API_ROOT = join(import.meta.dir, "..", "..");
-const DIST_DIR = join(API_ROOT, "dist", "health");
+const SOURCE_DIR = import.meta.dir;
 
 describe("Health endpoints", () => {
   let HealthController: any;
@@ -13,21 +11,12 @@ describe("Health endpoints", () => {
   let ReadyController: any;
 
   beforeAll(async () => {
-    if (
-      !existsSync(join(DIST_DIR, "health.controller.js")) ||
-      !existsSync(join(DIST_DIR, "health.service.js")) ||
-      !existsSync(join(DIST_DIR, "health-v1.controller.js")) ||
-      !existsSync(join(DIST_DIR, "ready.controller.js"))
-    ) {
-      throw new Error(`Built API not found at ${DIST_DIR}. Run bun run build first.`);
-    }
-
     const [healthController, healthService, healthV1Controller, readyController] = await Promise.all(
       [
-        import(pathToFileURL(join(DIST_DIR, "health.controller.js")).href),
-        import(pathToFileURL(join(DIST_DIR, "health.service.js")).href),
-        import(pathToFileURL(join(DIST_DIR, "health-v1.controller.js")).href),
-        import(pathToFileURL(join(DIST_DIR, "ready.controller.js")).href),
+        import(pathToFileURL(join(SOURCE_DIR, "health.controller.ts")).href),
+        import(pathToFileURL(join(SOURCE_DIR, "health.service.ts")).href),
+        import(pathToFileURL(join(SOURCE_DIR, "health-v1.controller.ts")).href),
+        import(pathToFileURL(join(SOURCE_DIR, "ready.controller.ts")).href),
       ],
     );
 
@@ -49,6 +38,8 @@ describe("Health endpoints", () => {
 
     expect(body.status).toBe("ok");
     expect(typeof body.timestamp).toBe("string");
+    expect(body.version).toBe("unknown");
+    expect(body.buildTime).toBeNull();
   });
 
   test("GET /api/v1/health returns the same liveness payload", () => {
@@ -63,6 +54,8 @@ describe("Health endpoints", () => {
 
     expect(body.status).toBe("ok");
     expect(typeof body.timestamp).toBe("string");
+    expect(body.version).toBe("unknown");
+    expect(body.buildTime).toBeNull();
   });
 
   test("GET /ready reports healthy dependencies when probes succeed", async () => {
@@ -81,7 +74,7 @@ describe("Health endpoints", () => {
 
     await expect(controller.check()).resolves.toEqual({
       status: "ok",
-      checks: { database: "ok", storage: "ok" },
+      checks: { database: "ok", redis: "skipped", storage: "ok" },
     });
   });
 });

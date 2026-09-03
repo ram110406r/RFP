@@ -39,12 +39,20 @@ export class WorkspacesService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(auth: AuthContext) {
+  async list(auth: AuthContext, requestedStatus = "active") {
+    if (!["active", "archived", "all"].includes(requestedStatus)) {
+      throw new ConflictException({ code: "INVALID_WORKSPACE_STATUS", message: "status must be active, archived, or all." });
+    }
+    const includeInactive = requestedStatus !== "active";
+    const workspaceStatus = requestedStatus === "archived" ? "archived" : "active";
+    if (includeInactive && !hasOrganizationPermission(auth, "workspace:archive")) {
+      throw new ForbiddenException({ code: "WORKSPACE_ARCHIVE_FORBIDDEN", message: "Archived workspaces are restricted to workspace administrators." });
+    }
     if (hasOrganizationPermission(auth, "workspace:read")) {
       return this.db
         .select()
         .from(workspaces)
-        .where(and(eq(workspaces.organizationId, auth.organizationId), eq(workspaces.status, "active")))
+        .where(and(eq(workspaces.organizationId, auth.organizationId), ...(requestedStatus === "all" ? [] : [eq(workspaces.status, workspaceStatus)])))
         .orderBy(desc(workspaces.createdAt));
     }
 

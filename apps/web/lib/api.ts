@@ -79,7 +79,9 @@ export type OnboardingStatus = {
   };
   journey: "COMPANY" | "EMPLOYEE" | null;
   emailVerified: boolean;
-  accountState: "NO_ORGANIZATION" | "PENDING_INVITATION" | "MULTIPLE_INVITATIONS" | "EXPIRED_INVITATION" | "INVITATION_ACCEPTED" | "ACTIVE_MEMBER" | "NO_WORKSPACE_ACCESS";
+  accountState: string;
+  lifecycleState: "EMAIL_VERIFICATION_REQUIRED" | "PENDING_INVITATION" | "COMPANY_SETUP_REQUIRED" | "PROFILE_REQUIRED" | "NO_WORKSPACE_ACCESS" | "ACTIVE_MEMBER";
+  complete: boolean;
   hasMembership: boolean;
   hasWorkspaceAccess: boolean;
   workspaceIds: string[];
@@ -431,8 +433,9 @@ export async function fetchTenders(
   return requestJson<TenderListPayload>(`/tenders${suffix}`, init);
 }
 
-export async function fetchWorkspaces(init?: ApiInit) {
-  return requestJson<{ items: WorkspaceSummary[] }>(`/workspaces`, init);
+export async function fetchWorkspaces(params: { status?: "active" | "archived" | "all" } = {}, init?: ApiInit) {
+  const suffix = params.status ? `?status=${params.status}` : "";
+  return requestJson<{ items: WorkspaceSummary[] }>(`/workspaces${suffix}`, init);
 }
 
 export async function fetchActivities(

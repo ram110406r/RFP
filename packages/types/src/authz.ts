@@ -368,7 +368,7 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     ...ALL_AI_KNOWLEDGE,
     "workspace:read",
     "workspace:member:read",
-    ...ALL_TEAM,
+    "team:read",
     "assignment:create",
     "assignment:read",
     "assignment:update",

@@ -322,10 +322,10 @@ export function useTenders(
   });
 }
 
-export function useWorkspaces() {
+export function useWorkspaces(params: { status?: "active" | "archived" | "all" } = {}) {
   return useQuery({
-    queryKey: workspaceKeys.list(),
-    queryFn: () => fetchWorkspaces(),
+    queryKey: [...workspaceKeys.list(), params.status ?? "active"],
+    queryFn: () => fetchWorkspaces(params),
   });
 }
 

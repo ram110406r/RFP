@@ -74,6 +74,8 @@ export default function SettingsPage() {
   const roleNames = roles.map((role) => role.name);
   const workspaceNames = workspaces.map((workspace) => workspace.name);
   const teamNames = teams.map((team) => team.name);
+  const buildVersion = process.env.NEXT_PUBLIC_APP_COMMIT_SHA ?? "unknown";
+  const buildTime = process.env.NEXT_PUBLIC_APP_BUILD_TIME ?? null;
   const pipeline = dashboard?.pipeline ?? [];
   const usageRows = [
     {
@@ -127,6 +129,7 @@ export default function SettingsPage() {
               <p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">
                 Configure TENDYY to match your workflows and team operations.
               </p>
+              <p className="mt-2 text-[11px] text-slate-500">Build {buildVersion}{buildTime ? ` - ${new Date(buildTime).toLocaleString()}` : ""}</p>
             </div>
             <div className="flex flex-wrap items-start gap-2.5 xl:pt-1">
               <Button type="button" variant="secondary" onClick={() => setActiveTab("general")}>

@@ -131,14 +131,26 @@ export class OnboardingService {
     // steps, but they must not trap an established owner in onboarding.
     const companyInProgress = journey === "COMPANY" && !progress.completed && !(membership && workspaceAccess.length > 0);
 
-    let accountState = "NO_ORGANIZATION";
+    let accountState = "COMPANY_SETUP_REQUIRED";
     if (membership && !employeeInProgress && !companyInProgress) {
       accountState = workspaceAccess.length > 0 ? "ACTIVE_MEMBER" : "NO_WORKSPACE_ACCESS";
     }
-    else if (employeeInProgress && membership) accountState = "INVITATION_ACCEPTED";
+    else if (employeeInProgress && membership) accountState = "PROFILE_REQUIRED";
     else if (pendingInvitations.length > 1) accountState = "MULTIPLE_INVITATIONS";
     else if (pendingInvitations.length === 1) accountState = "PENDING_INVITATION";
     else if (invitationRows.some((invitation) => invitation.status === "expired")) accountState = "EXPIRED_INVITATION";
+
+    const lifecycleState = !user.emailVerified
+      ? "EMAIL_VERIFICATION_REQUIRED"
+      : accountState === "PENDING_INVITATION" || accountState === "MULTIPLE_INVITATIONS" || accountState === "EXPIRED_INVITATION"
+        ? "PENDING_INVITATION"
+        : accountState === "PROFILE_REQUIRED"
+          ? "PROFILE_REQUIRED"
+          : accountState === "NO_WORKSPACE_ACCESS"
+            ? "NO_WORKSPACE_ACCESS"
+            : accountState === "ACTIVE_MEMBER"
+              ? "ACTIVE_MEMBER"
+              : "COMPANY_SETUP_REQUIRED";
 
     return {
       user,
@@ -146,6 +158,8 @@ export class OnboardingService {
       progress,
       journey,
       accountState,
+      lifecycleState,
+      complete: lifecycleState === "ACTIVE_MEMBER",
       hasMembership: Boolean(membership),
       hasWorkspaceAccess: workspaceAccess.length > 0,
       workspaceIds: workspaceAccess.map((workspace) => workspace.id),

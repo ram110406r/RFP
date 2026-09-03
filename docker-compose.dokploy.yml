@@ -130,6 +130,8 @@ services:
       STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
       STORAGE_FORCE_PATH_STYLE: "true"
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
+      APP_BUILD_TIME: ${APP_BUILD_TIME:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -165,6 +167,8 @@ services:
         NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID:-}
         NEXT_PUBLIC_FIREBASE_USE_EMULATORS: ${NEXT_PUBLIC_FIREBASE_USE_EMULATORS:-false}
         NEXT_PUBLIC_ALLOW_GUEST_UI: ${NEXT_PUBLIC_ALLOW_GUEST_UI:-false}
+        NEXT_PUBLIC_APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
+        NEXT_PUBLIC_APP_BUILD_TIME: ${APP_BUILD_TIME:-}
     restart: unless-stopped
     networks: [dokploy-network, internal]
     environment:
@@ -179,6 +183,8 @@ services:
       NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID:-}
       NEXT_PUBLIC_FIREBASE_USE_EMULATORS: ${NEXT_PUBLIC_FIREBASE_USE_EMULATORS:-false}
       NEXT_PUBLIC_ALLOW_GUEST_UI: ${NEXT_PUBLIC_ALLOW_GUEST_UI:-false}
+      NEXT_PUBLIC_APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
+      NEXT_PUBLIC_APP_BUILD_TIME: ${APP_BUILD_TIME:-}
     depends_on:
       api:
         condition: service_healthy

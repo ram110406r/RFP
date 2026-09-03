@@ -413,20 +413,24 @@ function OnboardingRedirect({ children }: { children: React.ReactNode }) {
     const onAccess = pathname === "/access";
     const onVerifyEmail = pathname === "/verify-email";
     if (onJoin) return;
-    if (!status.data.emailVerified) {
+    if (status.data.lifecycleState === "EMAIL_VERIFICATION_REQUIRED") {
       if (!onVerifyEmail) router.replace("/verify-email");
       return;
     }
-    if (status.data.needsOnboarding) {
+    if (status.data.lifecycleState === "PENDING_INVITATION") {
+      if (!onJoin) router.replace("/join");
+      return;
+    }
+    if (status.data.lifecycleState === "COMPANY_SETUP_REQUIRED" || status.data.lifecycleState === "PROFILE_REQUIRED") {
       if (!onOnboarding) router.replace("/onboarding");
       return;
     }
-    if (!status.data.hasWorkspaceAccess) {
+    if (status.data.lifecycleState === "NO_WORKSPACE_ACCESS") {
       if (!onAccess) router.replace("/access");
       return;
     }
-    if (onOnboarding) router.replace("/");
-    if (!status.data.needsOnboarding && status.data.hasWorkspaceAccess && (onAccess || onVerifyEmail)) router.replace("/");
+    if (status.data.lifecycleState === "ACTIVE_MEMBER" && onOnboarding) router.replace("/");
+    if (status.data.lifecycleState === "ACTIVE_MEMBER" && (onAccess || onVerifyEmail)) router.replace("/");
   }, [pathname, router, status.data, status.isError, status.isLoading]);
   if (status.isLoading && pathname !== "/onboarding" && pathname !== "/join") return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Checking your workspace and onboarding status...</div>;
   return <>{children}</>;

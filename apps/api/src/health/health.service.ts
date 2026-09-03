@@ -24,7 +24,12 @@ export class HealthService {
   ) {}
 
   liveness() {
-    return { status: "ok" as const, timestamp: new Date().toISOString() };
+    return {
+      status: "ok" as const,
+      timestamp: new Date().toISOString(),
+      version: this.config.get("APP_COMMIT_SHA", { infer: true }) ?? "unknown",
+      buildTime: this.config.get("APP_BUILD_TIME", { infer: true }) ?? null,
+    };
   }
 
   /**

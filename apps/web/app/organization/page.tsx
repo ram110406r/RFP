@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Building2, ChevronRight, FileText, LayoutGrid, ShieldCheck, Users } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { RfpEmptyState, RfpStatusBadge } from "../../components/rfp-foundation";
 import { Button } from "@rfp-os/ui";
+import { can } from "../../lib/permissions";
 import {
   fetchTeamMembers,
+  fetchOnboardingStatus,
   fetchWorkspaceMembers,
 } from "../../lib/api";
 import {
@@ -52,11 +54,24 @@ const tabs = [
 export default function OrganizationPage() {
   const session = useFirebaseSession();
   const currentQuery = useOrganizationCurrent();
+  const onboardingStatusQuery = useQuery({ queryKey: ["onboarding", "status"], queryFn: fetchOnboardingStatus });
+  const role = onboardingStatusQuery.data?.membership?.role ?? session?.profile?.role;
+  const canInviteMembers = can(role, "member:invite");
+  const canUpdateMembers = can(role, "member:update");
+  const canRemoveMembers = can(role, "member:remove");
+  const canCreateWorkspace = can(role, "workspace:create");
+  const canArchiveWorkspace = can(role, "workspace:archive");
+  const canManageWorkspaceMembers = can(role, "workspace:member:manage");
+  const canCreateTeam = can(role, "team:create");
+  const canArchiveTeam = can(role, "team:archive");
+  const canManageTeamMembers = can(role, "team:member:manage");
+  const canUpdateOrganization = can(role, "org:update");
+  const [workspaceStatus, setWorkspaceStatus] = useState<"active" | "archived">("active");
   const membersQuery = useOrganizationMembers();
   const invitationsQuery = useOrganizationInvitations();
   const rolesQuery = useRoles();
   const teamsQuery = useTeams();
-  const workspacesQuery = useWorkspaces();
+  const workspacesQuery = useWorkspaces({ status: canArchiveWorkspace ? workspaceStatus : "active" });
   const dashboardQuery = useDashboardSummary(6);
   const activitiesQuery = useActivities();
   const auditsQuery = useAudits();
@@ -195,28 +210,28 @@ export default function OrganizationPage() {
             </div>
 
             <div className="flex flex-wrap items-start gap-2.5 xl:pt-1">
-              <Button
+              {canCreateWorkspace ? <Button
                 type="button"
                 variant="secondary"
                 onClick={openWorkspaceManagement}
               >
                 Manage Workspaces
                 <Building2 className="h-4 w-4" />
-              </Button>
-              <Button asChild variant="secondary">
+              </Button> : null}
+              {canUpdateOrganization ? <Button asChild variant="secondary">
                 <Link href="/settings">
                   Edit Organization
                   <ChevronRight className="h-4 w-4" />
                 </Link>
-              </Button>
-              <Button
+              </Button> : null}
+              {canInviteMembers ? <Button
                 type="button"
                 onClick={() => setInviteOpen(true)}
                 variant="primary"
               >
                 Invite Members
                 <Users className="h-4 w-4" />
-              </Button>
+              </Button> : null}
             </div>
           </div>
 
@@ -353,25 +368,26 @@ export default function OrganizationPage() {
                                 <select
                                   value={member.role}
                                   aria-label={`Change ${member.name}'s role`}
+                                  disabled={!canUpdateMembers}
                                   onChange={(event) => updateMemberMutation.mutate({ userId: member.userId, body: { role: event.target.value as "OWNER" | "ADMIN" | "RFP_MANAGER" | "CONTRIBUTOR" | "REVIEWER" | "SME" | "VIEWER" } })}
                                   className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700"
                                 >
                                   {(["OWNER", "ADMIN", "RFP_MANAGER", "CONTRIBUTOR", "REVIEWER", "SME", "VIEWER"] as const).map((role) => <option key={role} value={role}>{formatRole(role)}</option>)}
                                 </select>
-                                <button
+                                {canUpdateMembers ? <button
                                   type="button"
                                   onClick={() => updateMemberMutation.mutate({ userId: member.userId, body: { status: member.status === "suspended" ? "active" : "suspended" } })}
                                   className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
                                 >
                                   {member.status === "suspended" ? "Reactivate" : "Suspend"}
-                                </button>
-                                <button
+                                </button> : null}
+                                {canRemoveMembers ? <button
                                   type="button"
                                   onClick={() => { if (window.confirm(`Remove ${member.email} from this company?`)) removeMemberMutation.mutate(member.userId); }}
                                   className="rounded-md border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
                                 >
                                   Remove
-                                </button>
+                                </button> : null}
                               </div>
                             </Td>
                             <Td><div className="py-3"><RfpStatusBadge tone={roleTone(member.role)}>{formatRole(member.role)}</RfpStatusBadge></div></Td>
@@ -435,7 +451,7 @@ export default function OrganizationPage() {
                             </div>
                             <RfpStatusBadge tone={invitation.status === "pending" ? "warning" : "neutral"}>{formatStatus(invitation.status)}</RfpStatusBadge>
                           </div>
-                          {invitation.status === "pending" ? (
+                          {invitation.status === "pending" && canInviteMembers ? (
                             <button type="button" onClick={() => revokeInvitationMutation.mutate(invitation.id)} className="mt-2 text-[11px] font-semibold text-rose-700 hover:text-rose-800">Revoke invitation</button>
                           ) : null}
                         </div>
@@ -456,7 +472,7 @@ export default function OrganizationPage() {
               ].join(" ")}
             >
               <SectionHeader eyebrow="Teams" title="Team overview" description="Teams are workspace-scoped; only members with active workspace access are eligible." />
-              <div className="mt-3 flex justify-end"><Button type="button" variant="secondary" onClick={() => setTeamOpen(true)}>Create team</Button></div>
+              {canCreateTeam ? <div className="mt-3 flex justify-end"><Button type="button" variant="secondary" onClick={() => setTeamOpen(true)}>Create team</Button></div> : null}
 
               {teamsQuery.isError ? (
                 <EmptyNotice title="Team data unavailable" description="You do not have permission to list teams, or the service is temporarily unavailable." />
@@ -484,7 +500,7 @@ export default function OrganizationPage() {
                                 <p className="mt-1 text-[12px] text-slate-500">{team.description || "No description"}</p>
                               </div>
                             </Td>
-                            <Td><div className="flex flex-wrap gap-2 py-3"><button type="button" onClick={() => setTeamPeopleId(team.id)} className="text-[11px] font-semibold text-[#155EEF] hover:text-[#0b4bb3]">Manage members ({teamMembers.length})</button><button type="button" onClick={() => { if (window.confirm(`Archive ${team.name}?`)) archiveTeamMutation.mutate(team.id); }} className="text-[11px] font-semibold text-rose-700 hover:text-rose-800">Archive</button></div></Td>
+                            <Td><div className="flex flex-wrap gap-2 py-3">{canManageTeamMembers ? <button type="button" onClick={() => setTeamPeopleId(team.id)} className="text-[11px] font-semibold text-[#155EEF] hover:text-[#0b4bb3]">Manage members ({teamMembers.length})</button> : null}{canArchiveTeam ? <button type="button" onClick={() => { if (window.confirm(`Archive ${team.name}?`)) archiveTeamMutation.mutate(team.id); }} className="text-[11px] font-semibold text-rose-700 hover:text-rose-800">Archive</button> : null}</div></Td>
                             <Td><div className="py-3 text-[13px] text-slate-700">{workspaceLabel(team.workspaceId, workspaces)}</div></Td>
                             <Td>
                               <div className="py-3">
@@ -564,7 +580,8 @@ export default function OrganizationPage() {
               ].join(" ")}
             >
               <SectionHeader eyebrow="Workspaces" title="Workspace inventory" description="Archive hides a workspace from normal selection while preserving membership history." />
-              <div className="mt-3 flex justify-end"><Button type="button" variant="secondary" onClick={() => setWorkspaceOpen(true)}>Create workspace</Button></div>
+              {canArchiveWorkspace ? <div className="mt-3 flex gap-2"><Button type="button" size="sm" variant={workspaceStatus === "active" ? "primary" : "secondary"} onClick={() => setWorkspaceStatus("active")}>Active</Button><Button type="button" size="sm" variant={workspaceStatus === "archived" ? "primary" : "secondary"} onClick={() => setWorkspaceStatus("archived")}>Archived</Button></div> : null}
+              {canCreateWorkspace ? <div className="mt-3 flex justify-end"><Button type="button" variant="secondary" onClick={() => setWorkspaceOpen(true)}>Create workspace</Button></div> : null}
 
               {workspacesQuery.isError ? (
                 <EmptyNotice title="Workspace data unavailable" description="You do not have permission to list workspaces, or the service is temporarily unavailable." />
@@ -587,13 +604,13 @@ export default function OrganizationPage() {
                               <div className="py-3">
                                 <p className="text-[13px] font-semibold text-slate-950">{workspace.name}</p>
                                 <p className="mt-1 text-[12px] text-slate-500">{workspace.description || "No description"}</p>
-                                <button
+                                {canManageWorkspaceMembers ? <button
                                   type="button"
                                   onClick={() => setWorkspacePeopleId(workspace.id)}
                                   className="mt-2 text-[12px] font-semibold text-[#155EEF] hover:text-[#0b4bb3]"
                                 >
                                   Add or remove members ({workspaceMembers.length})
-                                </button>
+                                </button> : null}
                               </div>
                             </Td>
                             <Td><div className="py-3 text-[13px] text-slate-700">{workspace.slug}</div></Td>
@@ -604,7 +621,7 @@ export default function OrganizationPage() {
                               </div>
                             </Td>
                             <Td><div className="py-3"><RfpStatusBadge tone={workspace.status === "active" ? "success" : "neutral"}>{formatStatus(workspace.status)}</RfpStatusBadge></div></Td>
-                            <Td><div className="py-3"><button type="button" onClick={() => { if (window.confirm(`Archive ${workspace.name}?`)) archiveWorkspaceMutation.mutate(workspace.id); }} className="text-[11px] font-semibold text-rose-700 hover:text-rose-800">Archive</button></div></Td>
+                            <Td><div className="py-3">{canArchiveWorkspace && workspace.status === "active" ? <button type="button" onClick={() => { if (window.confirm(`Archive ${workspace.name}?`)) archiveWorkspaceMutation.mutate(workspace.id); }} className="text-[11px] font-semibold text-rose-700 hover:text-rose-800">Archive</button> : null}</div></Td>
                           </tr>
                         ))}
                       </tbody>

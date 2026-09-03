@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@rfp-os/types": "workspace:*",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@next/eslint-plugin-next": "^15.5.0",
+    "@playwright/test": "^1.55.0",
     "@rfp-os/config": "workspace:*",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^22.16.5",

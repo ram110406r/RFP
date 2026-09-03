@@ -31,6 +31,8 @@ export const envSchema = z.object({
   BETTER_AUTH_SECRET: blankToUndefined(z.string().min(32, "must be at least 32 characters")),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:4100"),
   FIREBASE_PROJECT_ID: z.string().min(1).optional(),
+  APP_COMMIT_SHA: z.string().min(1).optional(),
+  APP_BUILD_TIME: z.string().datetime().optional(),
   GROQ_API_KEY: blankToUndefined(z.string().min(1)),
   GROQ_MODEL: z.string().min(1).default("openai/gpt-oss-20b"),
   GROQ_BASE_URL: z.string().url().default("https://api.groq.com/openai/v1"),

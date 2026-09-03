@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import type { AuthContext } from "@rfp-os/types";
 
 import { CurrentAuth, RequirePermissions } from "../../common/auth";
@@ -19,8 +19,8 @@ export class WorkspacesController {
 
   @Get()
   @RequirePermissions("workspace:read")
-  async list(@CurrentAuth() auth: AuthContext) {
-    return { items: await this.workspaces.list(auth) };
+  async list(@CurrentAuth() auth: AuthContext, @Query("status") status?: string) {
+    return { items: await this.workspaces.list(auth, status) };
   }
 
   @Post()
