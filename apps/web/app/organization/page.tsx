@@ -471,6 +471,7 @@ export default function OrganizationPage() {
                           <Th>Workspace</Th>
                           <Th>Members</Th>
                           <Th>Status</Th>
+                          <Th>Actions</Th>
                           <Th>Updated</Th>
                         </tr>
                       </thead>
@@ -577,7 +578,6 @@ export default function OrganizationPage() {
                           <Th>Slug</Th>
                           <Th>Members</Th>
                           <Th>Status</Th>
-                          <Th>Access</Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -587,6 +587,13 @@ export default function OrganizationPage() {
                               <div className="py-3">
                                 <p className="text-[13px] font-semibold text-slate-950">{workspace.name}</p>
                                 <p className="mt-1 text-[12px] text-slate-500">{workspace.description || "No description"}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => setWorkspacePeopleId(workspace.id)}
+                                  className="mt-2 text-[12px] font-semibold text-[#155EEF] hover:text-[#0b4bb3]"
+                                >
+                                  Add or remove members ({workspaceMembers.length})
+                                </button>
                               </div>
                             </Td>
                             <Td><div className="py-3 text-[13px] text-slate-700">{workspace.slug}</div></Td>
@@ -597,7 +604,7 @@ export default function OrganizationPage() {
                               </div>
                             </Td>
                             <Td><div className="py-3"><RfpStatusBadge tone={workspace.status === "active" ? "success" : "neutral"}>{formatStatus(workspace.status)}</RfpStatusBadge></div></Td>
-                            <Td><div className="flex flex-wrap gap-2 py-3"><button type="button" onClick={() => setWorkspacePeopleId(workspace.id)} className="text-[11px] font-semibold text-[#155EEF] hover:text-[#0b4bb3]">Manage people ({workspaceMembers.length})</button><button type="button" onClick={() => { if (window.confirm(`Archive ${workspace.name}?`)) archiveWorkspaceMutation.mutate(workspace.id); }} className="text-[11px] font-semibold text-rose-700 hover:text-rose-800">Archive</button></div></Td>
+                            <Td><div className="py-3"><button type="button" onClick={() => { if (window.confirm(`Archive ${workspace.name}?`)) archiveWorkspaceMutation.mutate(workspace.id); }} className="text-[11px] font-semibold text-rose-700 hover:text-rose-800">Archive</button></div></Td>
                           </tr>
                         ))}
                       </tbody>
