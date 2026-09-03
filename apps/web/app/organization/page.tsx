@@ -148,6 +148,17 @@ export default function OrganizationPage() {
   }));
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("overview");
 
+  function openWorkspaceManagement() {
+    setActiveTab("workspaces");
+    // The workspace panel is hidden until the state update renders. Wait two
+    // frames so the button takes the user to the controls it just revealed.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.getElementById("workspaces")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+  }
+
   const memberStatusCounts = [
     { label: "Active", value: activeMembers.length, tone: "success" as const },
     { label: "Invited", value: invitedCount, tone: "warning" as const },
@@ -187,7 +198,7 @@ export default function OrganizationPage() {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setActiveTab("workspaces")}
+                onClick={openWorkspaceManagement}
               >
                 Manage Workspaces
                 <Building2 className="h-4 w-4" />
