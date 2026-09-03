@@ -32,7 +32,7 @@ export const envSchema = z.object({
   BETTER_AUTH_URL: z.string().url().default("http://localhost:4100"),
   FIREBASE_PROJECT_ID: z.string().min(1).optional(),
   APP_COMMIT_SHA: z.string().min(1).optional(),
-  APP_BUILD_TIME: z.string().datetime().optional(),
+  APP_BUILD_TIME: blankToUndefined(z.string().datetime()),
   GROQ_API_KEY: blankToUndefined(z.string().min(1)),
   GROQ_MODEL: z.string().min(1).default("openai/gpt-oss-20b"),
   GROQ_BASE_URL: z.string().url().default("https://api.groq.com/openai/v1"),
