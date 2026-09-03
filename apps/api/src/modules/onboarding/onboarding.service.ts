@@ -56,6 +56,7 @@ export class OnboardingService {
         department: users.department,
         timezone: users.timezone,
         phone: users.phone,
+        emailVerified: users.emailVerified,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -141,6 +142,7 @@ export class OnboardingService {
 
     return {
       user,
+      emailVerified: user.emailVerified === true,
       progress,
       journey,
       accountState,
@@ -161,6 +163,7 @@ export class OnboardingService {
   }
 
   async start(userId: string, input: JourneyInput) {
+    await this.requireVerifiedUser(userId);
     const state = await this.status(userId);
     if (state.hasMembership) throw new ConflictException("This account already has an active organization membership.");
     if (input.journey === "COMPANY") {
@@ -175,6 +178,7 @@ export class OnboardingService {
   }
 
   async acceptInvitation(userId: string, invitationId: string) {
+    await this.requireVerifiedUser(userId);
     const progress = await this.ensure(userId);
     if (progress.journey !== "EMPLOYEE" || progress.invitationId !== invitationId) {
       throw new ForbiddenException("Start employee onboarding with this invitation first.");
@@ -196,6 +200,7 @@ export class OnboardingService {
   }
 
   async acceptInvitationToken(userId: string, token: string) {
+    await this.requireVerifiedUser(userId);
     const state = await this.status(userId);
     const [invitation] = await this.db
       .select({ id: invitations.id, status: invitations.status, acceptedBy: invitations.acceptedBy })
@@ -236,6 +241,7 @@ export class OnboardingService {
   }
 
   async createWorkspace(userId: string, input: WorkspaceInput) {
+    await this.requireVerifiedUser(userId);
     await this.requireJourney(userId, "COMPANY");
     return withTransaction(async (tx) => {
       const [progress] = await tx.select().from(onboardingProgress).where(eq(onboardingProgress.userId, userId)).for("update").limit(1);
@@ -341,6 +347,20 @@ export class OnboardingService {
     const progress = await this.ensure(userId);
     if (progress.journey !== journey) throw new ForbiddenException(`This action is only available during ${journey.toLowerCase()} onboarding.`);
     return progress;
+  }
+
+  private async requireVerifiedUser(userId: string) {
+    const [user] = await this.db
+      .select({ emailVerified: users.emailVerified })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user?.emailVerified) {
+      throw new ForbiddenException({
+        code: "EMAIL_VERIFICATION_REQUIRED",
+        message: "Verify your email address before creating a company or accepting an invitation.",
+      });
+    }
   }
 
   private async updateProgress(userId: string, patch: Partial<typeof onboardingProgress.$inferInsert>) {

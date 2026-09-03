@@ -4,6 +4,7 @@ import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -84,6 +85,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [verificationBusy, setVerificationBusy] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -188,6 +190,9 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
           ? await createUserWithEmailAndPassword(getFirebaseAuth(), email.trim(), password)
           : await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
 
+      if (mode === "register" && !credentials.user.emailVerified) {
+        await sendEmailVerification(credentials.user);
+      }
       setUser(credentials.user);
       await syncFirebaseUserProfile(credentials.user);
     } catch (authError) {
@@ -223,6 +228,19 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
       setError(authError instanceof Error ? authError.message : "Google sign-in failed.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function resendVerification() {
+    if (!user) return;
+    setVerificationBusy(true);
+    setError(null);
+    try {
+      await sendEmailVerification(user);
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Could not send the verification email.");
+    } finally {
+      setVerificationBusy(false);
     }
   }
 
@@ -369,6 +387,14 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
               {error}
             </div>
           ) : null}
+          {!user.emailVerified ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <span>Verify {user.email ?? "your email"} before creating a company, accepting an invitation, or opening company data.</span>
+              <button type="button" disabled={verificationBusy} onClick={() => void resendVerification()} className="font-semibold text-amber-900 underline disabled:opacity-60">
+                {verificationBusy ? "Sending..." : "Resend email"}
+              </button>
+            </div>
+          ) : null}
           <OnboardingRedirect>{children}</OnboardingRedirect>
         </div>
       </div>
@@ -385,7 +411,12 @@ function OnboardingRedirect({ children }: { children: React.ReactNode }) {
     const onOnboarding = pathname === "/onboarding";
     const onJoin = pathname === "/join";
     const onAccess = pathname === "/access";
+    const onVerifyEmail = pathname === "/verify-email";
     if (onJoin) return;
+    if (!status.data.emailVerified) {
+      if (!onVerifyEmail) router.replace("/verify-email");
+      return;
+    }
     if (status.data.needsOnboarding) {
       if (!onOnboarding) router.replace("/onboarding");
       return;
@@ -395,7 +426,7 @@ function OnboardingRedirect({ children }: { children: React.ReactNode }) {
       return;
     }
     if (onOnboarding) router.replace("/");
-    if (!status.data.needsOnboarding && status.data.hasWorkspaceAccess && onAccess) router.replace("/");
+    if (!status.data.needsOnboarding && status.data.hasWorkspaceAccess && (onAccess || onVerifyEmail)) router.replace("/");
   }, [pathname, router, status.data, status.isError, status.isLoading]);
   if (status.isLoading && pathname !== "/onboarding" && pathname !== "/join") return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Checking your workspace and onboarding status...</div>;
   return <>{children}</>;

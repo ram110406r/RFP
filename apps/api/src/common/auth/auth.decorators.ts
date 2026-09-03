@@ -36,6 +36,7 @@ export interface RequestWithAuth extends Request {
   auth?: AuthContext;
   sessionUserId?: string;
   sessionId?: string;
+  emailVerified?: boolean;
 }
 
 /**

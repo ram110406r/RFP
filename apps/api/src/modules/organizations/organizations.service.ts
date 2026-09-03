@@ -116,6 +116,18 @@ export class OrganizationsService {
    * takes a bare userId rather than an AuthContext.
    */
   async create(userId: string, input: CreateOrganizationInput) {
+    await this.requireVerifiedUser(userId);
+    const [existingMembership] = await this.db
+      .select({ id: organizationMembers.id })
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.userId, userId), eq(organizationMembers.status, "active")))
+      .limit(1);
+    if (existingMembership) {
+      throw new ConflictException({
+        code: "COMPANY_ALREADY_ASSIGNED",
+        message: "This account already belongs to a company.",
+      });
+    }
     return withTransaction(async (tx) => {
       const [organization] = await tx
         .insert(organizations)
@@ -154,6 +166,7 @@ export class OrganizationsService {
   async listMembers(organizationId: string) {
     return this.db
       .select({
+        organizationMemberId: organizationMembers.id,
         userId: organizationMembers.userId,
         role: organizationMembers.role,
         status: organizationMembers.status,
@@ -282,6 +295,32 @@ export class OrganizationsService {
           ),
         )
         .returning();
+
+      // Keep historical membership rows, but revoke every live grant derived
+      // from them so a removed member cannot retain workspace or team access.
+      await tx
+        .update(workspaceMembers)
+        .set({ status: "removed", updatedAt: new Date() })
+        .where(eq(workspaceMembers.organizationMemberId, membership.id));
+      await tx.delete(teamMembers).where(eq(teamMembers.organizationMemberId, membership.id));
+
+      const [targetUser] = await tx
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, targetUserId))
+        .limit(1);
+      if (targetUser) {
+        await tx
+          .update(invitations)
+          .set({ status: "revoked", updatedAt: new Date() })
+          .where(
+            and(
+              eq(invitations.organizationId, auth.organizationId),
+              eq(invitations.email, targetUser.email),
+              eq(invitations.status, "pending"),
+            ),
+          );
+      }
 
       await this.audit.record(
         {
@@ -486,6 +525,7 @@ export class OrganizationsService {
    * leaked token cannot be redeemed by whoever finds it.
    */
   async acceptInvitation(userId: string, token: string) {
+    await this.requireVerifiedUser(userId);
     const [candidate] = await this.db.select().from(invitations).where(eq(invitations.token, token)).limit(1);
     if (candidate?.status === "accepted" && candidate.acceptedBy === userId) {
       return {
@@ -497,6 +537,17 @@ export class OrganizationsService {
     }
     if (!candidate || candidate.status !== "pending") {
       throw new NotFoundException({ code: "INVITATION_INVALID", message: "That invitation is no longer valid." });
+    }
+    const [existingMembership] = await this.db
+      .select({ id: organizationMembers.id })
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.userId, userId), eq(organizationMembers.status, "active")))
+      .limit(1);
+    if (existingMembership) {
+      throw new ConflictException({
+        code: "COMPANY_ALREADY_ASSIGNED",
+        message: "This account already belongs to a company.",
+      });
     }
     if (candidate.expiresAt.getTime() < Date.now()) {
       await this.db.update(invitations).set({ status: "expired", updatedAt: new Date() }).where(and(eq(invitations.id, candidate.id), eq(invitations.status, "pending")));
@@ -718,6 +769,20 @@ export class OrganizationsService {
       });
     }
     return membership;
+  }
+
+  private async requireVerifiedUser(userId: string) {
+    const [user] = await this.db
+      .select({ emailVerified: users.emailVerified })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user?.emailVerified) {
+      throw new ForbiddenException({
+        code: "EMAIL_VERIFICATION_REQUIRED",
+        message: "Verify your email address before creating a company or accepting an invitation.",
+      });
+    }
   }
 
   private async assertNotLastOwner(organizationId: string, excludingUserId: string) {

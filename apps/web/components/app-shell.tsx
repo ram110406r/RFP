@@ -29,6 +29,8 @@ import {
 
 import { useAppShellState } from "./app-shell-state-provider";
 import { useFirebaseSession } from "./firebase-auth-gate";
+import { useWorkspaces } from "../lib/queries";
+import { selectWorkspace, useSelectedWorkspaceId } from "../lib/workspace-selection";
 
 type Breadcrumb = {
   label: string;
@@ -321,6 +323,16 @@ function ShellHeader({
   isMobile: boolean;
   onMobileMenuOpen: () => void;
 }) {
+  const workspacesQuery = useWorkspaces();
+  const selectedWorkspaceId = useSelectedWorkspaceId();
+  const workspaces = workspacesQuery.data?.items.filter((workspace) => workspace.status === "active") ?? [];
+
+  useEffect(() => {
+    if (workspaces.length > 0 && !workspaces.some((workspace) => workspace.id === selectedWorkspaceId)) {
+      selectWorkspace(workspaces[0]!.id);
+    }
+  }, [selectedWorkspaceId, workspaces]);
+
   return (
     <header className="sticky top-0 z-20 border-b border-[#E8ECF2] bg-white">
       <div className="flex h-[60px] items-center gap-4 px-4 sm:px-5 lg:px-6">
@@ -339,6 +351,19 @@ function ShellHeader({
               <p className="truncate text-[13px] font-semibold text-slate-950">{pageTitle}</p>
               <p className="truncate text-[11px] text-slate-500">Application shell</p>
             </div>
+
+            {workspaces.length > 0 ? (
+              <label className="hidden items-center gap-2 text-[11px] font-medium text-slate-600 lg:flex">
+                <span className="sr-only">Selected workspace</span>
+                <select
+                  value={selectedWorkspaceId ?? workspaces[0]!.id}
+                  onChange={(event) => selectWorkspace(event.target.value)}
+                  className="h-9 max-w-[190px] rounded-[8px] border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 outline-none focus:border-[#155EEF]"
+                >
+                  {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                </select>
+              </label>
+            ) : null}
 
             <button
               type="button"

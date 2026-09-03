@@ -61,19 +61,15 @@ export class TeamsService {
   }
 
   async create(auth: AuthContext, input: CreateTeamInput) {
-    if (input.workspaceId) {
-      this.assertWorkspacePermission(auth, input.workspaceId, "team:create");
-      await this.requireWorkspace(auth.organizationId, input.workspaceId);
-    } else {
-      this.assertOrganizationPermission(auth, "team:create");
-    }
+    this.assertWorkspacePermission(auth, input.workspaceId, "team:create");
+    await this.requireWorkspace(auth.organizationId, input.workspaceId);
 
     const [team] = await withTransaction(async (tx) => {
       const [created] = await tx
         .insert(teams)
         .values({
           organizationId: auth.organizationId,
-          workspaceId: input.workspaceId ?? null,
+          workspaceId: input.workspaceId,
           name: input.name,
           description: input.description ?? "",
         })

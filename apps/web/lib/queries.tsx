@@ -4,12 +4,18 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 
 import {
   analyzeRequirementAnswer,
+  addTeamMember,
+  addWorkspaceMember,
+  archiveTeam,
+  archiveWorkspace,
   analyzeTender,
   approveTender,
   fetchAudits,
   fetchActivities,
   fetchOrganizationCurrent,
   createOrganizationInvitation,
+  createTeam,
+  createWorkspace,
   fetchOrganizationInvitations,
   fetchOrganizationMembers,
   fetchDashboardSummary,
@@ -46,6 +52,11 @@ import {
   updateKnowledge,
   updateReview,
   updateOrganizationCurrent,
+  updateOrganizationMember,
+  removeOrganizationMember,
+  revokeOrganizationInvitation,
+  removeTeamMember,
+  removeWorkspaceMember,
   parseTenderSource,
   transitionTender,
   runRfpApply,
@@ -80,6 +91,7 @@ import type {
   AuditLogSummary,
   RfpApplyRunResult,
 } from "./models";
+import { useSelectedWorkspaceId } from "./workspace-selection";
 
 export const tenderKeys = {
   detail: (tenderId: string) => ["tender", tenderId] as const,
@@ -297,9 +309,14 @@ export function useTenders(
   } = {},
   initialData?: TenderListPayload | null,
 ) {
+  const selectedWorkspaceId = useSelectedWorkspaceId();
+  const effectiveParams = {
+    ...params,
+    workspaceId: params.workspaceId ?? selectedWorkspaceId ?? undefined,
+  };
   return useQuery({
-    queryKey: tenderListKeys.list(params),
-    queryFn: () => fetchTenders(params),
+    queryKey: tenderListKeys.list(effectiveParams),
+    queryFn: () => fetchTenders(effectiveParams),
     initialData: initialData ?? undefined,
     placeholderData: keepPreviousData,
   });
@@ -367,6 +384,75 @@ export function useInviteOrganizationMember() {
       ]);
     },
   });
+}
+
+function useOrganizationAccessMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: organizationKeys.members() }),
+        queryClient.invalidateQueries({ queryKey: organizationKeys.invitations() }),
+        queryClient.invalidateQueries({ queryKey: organizationKeys.teams() }),
+        queryClient.invalidateQueries({ queryKey: workspaceKeys.list() }),
+      ]);
+    },
+  });
+}
+
+export function useUpdateOrganizationMember() {
+  return useOrganizationAccessMutation(({ userId, body }: { userId: string; body: Parameters<typeof updateOrganizationMember>[1] }) =>
+    updateOrganizationMember(userId, body),
+  );
+}
+
+export function useRemoveOrganizationMember() {
+  return useOrganizationAccessMutation((userId: string) => removeOrganizationMember(userId));
+}
+
+export function useRevokeOrganizationInvitation() {
+  return useOrganizationAccessMutation((invitationId: string) => revokeOrganizationInvitation(invitationId));
+}
+
+export function useCreateWorkspace() {
+  return useOrganizationAccessMutation((body: Parameters<typeof createWorkspace>[0]) => createWorkspace(body));
+}
+
+export function useArchiveWorkspace() {
+  return useOrganizationAccessMutation((workspaceId: string) => archiveWorkspace(workspaceId));
+}
+
+export function useAddWorkspaceMember() {
+  return useOrganizationAccessMutation(({ workspaceId, organizationMemberId }: { workspaceId: string; organizationMemberId: string }) =>
+    addWorkspaceMember(workspaceId, organizationMemberId),
+  );
+}
+
+export function useRemoveWorkspaceMember() {
+  return useOrganizationAccessMutation(({ workspaceId, organizationMemberId }: { workspaceId: string; organizationMemberId: string }) =>
+    removeWorkspaceMember(workspaceId, organizationMemberId),
+  );
+}
+
+export function useCreateTeam() {
+  return useOrganizationAccessMutation((body: Parameters<typeof createTeam>[0]) => createTeam(body));
+}
+
+export function useArchiveTeam() {
+  return useOrganizationAccessMutation((teamId: string) => archiveTeam(teamId));
+}
+
+export function useAddTeamMember() {
+  return useOrganizationAccessMutation(({ teamId, organizationMemberId }: { teamId: string; organizationMemberId: string }) =>
+    addTeamMember(teamId, organizationMemberId),
+  );
+}
+
+export function useRemoveTeamMember() {
+  return useOrganizationAccessMutation(({ teamId, organizationMemberId }: { teamId: string; organizationMemberId: string }) =>
+    removeTeamMember(teamId, organizationMemberId),
+  );
 }
 
 export function useRoles(initialData?: { items: RoleSummary[] } | null) {

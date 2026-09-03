@@ -78,6 +78,7 @@ export type OnboardingStatus = {
     rfpContext: Record<string, unknown>;
   };
   journey: "COMPANY" | "EMPLOYEE" | null;
+  emailVerified: boolean;
   accountState: "NO_ORGANIZATION" | "PENDING_INVITATION" | "MULTIPLE_INVITATIONS" | "EXPIRED_INVITATION" | "INVITATION_ACCEPTED" | "ACTIVE_MEMBER" | "NO_WORKSPACE_ACCESS";
   hasMembership: boolean;
   hasWorkspaceAccess: boolean;
@@ -140,6 +141,32 @@ export async function createOrganizationInvitation(
   });
 }
 
+export async function updateOrganizationMember(
+  userId: string,
+  body: { role?: "OWNER" | "ADMIN" | "RFP_MANAGER" | "CONTRIBUTOR" | "REVIEWER" | "SME" | "VIEWER"; status?: "active" | "suspended" },
+  init?: ApiInit,
+) {
+  return requestJson<OrganizationMemberSummary>(`/organizations/current/members/${userId}`, {
+    ...init,
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function removeOrganizationMember(userId: string, init?: ApiInit) {
+  return requestJson<{ removed: true }>(`/organizations/current/members/${userId}`, {
+    ...init,
+    method: "DELETE",
+  });
+}
+
+export async function revokeOrganizationInvitation(invitationId: string, init?: ApiInit) {
+  return requestJson<OrganizationInvitationSummary>(`/organizations/current/invitations/${invitationId}`, {
+    ...init,
+    method: "DELETE",
+  });
+}
+
 export async function fetchRoles(init?: ApiInit) {
   return requestJson<{ items: RoleSummary[] }>("/roles", init);
 }
@@ -148,8 +175,68 @@ export async function fetchTeams(init?: ApiInit) {
   return requestJson<{ items: TeamSummary[] }>("/teams", init);
 }
 
+export async function createTeam(
+  body: { name: string; workspaceId: string; description?: string },
+  init?: ApiInit,
+) {
+  return requestJson<TeamSummary>("/teams", { ...init, method: "POST", body: JSON.stringify(body) });
+}
+
+export async function archiveTeam(teamId: string, init?: ApiInit) {
+  return requestJson<TeamSummary>(`/teams/${teamId}/archive`, { ...init, method: "POST" });
+}
+
+export async function addTeamMember(teamId: string, organizationMemberId: string, init?: ApiInit) {
+  return requestJson<TeamMemberSummary>(`/teams/${teamId}/members`, {
+    ...init,
+    method: "POST",
+    body: JSON.stringify({ organizationMemberId }),
+  });
+}
+
+export async function removeTeamMember(teamId: string, organizationMemberId: string, init?: ApiInit) {
+  return requestJson<TeamMemberSummary>(`/teams/${teamId}/members/${organizationMemberId}`, {
+    ...init,
+    method: "DELETE",
+  });
+}
+
 export async function fetchWorkspaceMembers(workspaceId: string, init?: ApiInit) {
   return requestJson<{ items: WorkspaceMemberSummary[] }>(`/workspaces/${workspaceId}/members`, init);
+}
+
+export async function createWorkspace(
+  body: { name: string; slug: string; description?: string },
+  init?: ApiInit,
+) {
+  return requestJson<WorkspaceSummary>("/workspaces", { ...init, method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateWorkspace(
+  workspaceId: string,
+  body: { name?: string; slug?: string; description?: string },
+  init?: ApiInit,
+) {
+  return requestJson<WorkspaceSummary>(`/workspaces/${workspaceId}`, { ...init, method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function archiveWorkspace(workspaceId: string, init?: ApiInit) {
+  return requestJson<WorkspaceSummary>(`/workspaces/${workspaceId}/archive`, { ...init, method: "POST" });
+}
+
+export async function addWorkspaceMember(workspaceId: string, organizationMemberId: string, init?: ApiInit) {
+  return requestJson<WorkspaceMemberSummary>(`/workspaces/${workspaceId}/members`, {
+    ...init,
+    method: "POST",
+    body: JSON.stringify({ organizationMemberId }),
+  });
+}
+
+export async function removeWorkspaceMember(workspaceId: string, organizationMemberId: string, init?: ApiInit) {
+  return requestJson<WorkspaceMemberSummary>(`/workspaces/${workspaceId}/members/${organizationMemberId}`, {
+    ...init,
+    method: "DELETE",
+  });
 }
 
 export async function fetchTeamMembers(teamId: string, init?: ApiInit) {

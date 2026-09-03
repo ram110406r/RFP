@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Get, GoneException, Param, Patch, Post } from "@nestjs/common";
 import type { AuthContext } from "@rfp-os/types";
 
 import { CurrentAuth, RequirePermissions } from "../../common/auth";
@@ -39,7 +39,7 @@ export class RolesController {
   @RequirePermissions("role:create")
   @ZodBody(createRoleSchema)
   async create(@CurrentAuth() auth: AuthContext, @Body() body: CreateRoleInput) {
-    return this.roles.create(auth, body);
+    throw this.customRolesRetired();
   }
 
   @Patch(":roleId")
@@ -50,20 +50,27 @@ export class RolesController {
     @Param("roleId") roleId: string,
     @Body() body: UpdateRoleInput,
   ) {
-    return this.roles.update(auth, roleId, body);
+    throw this.customRolesRetired();
   }
 
   @Post("assignments")
   @RequirePermissions("role:assign")
   @ZodBody(assignRoleSchema)
   async assign(@CurrentAuth() auth: AuthContext, @Body() body: AssignRoleInput) {
-    return this.roles.assign(auth, body);
+    throw this.customRolesRetired();
   }
 
   @Post("assignments/revoke")
   @RequirePermissions("role:revoke")
   @ZodBody(assignRoleSchema)
   async revoke(@CurrentAuth() auth: AuthContext, @Body() body: AssignRoleInput) {
-    return this.roles.revoke(auth, body);
+    throw this.customRolesRetired();
+  }
+
+  private customRolesRetired() {
+    return new GoneException({
+      code: "CUSTOM_ROLES_RETIRED",
+      message: "Custom role writes are disabled. Use one of the seven fixed organization roles.",
+    });
   }
 }

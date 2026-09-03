@@ -21,12 +21,23 @@ import {
   useOrganizationInvitations,
   useInviteOrganizationMember,
   useOrganizationMembers,
+  useUpdateOrganizationMember,
+  useRemoveOrganizationMember,
+  useRevokeOrganizationInvitation,
+  useCreateWorkspace,
+  useArchiveWorkspace,
+  useAddWorkspaceMember,
+  useRemoveWorkspaceMember,
+  useCreateTeam,
+  useArchiveTeam,
+  useAddTeamMember,
+  useRemoveTeamMember,
   useRoles,
   useTeams,
   useWorkspaces,
 } from "../../lib/queries";
 import type { ActivityItem } from "../../lib/models";
-import type { OrganizationInvitationCreated, TeamSummary, WorkspaceSummary } from "../../lib/models";
+import type { OrganizationInvitationCreated, OrganizationMemberSummary, TeamSummary, WorkspaceMemberSummary, WorkspaceSummary } from "../../lib/models";
 
 const tabs = [
   { id: "overview", label: "Overview" },
@@ -50,13 +61,28 @@ export default function OrganizationPage() {
   const activitiesQuery = useActivities();
   const auditsQuery = useAudits();
   const inviteMutation = useInviteOrganizationMember();
+  const updateMemberMutation = useUpdateOrganizationMember();
+  const removeMemberMutation = useRemoveOrganizationMember();
+  const revokeInvitationMutation = useRevokeOrganizationInvitation();
+  const createWorkspaceMutation = useCreateWorkspace();
+  const archiveWorkspaceMutation = useArchiveWorkspace();
+  const addWorkspaceMemberMutation = useAddWorkspaceMember();
+  const removeWorkspaceMemberMutation = useRemoveWorkspaceMember();
+  const createTeamMutation = useCreateTeam();
+  const archiveTeamMutation = useArchiveTeam();
+  const addTeamMemberMutation = useAddTeamMember();
+  const removeTeamMemberMutation = useRemoveTeamMember();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [invitationLink, setInvitationLink] = useState<string | null>(null);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [workspacePeopleId, setWorkspacePeopleId] = useState<string | null>(null);
+  const [teamPeopleId, setTeamPeopleId] = useState<string | null>(null);
 
   const organization = currentQuery.data ?? null;
   const members = membersQuery.data?.members ?? [];
   const invitations = invitationsQuery.data?.invitations ?? [];
-  const roles = rolesQuery.data?.items ?? [];
+  const roles = (rolesQuery.data?.items ?? []).filter((role) => role.isSystem);
   const teams = teamsQuery.data?.items ?? [];
   const workspaces = workspacesQuery.data?.items ?? [];
   const activityItems = activitiesQuery.data?.items ?? [];
@@ -108,6 +134,7 @@ export default function OrganizationPage() {
   const workspaceRows = workspaces.map((workspace, index) => ({
     workspace,
     memberCount: workspaceMemberQueries[index]?.data?.items.length ?? null,
+    members: workspaceMemberQueries[index]?.data?.items ?? [],
     loading: workspaceMemberQueries[index]?.isLoading ?? false,
     error: workspaceMemberQueries[index]?.isError ?? false,
   }));
@@ -115,6 +142,7 @@ export default function OrganizationPage() {
   const teamRows = teams.map((team, index) => ({
     team,
     memberCount: teamMemberQueries[index]?.data?.items.length ?? null,
+    members: teamMemberQueries[index]?.data?.items ?? [],
     loading: teamMemberQueries[index]?.isLoading ?? false,
     error: teamMemberQueries[index]?.isError ?? false,
   }));
@@ -278,7 +306,7 @@ export default function OrganizationPage() {
               ) : members.length > 0 ? (
                 <div className="mt-4 overflow-hidden rounded-[10px] border border-slate-200">
                   <div className="overflow-x-auto">
-                    <table className="min-w-[860px] w-full border-separate border-spacing-0 text-left">
+                    <table className="min-w-[980px] w-full border-separate border-spacing-0 text-left">
                       <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                         <tr>
                           <Th>Member</Th>
@@ -286,6 +314,7 @@ export default function OrganizationPage() {
                           <Th>Team</Th>
                           <Th>Status</Th>
                           <Th>Joined</Th>
+                          <Th>Access</Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -298,6 +327,32 @@ export default function OrganizationPage() {
                                   <p className="text-[13px] font-semibold text-slate-950">{member.name}</p>
                                   <p className="text-[12px] text-slate-500">{member.email}</p>
                                 </div>
+                              </div>
+                            </Td>
+                            <Td>
+                              <div className="flex flex-wrap gap-1.5 py-3">
+                                <select
+                                  value={member.role}
+                                  aria-label={`Change ${member.name}'s role`}
+                                  onChange={(event) => updateMemberMutation.mutate({ userId: member.userId, body: { role: event.target.value as "OWNER" | "ADMIN" | "RFP_MANAGER" | "CONTRIBUTOR" | "REVIEWER" | "SME" | "VIEWER" } })}
+                                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700"
+                                >
+                                  {(["OWNER", "ADMIN", "RFP_MANAGER", "CONTRIBUTOR", "REVIEWER", "SME", "VIEWER"] as const).map((role) => <option key={role} value={role}>{formatRole(role)}</option>)}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => updateMemberMutation.mutate({ userId: member.userId, body: { status: member.status === "suspended" ? "active" : "suspended" } })}
+                                  className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  {member.status === "suspended" ? "Reactivate" : "Suspend"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { if (window.confirm(`Remove ${member.email} from this company?`)) removeMemberMutation.mutate(member.userId); }}
+                                  className="rounded-md border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+                                >
+                                  Remove
+                                </button>
                               </div>
                             </Td>
                             <Td><div className="py-3"><RfpStatusBadge tone={roleTone(member.role)}>{formatRole(member.role)}</RfpStatusBadge></div></Td>
@@ -361,6 +416,9 @@ export default function OrganizationPage() {
                             </div>
                             <RfpStatusBadge tone={invitation.status === "pending" ? "warning" : "neutral"}>{formatStatus(invitation.status)}</RfpStatusBadge>
                           </div>
+                          {invitation.status === "pending" ? (
+                            <button type="button" onClick={() => revokeInvitationMutation.mutate(invitation.id)} className="mt-2 text-[11px] font-semibold text-rose-700 hover:text-rose-800">Revoke invitation</button>
+                          ) : null}
                         </div>
                       ))
                     ) : (
@@ -378,7 +436,8 @@ export default function OrganizationPage() {
                 activeTab === "teams" ? "opacity-100" : "hidden opacity-0",
               ].join(" ")}
             >
-              <SectionHeader eyebrow="Teams" title="Team overview" description="Team membership is resolved from the team endpoints and live workspace links." />
+              <SectionHeader eyebrow="Teams" title="Team overview" description="Teams are workspace-scoped; only members with active workspace access are eligible." />
+              <div className="mt-3 flex justify-end"><Button type="button" variant="secondary" onClick={() => setTeamOpen(true)}>Create team</Button></div>
 
               {teamsQuery.isError ? (
                 <EmptyNotice title="Team data unavailable" description="You do not have permission to list teams, or the service is temporarily unavailable." />
@@ -389,6 +448,7 @@ export default function OrganizationPage() {
                       <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                         <tr>
                           <Th>Team</Th>
+                          <Th>Access</Th>
                           <Th>Workspace</Th>
                           <Th>Members</Th>
                           <Th>Status</Th>
@@ -396,7 +456,7 @@ export default function OrganizationPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {teamRows.map(({ team, memberCount, loading, error }) => (
+                        {teamRows.map(({ team, memberCount, members: teamMembers, loading, error }) => (
                           <tr key={team.id} className="bg-white align-top">
                             <Td>
                               <div className="py-3">
@@ -404,6 +464,7 @@ export default function OrganizationPage() {
                                 <p className="mt-1 text-[12px] text-slate-500">{team.description || "No description"}</p>
                               </div>
                             </Td>
+                            <Td><div className="flex flex-wrap gap-2 py-3"><button type="button" onClick={() => setTeamPeopleId(team.id)} className="text-[11px] font-semibold text-[#155EEF] hover:text-[#0b4bb3]">Manage members ({teamMembers.length})</button><button type="button" onClick={() => { if (window.confirm(`Archive ${team.name}?`)) archiveTeamMutation.mutate(team.id); }} className="text-[11px] font-semibold text-rose-700 hover:text-rose-800">Archive</button></div></Td>
                             <Td><div className="py-3 text-[13px] text-slate-700">{workspaceLabel(team.workspaceId, workspaces)}</div></Td>
                             <Td>
                               <div className="py-3">
@@ -438,7 +499,7 @@ export default function OrganizationPage() {
                 activeTab === "roles" ? "opacity-100" : "hidden opacity-0",
               ].join(" ")}
             >
-              <SectionHeader eyebrow="Roles" title="Roles and permissions" description="Role definitions, assignment totals, and the permission catalog are pulled from the live role API." />
+              <SectionHeader eyebrow="Roles" title="Fixed roles and permissions" description="The seven fixed organization roles are the access model. Custom role changes are disabled." />
 
               {rolesQuery.isError ? (
                 <EmptyNotice title="Role data unavailable" description="You do not have permission to list roles, or the service is temporarily unavailable." />
@@ -451,7 +512,7 @@ export default function OrganizationPage() {
                           <p className="text-[13px] font-semibold text-slate-950">{role.name}</p>
                           <p className="mt-1 text-[13px] leading-6 text-slate-600">{role.description || "No description"}</p>
                         </div>
-                        <RfpStatusBadge tone={role.isSystem ? "neutral" : "success"}>{role.isSystem ? "System" : "Custom"}</RfpStatusBadge>
+                        <RfpStatusBadge tone="neutral">Fixed</RfpStatusBadge>
                       </div>
                       <div className="mt-4 grid gap-3 sm:grid-cols-3">
                         <InfoRow label="Assignments" value={formatCount(role.assignmentCount)} />
@@ -482,7 +543,8 @@ export default function OrganizationPage() {
                 activeTab === "workspaces" ? "opacity-100" : "hidden opacity-0",
               ].join(" ")}
             >
-              <SectionHeader eyebrow="Workspaces" title="Workspace inventory" description="Workspace rows are combined with live membership counts from each workspace endpoint." />
+              <SectionHeader eyebrow="Workspaces" title="Workspace inventory" description="Archive hides a workspace from normal selection while preserving membership history." />
+              <div className="mt-3 flex justify-end"><Button type="button" variant="secondary" onClick={() => setWorkspaceOpen(true)}>Create workspace</Button></div>
 
               {workspacesQuery.isError ? (
                 <EmptyNotice title="Workspace data unavailable" description="You do not have permission to list workspaces, or the service is temporarily unavailable." />
@@ -496,10 +558,11 @@ export default function OrganizationPage() {
                           <Th>Slug</Th>
                           <Th>Members</Th>
                           <Th>Status</Th>
+                          <Th>Access</Th>
                         </tr>
                       </thead>
                       <tbody>
-                        {workspaceRows.map(({ workspace, memberCount, loading, error }) => (
+                        {workspaceRows.map(({ workspace, memberCount, members: workspaceMembers, loading, error }) => (
                           <tr key={workspace.id} className="bg-white align-top">
                             <Td>
                               <div className="py-3">
@@ -515,6 +578,7 @@ export default function OrganizationPage() {
                               </div>
                             </Td>
                             <Td><div className="py-3"><RfpStatusBadge tone={workspace.status === "active" ? "success" : "neutral"}>{formatStatus(workspace.status)}</RfpStatusBadge></div></Td>
+                            <Td><div className="flex flex-wrap gap-2 py-3"><button type="button" onClick={() => setWorkspacePeopleId(workspace.id)} className="text-[11px] font-semibold text-[#155EEF] hover:text-[#0b4bb3]">Manage people ({workspaceMembers.length})</button><button type="button" onClick={() => { if (window.confirm(`Archive ${workspace.name}?`)) archiveWorkspaceMutation.mutate(workspace.id); }} className="text-[11px] font-semibold text-rose-700 hover:text-rose-800">Archive</button></div></Td>
                           </tr>
                         ))}
                       </tbody>
@@ -682,7 +746,170 @@ export default function OrganizationPage() {
         }}
         onInvite={(input) => inviteMutation.mutate(input, { onSuccess: (result) => setInvitationLink((result as OrganizationInvitationCreated).acceptUrl) })}
       />
+      <WorkspaceDialog
+        open={workspaceOpen}
+        pending={createWorkspaceMutation.isPending}
+        onClose={() => setWorkspaceOpen(false)}
+        onCreate={(input) => createWorkspaceMutation.mutate(input, { onSuccess: () => setWorkspaceOpen(false) })}
+      />
+      <TeamDialog
+        open={teamOpen}
+        workspaces={workspaces}
+        pending={createTeamMutation.isPending}
+        onClose={() => setTeamOpen(false)}
+        onCreate={(input) => createTeamMutation.mutate(input, { onSuccess: () => setTeamOpen(false) })}
+      />
+      <WorkspacePeopleDialog
+        workspace={workspaces.find((workspace) => workspace.id === workspacePeopleId) ?? null}
+        organizationMembers={members}
+        workspaceMembers={workspaceRows.find((row) => row.workspace.id === workspacePeopleId)?.members ?? []}
+        adding={addWorkspaceMemberMutation.isPending}
+        removing={removeWorkspaceMemberMutation.isPending}
+        onClose={() => setWorkspacePeopleId(null)}
+        onAdd={(workspaceId, organizationMemberId) => addWorkspaceMemberMutation.mutate({ workspaceId, organizationMemberId })}
+        onRemove={(workspaceId, organizationMemberId) => removeWorkspaceMemberMutation.mutate({ workspaceId, organizationMemberId })}
+      />
+      <TeamPeopleDialog
+        team={teams.find((team) => team.id === teamPeopleId) ?? null}
+        workspaceMembers={workspaceRows.find((row) => row.workspace.id === teams.find((team) => team.id === teamPeopleId)?.workspaceId)?.members ?? []}
+        teamMembers={teamRows.find((row) => row.team.id === teamPeopleId)?.members ?? []}
+        adding={addTeamMemberMutation.isPending}
+        removing={removeTeamMemberMutation.isPending}
+        onClose={() => setTeamPeopleId(null)}
+        onAdd={(teamId, organizationMemberId) => addTeamMemberMutation.mutate({ teamId, organizationMemberId })}
+        onRemove={(teamId, organizationMemberId) => removeTeamMemberMutation.mutate({ teamId, organizationMemberId })}
+      />
     </AppShell>
+  );
+}
+
+function WorkspacePeopleDialog({
+  workspace,
+  organizationMembers,
+  workspaceMembers,
+  adding,
+  removing,
+  onClose,
+  onAdd,
+  onRemove,
+}: {
+  workspace: WorkspaceSummary | null;
+  organizationMembers: OrganizationMemberSummary[];
+  workspaceMembers: WorkspaceMemberSummary[];
+  adding: boolean;
+  removing: boolean;
+  onClose: () => void;
+  onAdd: (workspaceId: string, organizationMemberId: string) => void;
+  onRemove: (workspaceId: string, organizationMemberId: string) => void;
+}) {
+  if (!workspace) return null;
+  const activeMembers = organizationMembers.filter((member) => member.status === "active");
+  const assignedMemberIds = new Set(workspaceMembers.filter((member) => member.status === "active").map((member) => member.organizationMemberId));
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true">
+      <section className="w-full max-w-2xl rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#155EEF]">Workspace access</p><h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{workspace.name} people</h2><p className="mt-2 text-sm text-slate-600">Adding access does not change company membership. Removing the final workspace leaves the member in an access-required state.</p></div><button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100">Close</button></div>
+        <div className="mt-5 grid gap-5 md:grid-cols-2">
+          <div><p className="text-sm font-semibold text-slate-900">Current access</p><div className="mt-2 space-y-2">{workspaceMembers.filter((member) => member.status === "active").map((member) => <div key={member.organizationMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="truncate text-xs text-slate-500">{member.email}</p></div><button type="button" disabled={removing} onClick={() => onRemove(workspace.id, member.organizationMemberId)} className="text-xs font-semibold text-rose-700 disabled:opacity-60">Remove</button></div>)}{workspaceMembers.filter((member) => member.status === "active").length === 0 ? <p className="text-sm text-slate-500">No active workspace members.</p> : null}</div></div>
+          <div><p className="text-sm font-semibold text-slate-900">Add company member</p><div className="mt-2 space-y-2">{activeMembers.filter((member) => !assignedMemberIds.has(member.organizationMemberId)).map((member) => <div key={member.organizationMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="truncate text-xs text-slate-500">{formatRole(member.role)} - {member.email}</p></div><button type="button" disabled={adding} onClick={() => onAdd(workspace.id, member.organizationMemberId)} className="text-xs font-semibold text-[#155EEF] disabled:opacity-60">Add</button></div>)}{activeMembers.filter((member) => !assignedMemberIds.has(member.organizationMemberId)).length === 0 ? <p className="text-sm text-slate-500">Every active company member already has access.</p> : null}</div></div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TeamPeopleDialog({
+  team,
+  workspaceMembers,
+  teamMembers,
+  adding,
+  removing,
+  onClose,
+  onAdd,
+  onRemove,
+}: {
+  team: TeamSummary | null;
+  workspaceMembers: WorkspaceMemberSummary[];
+  teamMembers: import("../../lib/models").TeamMemberSummary[];
+  adding: boolean;
+  removing: boolean;
+  onClose: () => void;
+  onAdd: (teamId: string, organizationMemberId: string) => void;
+  onRemove: (teamId: string, organizationMemberId: string) => void;
+}) {
+  if (!team) return null;
+  const assignedMemberIds = new Set(teamMembers.map((member) => member.organizationMemberId));
+  const eligibleMembers = workspaceMembers.filter((member) => member.status === "active" && !assignedMemberIds.has(member.organizationMemberId));
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true">
+      <section className="w-full max-w-2xl rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#155EEF]">Team membership</p><h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{team.name} members</h2><p className="mt-2 text-sm text-slate-600">Only people with active access to this team&apos;s workspace can be added.</p></div><button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100">Close</button></div>
+        <div className="mt-5 grid gap-5 md:grid-cols-2">
+          <div><p className="text-sm font-semibold text-slate-900">Current team</p><div className="mt-2 space-y-2">{teamMembers.map((member) => <div key={member.organizationMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="truncate text-xs text-slate-500">{member.email}</p></div><button type="button" disabled={removing} onClick={() => onRemove(team.id, member.organizationMemberId)} className="text-xs font-semibold text-rose-700 disabled:opacity-60">Remove</button></div>)}{teamMembers.length === 0 ? <p className="text-sm text-slate-500">No team members yet.</p> : null}</div></div>
+          <div><p className="text-sm font-semibold text-slate-900">Eligible workspace members</p><div className="mt-2 space-y-2">{eligibleMembers.map((member) => <div key={member.organizationMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="truncate text-xs text-slate-500">{member.email}</p></div><button type="button" disabled={adding} onClick={() => onAdd(team.id, member.organizationMemberId)} className="text-xs font-semibold text-[#155EEF] disabled:opacity-60">Add</button></div>)}{eligibleMembers.length === 0 ? <p className="text-sm text-slate-500">No additional eligible members.</p> : null}</div></div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function WorkspaceDialog({
+  open,
+  pending,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  pending: boolean;
+  onClose: () => void;
+  onCreate: (input: { name: string; slug: string; description?: string }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [description, setDescription] = useState("");
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true">
+      <form className="w-full max-w-lg rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl" onSubmit={(event) => { event.preventDefault(); onCreate({ name, slug, description: description || undefined }); }}>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-950">Create workspace</h2>
+        <p className="mt-2 text-sm text-slate-600">The creator is added automatically. Invite or add other company members after creation.</p>
+        <label className="mt-4 block text-sm font-medium text-slate-700">Name<input required value={name} onChange={(event) => { setName(event.target.value); if (!slug) setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")); }} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
+        <label className="mt-3 block text-sm font-medium text-slate-700">Slug<input required pattern="[a-z0-9-]+" value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase())} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
+        <label className="mt-3 block text-sm font-medium text-slate-700">Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} className="mt-1.5 min-h-20 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
+        <div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" disabled={pending}>{pending ? "Creating..." : "Create workspace"}</Button></div>
+      </form>
+    </div>
+  );
+}
+
+function TeamDialog({
+  open,
+  workspaces,
+  pending,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  workspaces: WorkspaceSummary[];
+  pending: boolean;
+  onClose: () => void;
+  onCreate: (input: { name: string; workspaceId: string; description?: string }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [description, setDescription] = useState("");
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true">
+      <form className="w-full max-w-lg rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl" onSubmit={(event) => { event.preventDefault(); onCreate({ name, workspaceId, description: description || undefined }); }}>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-950">Create workspace team</h2>
+        <p className="mt-2 text-sm text-slate-600">Teams always belong to one workspace. Only its active members can be added.</p>
+        <label className="mt-4 block text-sm font-medium text-slate-700">Name<input required value={name} onChange={(event) => setName(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
+        <label className="mt-3 block text-sm font-medium text-slate-700">Workspace<select required value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5"><option value="">Select workspace</option>{workspaces.filter((workspace) => workspace.status === "active").map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}</select></label>
+        <label className="mt-3 block text-sm font-medium text-slate-700">Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} className="mt-1.5 min-h-20 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
+        <div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" disabled={pending}>{pending ? "Creating..." : "Create team"}</Button></div>
+      </form>
+    </div>
   );
 }
 

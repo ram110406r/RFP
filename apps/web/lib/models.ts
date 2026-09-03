@@ -172,6 +172,7 @@ export interface OrganizationSummary {
 }
 
 export interface OrganizationMemberSummary {
+  organizationMemberId: string;
   userId: string;
   role: string;
   status: string;

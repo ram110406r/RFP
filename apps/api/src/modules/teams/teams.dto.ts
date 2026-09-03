@@ -3,7 +3,7 @@ import { z } from "zod";
 export const createTeamSchema = z.object({
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().max(500).optional(),
-  workspaceId: z.string().uuid().optional(),
+  workspaceId: z.string().uuid(),
 });
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;
 
@@ -11,7 +11,7 @@ export const updateTeamSchema = z
   .object({
     name: z.string().trim().min(2).max(120).optional(),
     description: z.string().trim().max(500).optional(),
-    workspaceId: z.string().uuid().nullable().optional(),
+    workspaceId: z.string().uuid().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "Provide at least one field to update.",

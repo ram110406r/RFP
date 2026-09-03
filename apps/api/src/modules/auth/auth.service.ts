@@ -34,6 +34,7 @@ export interface ResolvedSession {
   userId: string;
   sessionId: string;
   activeOrganizationId: string | null;
+  emailVerified?: boolean;
 }
 
 export interface MembershipSummary {
@@ -68,6 +69,10 @@ export class AuthService {
 
   /** Reads the session cookie. Returns null when there is no valid session. */
   async resolveSession(headers: Headers): Promise<ResolvedSession | null> {
+    // Firebase is the production identity authority. Better Auth remains
+    // available only for local compatibility while existing deployments move.
+    if (process.env.NODE_ENV === "production") return this.resolveFirebaseSession(headers);
+
     const result = await this.auth.api.getSession({ headers });
     if (!result?.session || !result.user) return this.resolveFirebaseSession(headers);
 
@@ -79,6 +84,7 @@ export class AuthService {
       userId: result.user.id,
       sessionId: session.id,
       activeOrganizationId: session.activeOrganizationId ?? null,
+      emailVerified: result.user.emailVerified === true,
     };
   }
 
@@ -99,7 +105,11 @@ export class AuthService {
       const email = decoded.email?.toLowerCase();
       if (!email) return null;
 
-      let [user] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+      let [user] = await this.db
+        .select({ id: users.id, emailVerified: users.emailVerified })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
       if (!user) {
         user = await this.provisionFirebaseUser({
           email,
@@ -108,11 +118,18 @@ export class AuthService {
           uid: decoded.uid,
         });
       }
+      if (user.emailVerified !== (decoded.email_verified === true)) {
+        await this.db
+          .update(users)
+          .set({ emailVerified: decoded.email_verified === true, updatedAt: new Date() })
+          .where(eq(users.id, user.id));
+      }
 
       return {
         userId: user.id,
         sessionId: `firebase:${decoded.uid}`,
         activeOrganizationId: null,
+        emailVerified: decoded.email_verified === true,
       };
     } catch (error) {
       if (process.env.NODE_ENV !== "production") {
@@ -149,7 +166,7 @@ export class AuthService {
       return [createdUser];
     });
     if (!user) throw new Error("Firebase user provisioning returned no user.");
-    return user;
+    return { ...user, emailVerified: input.emailVerified };
   }
 
   /**

@@ -14,6 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun src/migrate.ts",
     "db:ensure-seed": "bun src/ensure-seed.ts",
+    "db:backfill-company-onboarding": "bun src/backfill-company-onboarding.ts",
     "db:push": "drizzle-kit push",
     "db:seed": "bun src/seed/index.ts",
     "db:reset": "bun src/reset.ts"

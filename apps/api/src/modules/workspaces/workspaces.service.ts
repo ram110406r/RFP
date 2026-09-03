@@ -8,6 +8,8 @@ import {
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   organizationMembers,
+  teamMembers,
+  teams,
   users,
   withTransaction,
   workspaceMembers,
@@ -42,7 +44,7 @@ export class WorkspacesService {
       return this.db
         .select()
         .from(workspaces)
-        .where(eq(workspaces.organizationId, auth.organizationId))
+        .where(and(eq(workspaces.organizationId, auth.organizationId), eq(workspaces.status, "active")))
         .orderBy(desc(workspaces.createdAt));
     }
 
@@ -56,6 +58,7 @@ export class WorkspacesService {
       .where(
         and(
           eq(workspaces.organizationId, auth.organizationId),
+          eq(workspaces.status, "active"),
           inArray(workspaces.id, [...auth.workspaceIds]),
         ),
       )
@@ -75,6 +78,24 @@ export class WorkspacesService {
           description: input.description ?? "",
         })
         .returning();
+
+      const [ownerMembership] = await tx
+        .select({ id: organizationMembers.id })
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.organizationId, auth.organizationId),
+            eq(organizationMembers.userId, auth.userId),
+            eq(organizationMembers.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!ownerMembership) throw new ForbiddenException({ code: "NO_ORGANIZATION", message: "Active membership required." });
+      await tx.insert(workspaceMembers).values({
+        workspaceId: created!.id,
+        organizationMemberId: ownerMembership.id,
+        status: "active",
+      });
 
       await this.audit.record(
         {
@@ -319,6 +340,22 @@ export class WorkspacesService {
           code: "NOT_FOUND",
           message: "Workspace member not found.",
         });
+      }
+
+      // Team links are only valid while the member has this workspace.
+      const workspaceTeams = await tx
+        .select({ id: teams.id })
+        .from(teams)
+        .where(and(eq(teams.workspaceId, workspaceId), eq(teams.organizationId, auth.organizationId)));
+      if (workspaceTeams.length > 0) {
+        await tx
+          .delete(teamMembers)
+          .where(
+            and(
+              inArray(teamMembers.teamId, workspaceTeams.map((team) => team.id)),
+              eq(teamMembers.organizationMemberId, organizationMemberId),
+            ),
+          );
       }
 
       await this.audit.record(

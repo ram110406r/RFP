@@ -50,6 +50,13 @@ export class AuthGuard implements CanActivate {
       context.getClass(),
     ]);
 
+    if (session.emailVerified === false && !allowWithoutOrg) {
+      throw new ForbiddenException({
+        code: "EMAIL_VERIFICATION_REQUIRED",
+        message: "Verify your email address before accessing company data.",
+      });
+    }
+
     const auth = await this.authService.resolveAuthContext(session);
 
     if (!auth) {
@@ -63,6 +70,7 @@ export class AuthGuard implements CanActivate {
         request.auth = undefined;
         request.sessionUserId = session.userId;
         request.sessionId = session.sessionId;
+        request.emailVerified = session.emailVerified;
         return true;
       }
       throw new ForbiddenException({
@@ -74,6 +82,7 @@ export class AuthGuard implements CanActivate {
     request.auth = auth;
     request.sessionUserId = session.userId;
     request.sessionId = session.sessionId;
+    request.emailVerified = session.emailVerified;
     return true;
   }
 }
