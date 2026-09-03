@@ -84,6 +84,12 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (pathname === "/signup") setMode("register");
+    if (pathname === "/login" || pathname === "/onboarding") setMode("sign-in");
+  }, [pathname]);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -246,8 +252,24 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
     return (
       <AuthShell
         heading={heading}
-        description={isRegister ? "Create your account to start a new workspace or join one by invitation." : "Use your email and password to continue into TENDYY."}
+        description={isRegister ? "Create a company account, or create your account with the email from an employee invitation." : "Sign in as a company owner or an invited employee to continue into TENDYY."}
       >
+        <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+          <button
+            type="button"
+            onClick={() => setMode("sign-in")}
+            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${!isRegister ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("register")}
+            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${isRegister ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+          >
+            Create account
+          </button>
+        </div>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="firebase-email">
@@ -301,6 +323,11 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
               {isRegister ? "Already have an account? Sign in" : "New here? Create account"}
             </button>
           </div>
+          <p className="text-xs leading-5 text-slate-500">
+            {isRegister
+              ? "Joining an existing company? Use the email address from your invitation. Your workspace access will be assigned after you sign in."
+              : "Employee invitation? Sign in with the invited email address. TENDYY will open your invitation and assigned workspace after authentication."}
+          </p>
           <div className="relative py-1 text-center text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
             <span className="relative z-10 bg-white px-3">or continue with</span>
             <span className="absolute inset-x-0 top-1/2 border-t border-slate-200" aria-hidden="true" />
