@@ -135,12 +135,21 @@ describeDb("Tier 0 activity and audit events", () => {
   });
 
   dbTest("records the full Tier 0 event matrix with correct provenance", async () => {
+    const workspace = await workspacesService.create(ownerAuth(), {
+      name: `Workspace ${suffix}`,
+      slug: `workspace-${suffix}`,
+      description: "Tier 0 verification workspace",
+    });
+    workspaceId = workspace.id;
+
     const invitation = await organizationsService.invite(ownerAuth(), {
       email: `invitee-${suffix}@probe.invalid`,
       role: "CONTRIBUTOR",
+      workspaceId,
     });
 
-    await organizationsService.acceptInvitation(inviteeId, invitation.token);
+    const invitationToken = new URLSearchParams(new URL(invitation.acceptUrl).hash.slice(1)).get("token");
+    await organizationsService.acceptInvitation(inviteeId, invitationToken!);
 
     const [inviteeMembership] = await db
       .select({ id: organizationMembers.id })
@@ -148,13 +157,6 @@ describeDb("Tier 0 activity and audit events", () => {
       .where(eq(organizationMembers.userId, inviteeId))
       .limit(1);
     inviteeMembershipId = inviteeMembership!.id;
-
-    const workspace = await workspacesService.create(ownerAuth(), {
-      name: `Workspace ${suffix}`,
-      slug: `workspace-${suffix}`,
-      description: "Tier 0 verification workspace",
-    });
-    workspaceId = workspace.id;
 
     await workspacesService.update(ownerAuth(), workspaceId, {
       description: "Updated workspace description",

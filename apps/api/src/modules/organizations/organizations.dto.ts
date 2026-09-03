@@ -34,7 +34,7 @@ export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;
 export const inviteMemberSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(190),
   role: orgRoleSchema,
-  workspaceId: z.string().uuid().optional(),
+  workspaceId: z.string().uuid(),
   proposedDepartment: z.string().trim().max(80).optional(),
   proposedTeamId: z.string().uuid().optional(),
 });

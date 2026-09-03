@@ -194,6 +194,11 @@ export interface OrganizationInvitationSummary {
   createdAt: string;
 }
 
+export interface OrganizationInvitationCreated {
+  invitation: OrganizationInvitationSummary;
+  acceptUrl: string;
+}
+
 export interface RoleSummary {
   id: string;
   name: string;

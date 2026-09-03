@@ -88,10 +88,9 @@ describe("OnboardingService employee journey", () => {
     }
     expect(companyStartBlocked).toBe(true);
 
-    await service.start(employeeId, { journey: "EMPLOYEE", invitationId: invitation!.id });
-    const accepted = await service.acceptInvitation(employeeId, invitation!.id);
+    const accepted = await service.acceptInvitationToken(employeeId, invitation!.token);
     expect(accepted?.organizationId).toBe(organizationId);
-    await service.acceptInvitation(employeeId, invitation!.id);
+    await service.acceptInvitationToken(employeeId, invitation!.token);
 
     let companyWriteBlocked = false;
     try {
@@ -116,8 +115,8 @@ describe("OnboardingService employee journey", () => {
       teamCreationBlocked = true;
     }
     expect(teamCreationBlocked).toBe(true);
-    await service.saveTeam(employeeId, { teams: [], invites: [] });
-    await service.complete(employeeId);
+    const completed = await service.status(employeeId);
+    expect(completed.needsOnboarding).toBe(false);
 
     const [membership] = await db.select().from(organizationMembers).where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.userId, employeeId)));
     const [workspaceMembership] = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspace!.id), eq(workspaceMembers.organizationMemberId, membership!.id)));

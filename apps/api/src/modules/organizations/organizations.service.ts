@@ -19,6 +19,7 @@ import {
   users,
   withTransaction,
   workspaceMembers,
+  workspaces,
   type Database,
 } from "@rfp-os/db";
 import type { AuthContext, OrgRole } from "@rfp-os/types";
@@ -319,6 +320,9 @@ export class OrganizationsService {
         id: invitations.id,
         email: invitations.email,
         role: invitations.role,
+        workspaceId: invitations.workspaceId,
+        proposedDepartment: invitations.proposedDepartment,
+        proposedTeamId: invitations.proposedTeamId,
         status: invitations.status,
         expiresAt: invitations.expiresAt,
         createdAt: invitations.createdAt,
@@ -335,8 +339,13 @@ export class OrganizationsService {
         message: "Only an owner can invite another owner.",
       });
     }
-    if (input.workspaceId && !(auth.workspaceIds ?? []).includes(input.workspaceId)) {
-      throw new ForbiddenException({ code: "WORKSPACE_FORBIDDEN", message: "You cannot invite members to that workspace." });
+    const [workspace] = await this.db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(and(eq(workspaces.id, input.workspaceId), eq(workspaces.organizationId, auth.organizationId), eq(workspaces.status, "active")))
+      .limit(1);
+    if (!workspace) {
+      throw new BadRequestException({ code: "INVALID_WORKSPACE", message: "Choose an active workspace in this organization." });
     }
     if (input.proposedTeamId) {
       const [team] = await this.db
@@ -344,7 +353,7 @@ export class OrganizationsService {
         .from(teams)
         .where(and(eq(teams.id, input.proposedTeamId), eq(teams.organizationId, auth.organizationId), eq(teams.status, "active")))
         .limit(1);
-      if (!team || (input.workspaceId && team.workspaceId && team.workspaceId !== input.workspaceId)) {
+      if (!team || team.workspaceId !== input.workspaceId) {
         throw new BadRequestException({ code: "INVALID_PROPOSED_TEAM", message: "The proposed team is not available in that workspace." });
       }
     }
@@ -398,7 +407,7 @@ export class OrganizationsService {
         .insert(invitations)
         .values({
           organizationId: auth.organizationId,
-          workspaceId: input.workspaceId ?? null,
+          workspaceId: input.workspaceId,
           email: input.email,
           role: input.role,
           proposedDepartment: input.proposedDepartment ?? null,
@@ -416,7 +425,7 @@ export class OrganizationsService {
           action: "MEMBER_INVITED",
           entityType: "invitation",
           entityId: created!.id,
-          newValue: created,
+          newValue: this.invitationSummary(created!),
         },
         tx,
       );
@@ -438,7 +447,10 @@ export class OrganizationsService {
       return [created!];
     });
 
-    return invitation;
+    return {
+      invitation: this.invitationSummary(invitation),
+      acceptUrl: `${this.applicationUrl()}/join#token=${encodeURIComponent(invitation.token)}`,
+    };
   }
 
   async revokeInvitation(organizationId: string, invitationId: string) {
@@ -460,7 +472,7 @@ export class OrganizationsService {
         message: "No pending invitation with that id.",
       });
     }
-    return revoked;
+    return this.invitationSummary(revoked);
   }
 
   /**
@@ -476,7 +488,12 @@ export class OrganizationsService {
   async acceptInvitation(userId: string, token: string) {
     const [candidate] = await this.db.select().from(invitations).where(eq(invitations.token, token)).limit(1);
     if (candidate?.status === "accepted" && candidate.acceptedBy === userId) {
-      return { organizationId: candidate.organizationId, workspaceId: candidate.workspaceId, role: candidate.role as OrgRole };
+      return {
+        invitationId: candidate.id,
+        organizationId: candidate.organizationId,
+        workspaceId: candidate.workspaceId,
+        role: candidate.role as OrgRole,
+      };
     }
     if (!candidate || candidate.status !== "pending") {
       throw new NotFoundException({ code: "INVITATION_INVALID", message: "That invitation is no longer valid." });
@@ -500,6 +517,7 @@ export class OrganizationsService {
 
       if (invitation?.status === "accepted" && invitation.acceptedBy === userId) {
         return {
+          invitationId: invitation.id,
           organizationId: invitation.organizationId,
           workspaceId: invitation.workspaceId,
           role: invitation.role as OrgRole,
@@ -634,6 +652,7 @@ export class OrganizationsService {
       }
 
       return {
+        invitationId: invitation.id,
         organizationId: invitation.organizationId,
         workspaceId: invitation.workspaceId,
         role: invitation.role as OrgRole,
@@ -653,6 +672,31 @@ export class OrganizationsService {
       throw new NotFoundException({ code: "INVITATION_INVALID", message: "That invitation is no longer valid." });
     }
     return this.acceptInvitation(userId, invitation.token);
+  }
+
+  private invitationSummary(invitation: typeof invitations.$inferSelect) {
+    return {
+      id: invitation.id,
+      email: invitation.email,
+      role: invitation.role,
+      workspaceId: invitation.workspaceId,
+      proposedDepartment: invitation.proposedDepartment,
+      proposedTeamId: invitation.proposedTeamId,
+      status: invitation.status,
+      expiresAt: invitation.expiresAt,
+      createdAt: invitation.createdAt,
+    };
+  }
+
+  private applicationUrl() {
+    const origin = this.config.get("CORS_ORIGIN", { infer: true }).split(",")[0]?.trim();
+    if (!origin || origin === "*") {
+      throw new ConflictException({
+        code: "INVITATION_URL_UNAVAILABLE",
+        message: "Set CORS_ORIGIN to the public application URL before inviting employees.",
+      });
+    }
+    return origin.replace(/\/$/, "");
   }
 
   private async requireMembership(organizationId: string, userId: string) {

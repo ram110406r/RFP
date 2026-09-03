@@ -9,6 +9,7 @@ import {
   fetchAudits,
   fetchActivities,
   fetchOrganizationCurrent,
+  createOrganizationInvitation,
   fetchOrganizationInvitations,
   fetchOrganizationMembers,
   fetchDashboardSummary,
@@ -351,6 +352,20 @@ export function useOrganizationInvitations(initialData?: { invitations: Organiza
     queryFn: () => fetchOrganizationInvitations(),
     initialData: initialData ?? undefined,
     retry: false,
+  });
+}
+
+export function useInviteOrganizationMember() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createOrganizationInvitation>[0]) => createOrganizationInvitation(input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: organizationKeys.invitations() }),
+        queryClient.invalidateQueries({ queryKey: organizationKeys.members() }),
+        queryClient.invalidateQueries({ queryKey: ["onboarding", "status"] }),
+      ]);
+    },
   });
 }
 

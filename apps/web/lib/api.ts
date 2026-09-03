@@ -11,6 +11,7 @@ import type {
   KnowledgeListPayload,
   DashboardOverview,
   OrganizationInvitationSummary,
+  OrganizationInvitationCreated,
   OrganizationMemberSummary,
   OrganizationSummary,
   RoleSummary,
@@ -77,8 +78,10 @@ export type OnboardingStatus = {
     rfpContext: Record<string, unknown>;
   };
   journey: "COMPANY" | "EMPLOYEE" | null;
-  accountState: "NO_ORGANIZATION" | "PENDING_INVITATION" | "MULTIPLE_INVITATIONS" | "EXPIRED_INVITATION" | "INVITATION_ACCEPTED" | "ACTIVE_MEMBER";
+  accountState: "NO_ORGANIZATION" | "PENDING_INVITATION" | "MULTIPLE_INVITATIONS" | "EXPIRED_INVITATION" | "INVITATION_ACCEPTED" | "ACTIVE_MEMBER" | "NO_WORKSPACE_ACCESS";
   hasMembership: boolean;
+  hasWorkspaceAccess: boolean;
+  workspaceIds: string[];
   needsOnboarding: boolean;
   organizationId: string | null;
   workspaceId: string | null;
@@ -120,6 +123,23 @@ export async function fetchOrganizationInvitations(init?: ApiInit) {
   return requestJson<{ invitations: OrganizationInvitationSummary[] }>("/organizations/current/invitations", init);
 }
 
+export async function createOrganizationInvitation(
+  body: {
+    email: string;
+    role: "OWNER" | "ADMIN" | "RFP_MANAGER" | "CONTRIBUTOR" | "REVIEWER" | "SME" | "VIEWER";
+    workspaceId: string;
+    proposedDepartment?: string;
+    proposedTeamId?: string;
+  },
+  init?: ApiInit,
+) {
+  return requestJson<OrganizationInvitationCreated>("/organizations/current/invitations", {
+    ...init,
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function fetchRoles(init?: ApiInit) {
   return requestJson<{ items: RoleSummary[] }>("/roles", init);
 }
@@ -154,6 +174,10 @@ export function startOnboarding(body: { journey: "COMPANY" | "EMPLOYEE"; invitat
 
 export function acceptOnboardingInvitation(invitationId: string, init?: ApiInit) {
   return requestJson("/onboarding/invitation/accept", { ...init, method: "POST", body: JSON.stringify({ invitationId }) });
+}
+
+export function acceptOnboardingInvitationToken(token: string, init?: ApiInit) {
+  return requestJson("/onboarding/invitation/accept-token", { ...init, method: "POST", body: JSON.stringify({ token }) });
 }
 
 export function saveOnboardingCompany(body: Record<string, unknown>, init?: ApiInit) {

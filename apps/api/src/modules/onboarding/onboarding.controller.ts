@@ -6,6 +6,7 @@ import {
   companySchema,
   completeSchema,
   invitationAcceptanceSchema,
+  invitationTokenAcceptanceSchema,
   journeySchema,
   profileSchema,
   rfpContextSchema,
@@ -40,6 +41,12 @@ export class OnboardingController {
   @ZodBody(invitationAcceptanceSchema)
   acceptInvitation(@CurrentUserId() userId: string, @Body() body: { invitationId: string }) {
     return this.onboarding.acceptInvitation(userId, body.invitationId);
+  }
+
+  @Post("invitation/accept-token")
+  @ZodBody(invitationTokenAcceptanceSchema)
+  acceptInvitationToken(@CurrentUserId() userId: string, @Body() body: { token: string }) {
+    return this.onboarding.acceptInvitationToken(userId, body.token);
   }
 
   @Post("company")

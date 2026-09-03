@@ -19,12 +19,14 @@ import {
   useDashboardSummary,
   useOrganizationCurrent,
   useOrganizationInvitations,
+  useInviteOrganizationMember,
   useOrganizationMembers,
   useRoles,
   useTeams,
   useWorkspaces,
 } from "../../lib/queries";
 import type { ActivityItem } from "../../lib/models";
+import type { OrganizationInvitationCreated, TeamSummary, WorkspaceSummary } from "../../lib/models";
 
 const tabs = [
   { id: "overview", label: "Overview" },
@@ -47,6 +49,9 @@ export default function OrganizationPage() {
   const dashboardQuery = useDashboardSummary(6);
   const activitiesQuery = useActivities();
   const auditsQuery = useAudits();
+  const inviteMutation = useInviteOrganizationMember();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [invitationLink, setInvitationLink] = useState<string | null>(null);
 
   const organization = currentQuery.data ?? null;
   const members = membersQuery.data?.members ?? [];
@@ -159,7 +164,7 @@ export default function OrganizationPage() {
               </Button>
               <Button
                 type="button"
-                onClick={() => jumpTo("members")}
+                onClick={() => setInviteOpen(true)}
                 variant="primary"
               >
                 Invite Members
@@ -663,7 +668,117 @@ export default function OrganizationPage() {
           </aside>
         </div>
       </div>
+      <InviteMemberDialog
+        open={inviteOpen}
+        workspaces={workspaces}
+        teams={teams}
+        pending={inviteMutation.isPending}
+        error={inviteMutation.error instanceof Error ? inviteMutation.error.message : null}
+        invitationLink={invitationLink}
+        onClose={() => {
+          setInviteOpen(false);
+          setInvitationLink(null);
+          inviteMutation.reset();
+        }}
+        onInvite={(input) => inviteMutation.mutate(input, { onSuccess: (result) => setInvitationLink((result as OrganizationInvitationCreated).acceptUrl) })}
+      />
     </AppShell>
+  );
+}
+
+function InviteMemberDialog({
+  open,
+  workspaces,
+  teams,
+  pending,
+  error,
+  invitationLink,
+  onClose,
+  onInvite,
+}: {
+  open: boolean;
+  workspaces: WorkspaceSummary[];
+  teams: TeamSummary[];
+  pending: boolean;
+  error: string | null;
+  invitationLink: string | null;
+  onClose: () => void;
+  onInvite: (input: { email: string; role: "OWNER" | "ADMIN" | "RFP_MANAGER" | "CONTRIBUTOR" | "REVIEWER" | "SME" | "VIEWER"; workspaceId: string; proposedDepartment?: string; proposedTeamId?: string }) => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"OWNER" | "ADMIN" | "RFP_MANAGER" | "CONTRIBUTOR" | "REVIEWER" | "SME" | "VIEWER">("CONTRIBUTOR");
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [department, setDepartment] = useState("");
+  const workspaceTeams = teams.filter((team) => team.workspaceId === workspaceId && team.status === "active");
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-labelledby="invite-member-title">
+      <section className="w-full max-w-lg rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#155EEF]">Workspace access</p>
+            <h2 id="invite-member-title" className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Invite an employee</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Choose the role and workspace before sharing the secure invitation link.</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900">Close</button>
+        </div>
+
+        {invitationLink ? (
+          <div className="mt-5 rounded-[10px] border border-emerald-200 bg-emerald-50 p-4">
+            <p className="text-sm font-semibold text-emerald-900">Invitation ready</p>
+            <p className="mt-1 text-sm text-emerald-800">Share this link only with the invited employee.</p>
+            <div className="mt-3 flex gap-2">
+              <input readOnly value={invitationLink} className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs text-slate-700" />
+              <Button type="button" variant="primary" onClick={() => void navigator.clipboard?.writeText(invitationLink)}>Copy link</Button>
+            </div>
+          </div>
+        ) : (
+          <form
+            className="mt-5 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onInvite({ email, role, workspaceId, proposedDepartment: department || undefined, proposedTeamId: teamId || undefined });
+            }}
+          >
+            <label className="block text-sm font-medium text-slate-700">Employee email
+              <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.com" className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-slate-950 outline-none focus:border-[#155EEF]" />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">Role
+                <select value={role} onChange={(event) => setRole(event.target.value as typeof role)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-950 outline-none focus:border-[#155EEF]">
+                  {(["OWNER", "ADMIN", "RFP_MANAGER", "CONTRIBUTOR", "REVIEWER", "SME", "VIEWER"] as const).map((value) => <option key={value} value={value}>{formatRole(value)}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-slate-700">Workspace
+                <select required value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); setTeamId(""); }} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-950 outline-none focus:border-[#155EEF]">
+                  <option value="">Select workspace</option>
+                  {workspaces.filter((workspace) => workspace.status === "active").map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">Team <span className="font-normal text-slate-400">optional</span>
+                <select value={teamId} onChange={(event) => setTeamId(event.target.value)} disabled={!workspaceId} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-950 outline-none focus:border-[#155EEF] disabled:bg-slate-50">
+                  <option value="">No team assignment</option>
+                  {workspaceTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-slate-700">Department <span className="font-normal text-slate-400">optional</span>
+                <input value={department} onChange={(event) => setDepartment(event.target.value)} placeholder="Security" className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-slate-950 outline-none focus:border-[#155EEF]" />
+              </label>
+            </div>
+            {error ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+              <Button type="submit" variant="primary" disabled={pending || !workspaceId}>{pending ? "Creating..." : "Create invitation"}</Button>
+            </div>
+          </form>
+        )}
+      </section>
+    </div>
   );
 }
 

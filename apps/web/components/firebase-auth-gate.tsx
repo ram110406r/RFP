@@ -171,8 +171,11 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
 
   const heading = useMemo(() => {
     if (!isFirebaseConfigured()) return "Firebase configuration missing";
-    return user ? `Signed in as ${maskEmail(user.email)}` : mode === "register" ? "Create your TENDYY account" : "Sign in to TENDYY";
-  }, [mode, user]);
+    if (user) return `Signed in as ${maskEmail(user.email)}`;
+    if (pathname === "/signup") return "Create your company workspace";
+    if (pathname === "/join") return mode === "register" ? "Create your employee account" : "Sign in to join your workspace";
+    return mode === "register" ? "Create your TENDYY account" : "Sign in to TENDYY";
+  }, [mode, pathname, user]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -252,7 +255,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
     return (
       <AuthShell
         heading={heading}
-        description={isRegister ? "Create a company account, or create your account with the email from an employee invitation." : "Sign in as a company owner or an invited employee to continue into TENDYY."}
+        description={pathname === "/signup" ? "Create the first account for your company. You will set up the organization and its first workspace next." : pathname === "/join" ? "Use the exact email address that received the workspace invitation." : isRegister ? "Create a company account, or create your account with the email from an employee invitation." : "Sign in as a company owner or an invited employee to continue into TENDYY."}
       >
         <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
           <button
@@ -324,9 +327,11 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           <p className="text-xs leading-5 text-slate-500">
-            {isRegister
-              ? "Joining an existing company? Use the email address from your invitation. Your workspace access will be assigned after you sign in."
-              : "Employee invitation? Sign in with the invited email address. TENDYY will open your invitation and assigned workspace after authentication."}
+            {pathname === "/signup"
+              ? "Already invited to a workspace? Open the invitation link instead of creating a company."
+              : isRegister
+                ? "Joining an existing company? Use the email address from your invitation. Your workspace access will be assigned after you sign in."
+                : "Employee invitation? Open the invitation link and sign in with the invited email address."}
           </p>
           <div className="relative py-1 text-center text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
             <span className="relative z-10 bg-white px-3">or continue with</span>
@@ -378,10 +383,21 @@ function OnboardingRedirect({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status.isLoading || status.isError || !status.data) return;
     const onOnboarding = pathname === "/onboarding";
-    if (status.data.needsOnboarding && !onOnboarding) router.replace("/onboarding");
-    if (!status.data.needsOnboarding && onOnboarding) router.replace("/");
+    const onJoin = pathname === "/join";
+    const onAccess = pathname === "/access";
+    if (onJoin) return;
+    if (status.data.needsOnboarding) {
+      if (!onOnboarding) router.replace("/onboarding");
+      return;
+    }
+    if (!status.data.hasWorkspaceAccess) {
+      if (!onAccess) router.replace("/access");
+      return;
+    }
+    if (onOnboarding) router.replace("/");
+    if (!status.data.needsOnboarding && status.data.hasWorkspaceAccess && onAccess) router.replace("/");
   }, [pathname, router, status.data, status.isError, status.isLoading]);
-  if (status.isLoading && pathname !== "/onboarding") return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Checking your workspace and onboarding status...</div>;
+  if (status.isLoading && pathname !== "/onboarding" && pathname !== "/join") return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500">Checking your workspace and onboarding status...</div>;
   return <>{children}</>;
 }
 

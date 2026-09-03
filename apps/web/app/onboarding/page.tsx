@@ -13,9 +13,9 @@ type Action = UseMutationResult<unknown, Error, () => Promise<unknown>>;
 type BaseProps = { data: OnboardingStatus; action: Action; error: string | null };
 
 const companySteps = ["Company", "Workspace", "Your profile", "Team", "RFP setup", "Review", "Complete"];
-const employeeSteps = ["Invitation", "Profile", "Team", "Access", "Complete"];
+const employeeSteps = ["Invitation", "Profile", "Complete"];
 const companyIndex: Record<string, number> = { COMPANY: 0, WORKSPACE: 1, PROFILE: 2, TEAM: 3, RFP_CONTEXT: 4, REVIEW: 5, COMPLETE: 6 };
-const employeeIndex: Record<string, number> = { INVITATION: 0, ORGANIZATION: 0, PROFILE: 1, ATTRIBUTES: 1, TEAM: 2, ACCESS: 3, COMPLETE: 4 };
+const employeeIndex: Record<string, number> = { INVITATION: 0, ORGANIZATION: 0, PROFILE: 1, ATTRIBUTES: 1, TEAM: 1, ACCESS: 1, COMPLETE: 2 };
 const rfpTypes = ["Documents", "Web questionnaires", "Security questionnaires", "Vendor assessments"];
 
 export default function OnboardingPage() {
@@ -137,8 +137,7 @@ function EmployeeJourney({ data, action, error, profile, setProfile }: BaseProps
   const shell = { labels: employeeSteps, active: employeeIndex[state] ?? 0, contextTitle: "Join an existing workspace", contextDescription: "Your organization controls company settings and access. You provide only your work profile.", contextItems: ["Organization remains read-only", "Permissions are administrator-assigned", "Progress is saved securely"] };
   if (state === "INVITATION" && invite) return <OnboardingShell {...shell} eyebrow="Invitation" title={"Join " + invite.organizationName} description="Confirm the workspace and access assigned by your organization."><ErrorNotice error={error} /><Summary rows={[["Organization", invite.organizationName], ["Workspace", invite.workspaceName ?? "Organization access"], ["Team", invite.proposedTeamName ?? "Not assigned"], ["Role", displayValue(invite.role)]]} /><div className="mt-7"><PrimaryAction busy={action.isPending} onClick={() => action.mutate(() => acceptOnboardingInvitation(invite.id))}>Accept invitation</PrimaryAction></div></OnboardingShell>;
   if (state === "PROFILE") return <ProfileStep {...shell} data={data} action={action} error={error} profile={profile} setProfile={setProfile} />;
-  if (state === "TEAM") return <OnboardingShell {...shell} eyebrow="Team" title="Confirm your team" description="This assignment comes from your organization and cannot be elevated here."><ErrorNotice error={error} /><OnboardingForm onSubmit={() => action.mutate(() => saveOnboardingTeam({ teams: [], invites: [] }))}><Summary rows={[["Organization", data.membership?.organizationName ?? ""], ["Department", displayValue(data.user.department)], ["Team", invite?.proposedTeamName ?? "Not assigned"]]} /><FormFooter label="Confirm team" busy={action.isPending} /></OnboardingForm></OnboardingShell>;
-  if (state === "ACCESS") return <OnboardingShell {...shell} eyebrow="Access" title="Your workspace access" description="Your administrator-assigned role controls what you can do in TENDYY."><ErrorNotice error={error} /><OnboardingForm onSubmit={() => action.mutate(() => completeOnboarding({}))}><Summary rows={[["Workspace", data.workspace?.name ?? "Organization workspace"], ["Team", invite?.proposedTeamName ?? "Not assigned"], ["Role", displayValue(data.membership?.role ?? "VIEWER")], ["Department", displayValue(data.user.department)]]} /><FormFooter label="Enter workspace" busy={action.isPending} /></OnboardingForm></OnboardingShell>;
+  if (state === "TEAM" || state === "ACCESS") return <OnboardingShell {...shell} eyebrow="Workspace access" title="Your workspace access" description="Your administrator-assigned role controls what you can do in TENDYY."><ErrorNotice error={error} /><OnboardingForm onSubmit={() => action.mutate(() => completeOnboarding({}))}><Summary rows={[["Workspace", data.workspace?.name ?? "Organization workspace"], ["Team", invite?.proposedTeamName ?? "Not assigned"], ["Role", displayValue(data.membership?.role ?? "VIEWER")], ["Department", displayValue(data.user.department)]]} /><FormFooter label="Enter workspace" busy={action.isPending} /></OnboardingForm></OnboardingShell>;
   return <Complete labels={employeeSteps} title="You have joined the workspace" copy="Your profile and assigned access are ready." />;
 }
 

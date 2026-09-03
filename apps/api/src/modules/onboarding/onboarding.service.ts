@@ -5,7 +5,6 @@ import {
   onboardingProgress,
   organizationMembers,
   organizations,
-  teamMembers,
   teams,
   users,
   withTransaction,
@@ -88,6 +87,21 @@ export class OnboardingService {
           .limit(1)
       : [];
 
+    const workspaceAccess = membership
+      ? await this.db
+          .select({ id: workspaceMembers.workspaceId })
+          .from(workspaceMembers)
+          .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+          .where(
+            and(
+              eq(workspaceMembers.organizationMemberId, membership.id),
+              eq(workspaceMembers.status, "active"),
+              eq(workspaces.organizationId, membership.organizationId),
+              eq(workspaces.status, "active"),
+            ),
+          )
+      : [];
+
     const invitationRows = await this.db
       .select({
         id: invitations.id,
@@ -114,7 +128,9 @@ export class OnboardingService {
     const companyInProgress = journey === "COMPANY" && !progress.completed;
 
     let accountState = "NO_ORGANIZATION";
-    if (membership && !employeeInProgress && !companyInProgress) accountState = "ACTIVE_MEMBER";
+    if (membership && !employeeInProgress && !companyInProgress) {
+      accountState = workspaceAccess.length > 0 ? "ACTIVE_MEMBER" : "NO_WORKSPACE_ACCESS";
+    }
     else if (employeeInProgress && membership) accountState = "INVITATION_ACCEPTED";
     else if (pendingInvitations.length > 1) accountState = "MULTIPLE_INVITATIONS";
     else if (pendingInvitations.length === 1) accountState = "PENDING_INVITATION";
@@ -126,6 +142,8 @@ export class OnboardingService {
       journey,
       accountState,
       hasMembership: Boolean(membership),
+      hasWorkspaceAccess: workspaceAccess.length > 0,
+      workspaceIds: workspaceAccess.map((workspace) => workspace.id),
       needsOnboarding: !membership || employeeInProgress || companyInProgress,
       organizationId: membership?.organizationId ?? progress.organizationId ?? null,
       workspaceId: progress.workspaceId,
@@ -171,6 +189,41 @@ export class OnboardingService {
       .where(eq(onboardingProgress.userId, userId))
       .returning();
     await this.db.update(users).set({ accountType: accepted.role === "ADMIN" ? "COMPANY_ADMIN" : "EMPLOYEE", updatedAt: new Date() }).where(eq(users.id, userId));
+    return updated;
+  }
+
+  async acceptInvitationToken(userId: string, token: string) {
+    const state = await this.status(userId);
+    const [invitation] = await this.db
+      .select({ id: invitations.id, status: invitations.status, acceptedBy: invitations.acceptedBy })
+      .from(invitations)
+      .where(eq(invitations.token, token))
+      .limit(1);
+    const retryingOwnAcceptedInvitation = invitation?.status === "accepted" && invitation.acceptedBy === userId;
+    if (state.hasMembership && !retryingOwnAcceptedInvitation) {
+      throw new ConflictException("This account already has an active organization membership.");
+    }
+
+    const accepted = await this.organizationsService.acceptInvitation(userId, token);
+    const [updated] = await this.db
+      .update(onboardingProgress)
+      .set({
+        journey: "EMPLOYEE",
+        invitationId: accepted.invitationId,
+        organizationId: accepted.organizationId,
+        workspaceId: accepted.workspaceId,
+        currentState: "PROFILE",
+        currentStep: 2,
+        completed: false,
+        completedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(onboardingProgress.userId, userId))
+      .returning();
+    await this.db
+      .update(users)
+      .set({ accountType: accepted.role === "ADMIN" ? "COMPANY_ADMIN" : "EMPLOYEE", updatedAt: new Date() })
+      .where(eq(users.id, userId));
     return updated;
   }
 
@@ -228,14 +281,22 @@ export class OnboardingService {
       phone: profile.phone,
       updatedAt: new Date(),
     }).where(eq(users.id, userId));
+    if (progress.journey === "EMPLOYEE") {
+      return this.updateProgress(userId, {
+        profile,
+        currentState: "COMPLETE",
+        currentStep: 3,
+        completed: true,
+        completedAt: progress.completedAt ?? new Date(),
+      });
+    }
     return this.updateProgress(userId, { profile, currentState: "TEAM", currentStep: 5 });
   }
 
   async saveTeam(userId: string, input: TeamInput) {
     const progress = await this.ensure(userId);
     if (progress.journey === "EMPLOYEE") {
-      if (input.invites.length || input.teams.length) throw new ForbiddenException("Employees cannot create teams or invite members during onboarding.");
-      return this.updateProgress(userId, { team: input, currentState: "ACCESS", currentStep: 6 });
+      throw new ForbiddenException("Employees cannot create teams or invite members during onboarding.");
     }
     await this.requireJourney(userId, "COMPANY");
     if (!progress.organizationId || !progress.workspaceId) throw new ConflictException("Create the company workspace first.");

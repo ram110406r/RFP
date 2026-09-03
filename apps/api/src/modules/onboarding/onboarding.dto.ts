@@ -74,6 +74,7 @@ export const teamSchema = z.object({
 export type TeamInput = z.infer<typeof teamSchema>;
 
 export const invitationAcceptanceSchema = z.object({ invitationId: z.string().uuid() });
+export const invitationTokenAcceptanceSchema = z.object({ token: z.string().trim().min(16).max(128) });
 
 export const rfpContextSchema = z.object({
   rfpVolume: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
