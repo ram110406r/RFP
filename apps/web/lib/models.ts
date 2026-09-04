@@ -45,20 +45,60 @@ export interface TenderSource {
   tenderId: string;
   sourceType: string;
   name: string;
-  externalReference: Record<string, unknown>;
+  externalReference: string | null;
   sourceUrl: string | null;
   fileId: string | null;
   mimeType: string | null;
   fileSize: number;
   checksum: string | null;
   status: string;
-  parseStatus: "REGISTERED" | "UPLOADED" | "PARSED" | "REMOVED";
+  parseStatus: "REGISTERED" | "UPLOADED" | "PARSED" | "FAILED" | "REMOVED";
   parsedAt: string | null;
   createdBy: string | null;
   metadata: Record<string, unknown>;
   removedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TenderDocument {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  tenderId: string;
+  tenderSourceId: string | null;
+  documentId: string;
+  documentRole: string;
+  name: string;
+  filename: string;
+  mimeType: string;
+  fileSize: number;
+  checksum: string | null;
+  status: "UPLOADED" | "PROCESSING" | "PROCESSED" | "FAILED";
+  failureReason: string | null;
+  processedAt: string | null;
+  metadata: Record<string, unknown>;
+  uploadedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  uploadedAt: string;
+}
+
+export interface TenderTimelineItem {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  actorId: string | null;
+  actorType: string;
+  actorLabel: string;
+  kind: string;
+  label: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
 }
 
 export interface WorkspaceOverview {
@@ -68,8 +108,15 @@ export interface WorkspaceOverview {
     requirements: number;
     answers: number;
     sources: number;
+    documents: number;
+    processedDocuments: number;
+    pendingDocuments: number;
     reviews: number;
   };
+  sources: TenderSource[];
+  documents: TenderDocument[];
+  requirements: TenderRequirement[];
+  timeline: TenderTimelineItem[];
   validation: {
     tenderId: string;
     latestRun: TenderValidationRun | null;

@@ -343,6 +343,7 @@ describeDb("Tender integration", () => {
     );
     const journal = JSON.parse(journalUrl) as { entries: { tag: string }[] };
     expect(journal.entries.some((entry) => entry.tag === "0015_tender_sources")).toBe(true);
+    expect(journal.entries.some((entry) => entry.tag === "0023_tender_document_intake_hardening")).toBe(true);
 
     const expectedTables = [
       "tenders",
@@ -398,6 +399,29 @@ describeDb("Tender integration", () => {
         "timezone",
         "metadata",
         "archived_at",
+        "created_at",
+        "updated_at",
+      ]),
+    );
+
+    const tenderDocumentColumns = (await db.execute(sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public' and table_name = 'tender_documents'
+    `)) as Array<{ column_name: string }>;
+    expect(new Set(tenderDocumentColumns.map((row) => row.column_name))).toEqual(
+      new Set([
+        "id",
+        "organization_id",
+        "workspace_id",
+        "tender_id",
+        "tender_source_id",
+        "document_id",
+        "document_role",
+        "status",
+        "failure_reason",
+        "processed_at",
+        "metadata",
         "created_at",
         "updated_at",
       ]),
@@ -1009,6 +1033,14 @@ describeDb("Tender integration", () => {
     expect(completeA1.body.status).toBe("READY");
     expect(completeA1.body.checksum).toBeTruthy();
 
+    const completedAgainA1 = await requestJson(
+      "POST",
+      `/api/v1/tenders/${tenderA1Id}/sources/${sourceA1Id}/complete`,
+      ownerA,
+      orgA,
+    );
+    expect(completedAgainA1.status).toBe(200);
+
     const sourceRowA1 = await db.query.tenderSources.findFirst({
       where: eq(tenderSources.id, sourceA1Id),
     });
@@ -1016,6 +1048,34 @@ describeDb("Tender integration", () => {
     expect(sourceRowA1?.workspaceId).toBe(workspaceA1);
     expect(sourceRowA1?.tenderId).toBe(tenderA1Id);
     expect(sourceRowA1?.status).toBe("READY");
+
+    const tenderDocumentsAfterComplete = await db
+      .select()
+      .from(tenderDocuments)
+      .where(and(eq(tenderDocuments.organizationId, orgA), eq(tenderDocuments.tenderSourceId, sourceA1Id)));
+    expect(tenderDocumentsAfterComplete).toHaveLength(1);
+    expect(tenderDocumentsAfterComplete[0]?.tenderId).toBe(tenderA1Id);
+    expect(tenderDocumentsAfterComplete[0]?.documentId).toBe(sourceCreate.body.fileId);
+    expect(tenderDocumentsAfterComplete[0]?.status).toBe("UPLOADED");
+
+    const parsedA1 = await requestJson("POST", `/api/v1/tenders/${tenderA1Id}/sources/${sourceA1Id}/parse`, ownerA, orgA);
+    expect(parsedA1.status).toBe(200);
+    expect(parsedA1.body.parseStatus).toBe("PARSED");
+
+    const parsedDocumentA1 = await db.query.tenderDocuments.findFirst({
+      where: eq(tenderDocuments.tenderSourceId, sourceA1Id),
+    });
+    expect(parsedDocumentA1?.status).toBe("PROCESSED");
+    expect(parsedDocumentA1?.processedAt).toBeTruthy();
+
+    const workspaceA1Response = await requestJson("GET", `/api/v1/tenders/${tenderA1Id}/workspace`, ownerA, orgA);
+    expect(workspaceA1Response.status).toBe(200);
+    expect(workspaceA1Response.body.counts.documents).toBe(1);
+    expect(workspaceA1Response.body.counts.processedDocuments).toBe(1);
+    expect(workspaceA1Response.body.counts.pendingDocuments).toBe(0);
+    expect(workspaceA1Response.body.documents).toHaveLength(1);
+    expect(workspaceA1Response.body.documents[0].tenderSourceId).toBe(sourceA1Id);
+    expect(workspaceA1Response.body.documents[0].status).toBe("PROCESSED");
 
     const listA1 = await requestJson("GET", `/api/v1/tenders/${tenderA1Id}/sources`, contributorA, orgA);
     expect(listA1.status).toBe(200);
@@ -1046,6 +1106,14 @@ describeDb("Tender integration", () => {
       orgA,
     );
     expect(completeA2.status).toBe(200);
+    await storage.deleteObject(sourceA2.body.objectKey as string);
+    const failedParseA2 = await requestJson("POST", `/api/v1/tenders/${tenderA2Id}/sources/${sourceA2Id}/parse`, ownerA, orgA);
+    expect(failedParseA2.status).toBe(409);
+    const failedDocumentA2 = await db.query.tenderDocuments.findFirst({
+      where: eq(tenderDocuments.tenderSourceId, sourceA2Id),
+    });
+    expect(failedDocumentA2?.status).toBe("FAILED");
+    expect(failedDocumentA2?.failureReason).toContain("upload");
 
     const sourceB = await requestJson("POST", `/api/v1/tenders/${tenderBId}/sources`, ownerB, orgB, {
       sourceType: "DOCUMENT",
@@ -1317,9 +1385,22 @@ describeDb("Tender integration", () => {
     expect(validationRun.status).toBe(201);
     expect(validationRun.body.ready).toBe(true);
 
+    const savedTender = await requestJson("POST", `/api/v1/tenders/${tenderAId}/save`, ownerA, orgA);
+    expect(savedTender.status).toBe(200);
+
     const workspace = await requestJson("GET", `/api/v1/tenders/${tenderAId}/workspace`, ownerA, orgA);
     expect(workspace.status).toBe(200);
+    expect(workspace.body.tender.saved).toBe(true);
     expect(workspace.body.counts.questions).toBe(1);
+    expect(workspace.body.counts.sources).toBe(1);
+    expect(workspace.body.counts.documents).toBe(1);
+    expect(workspace.body.counts.processedDocuments).toBe(0);
+    expect(workspace.body.counts.pendingDocuments).toBe(1);
+    expect(workspace.body.sources).toHaveLength(1);
+    expect(workspace.body.documents).toHaveLength(1);
+    expect(workspace.body.documents[0].status).toBe("UPLOADED");
+    expect(workspace.body.requirements.map((item: { id: string }) => item.id)).toEqual([requirementId]);
+    expect(workspace.body.timeline.some((item: { action: string }) => item.action === "tender.saved")).toBe(true);
     expect(workspace.body.validation.current.ready).toBe(true);
 
     const exportResponse = await requestJson("GET", `/api/v1/tenders/${tenderAId}/export`, ownerA, orgA);

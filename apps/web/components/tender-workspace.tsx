@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { Bookmark, Building2, CalendarClock, Database, FileText, MapPin, Sparkles, UploadCloud } from "lucide-react";
 
 import { Button } from "@rfp-os/ui";
 
@@ -12,12 +13,22 @@ import {
   RfpEmptyState,
   RfpErrorState,
   RfpEvidenceCard,
-  RfpMetricCard,
   RfpPageHeader,
   RfpReviewPanel,
   RfpSectionHeader,
   RfpStatusBadge,
 } from "./rfp-foundation";
+import {
+  TendyyCard,
+  TendyyEmptyState,
+  TendyyErrorState,
+  TendyyMetricCard,
+  TendyyPageHeader,
+  TendyySectionHeader,
+  TendyySkeletonRows,
+  TendyyStatusBadge,
+  toneFromStatus,
+} from "./tendyy-ui";
 import { ApiError } from "../lib/api";
 import type { AnswerAnalysisResult, AnswerImprovementResult } from "@rfp-os/types";
 import type {
@@ -26,33 +37,32 @@ import type {
   TenderBriefPayload,
   TenderAnswer,
   TenderAnswerVersion,
+  TenderDocument,
+  TenderRequirement,
   TenderSource,
+  TenderTimelineItem,
   WorkspaceOverview,
 } from "../lib/models";
 import {
   useAnalyzeAnswer,
-  useAnalyzeTenderMutation,
-  useApproveTender,
   useAnswerEvidence,
   useAnswerVersions,
   useGenerateAnswer,
   useImproveAnswer,
   useRegenerateAnswer,
   useRequirementEvidence,
+  useSaveTender,
   useSaveAnswer,
   useSubmitReview,
-  useSubmitTender,
   useTenderAnswers,
   useTenderBrief,
-  useTenderBriefRefresh,
   useTenderQuestions,
   useTenderRequirements,
   useTenderReviews,
   useTenderSources,
   useParseTenderSource,
   useTenderWorkspace,
-  useRfpApplyProgress,
-  useRunRfpApply,
+  useUnsaveTender,
 } from "../lib/queries";
 import { getGenerationId, getGenerationMeta, reviewToneFromStatus } from "../lib/workspace-utils";
 
@@ -74,251 +84,120 @@ type RequirementsIndexClientProps = {
 
 export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorkspaceClientProps) {
   const overviewQuery = useTenderWorkspace(tenderId, initialOverview ?? null);
-  const briefQuery = useTenderBrief(tenderId);
-  const questionsQuery = useTenderQuestions(tenderId);
-  const requirementsQuery = useTenderRequirements(tenderId);
-  const answersQuery = useTenderAnswers(tenderId);
-  const reviewsQuery = useTenderReviews(tenderId);
+  const requirementsQuery = useTenderRequirements(tenderId, initialOverview?.requirements ? { items: initialOverview.requirements } : null);
   const sourcesQuery = useTenderSources(tenderId);
-  const refreshBrief = useTenderBriefRefresh(tenderId);
-  const analyzeTenderMutation = useAnalyzeTenderMutation(tenderId);
   const parseSourceMutation = useParseTenderSource(tenderId);
-  const applyProgressQuery = useRfpApplyProgress(tenderId);
-  const runApplyMutation = useRunRfpApply(tenderId);
-  const approveTenderMutation = useApproveTender(tenderId);
-  const submitTenderMutation = useSubmitTender(tenderId);
+  const saveTenderMutation = useSaveTender();
+  const unsaveTenderMutation = useUnsaveTender();
 
-  const tender = overviewQuery.data?.tender;
-  const requirements = requirementsQuery.data?.items ?? [];
-  const questions = questionsQuery.data?.items ?? [];
-  const answers = answersQuery.data?.items ?? [];
-  const reviews = reviewsQuery.data?.items ?? [];
-  const sources = sourcesQuery.data?.items ?? [];
-  const brief = briefQuery.data?.brief;
-  const validation = overviewQuery.data?.validation.current;
-  const briefSections = briefQuery.data?.sections ?? [];
+  const overview = overviewQuery.data;
+  const tender = overview?.tender;
+  const requirements = requirementsQuery.data?.items ?? overview?.requirements ?? [];
+  const sources = sourcesQuery.data?.items ?? overview?.sources ?? [];
+  const documents = overview?.documents ?? [];
+  const timeline = overview?.timeline ?? [];
+  const counts = overview?.counts;
+  const savePending = saveTenderMutation.isPending || unsaveTenderMutation.isPending;
+
+  function toggleSaved() {
+    if (!tender || savePending) return;
+    if (tender.saved) {
+      unsaveTenderMutation.mutate(tender.id);
+    } else {
+      saveTenderMutation.mutate(tender.id);
+    }
+  }
+
+  if (overviewQuery.isLoading && !overview) {
+    return (
+      <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Tenders", href: "/tenders" }, { label: "Tender" }]}>
+        <div className="space-y-5">
+          <TendyyPageHeader eyebrow="Tender workspace" title="Loading tender workspace" description="Fetching persisted tender data from the backend." />
+          <TendyyCard>
+            <TendyySkeletonRows count={5} />
+          </TendyyCard>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
-    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "RFPs", href: "/tenders" }, { label: tender?.title ?? "Tender" }]}>
+    <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Tenders", href: "/tenders" }, { label: tender?.title ?? "Tender" }]}>
       <div className="space-y-6">
-        <header className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/85 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)] backdrop-blur">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-amber-900/80">Tender workspace</p>
-              <h1 className="text-[29px] font-semibold tracking-tight sm:text-[30px]">{tender?.title ?? "Loading tender workspace"}</h1>
-              <p className="mt-2 max-w-3xl text-[13px] leading-6 text-slate-600">
-                {tender
-                  ? `${tender.name} | ${tender.tenderType} | ${tender.status} | Workspace ${tender.workspaceId}`
-                  : "Fetching workspace data from the backend."}
-              </p>
-            </div>
+        <TendyyPageHeader
+          eyebrow="Tender workspace"
+          title={tender?.title ?? "Tender workspace"}
+          description={tender ? tenderDescription(tender) : "Persisted tender data will appear here when the backend responds."}
+          badge={tender ? <TendyyStatusBadge tone={toneFromStatus(tender.status)}>{tender.status}</TendyyStatusBadge> : null}
+          actions={
+            tender ? (
+              <>
+                <Button type="button" variant="secondary" onClick={toggleSaved} disabled={savePending}>
+                  <Bookmark className="h-4 w-4" />
+                  {savePending ? "Saving..." : tender.saved ? "Saved" : "Save"}
+                </Button>
+                <Button asChild>
+                  <Link href={`/apply/${tender.id}`}>Continue response</Link>
+                </Button>
+              </>
+            ) : null
+          }
+        />
 
-            <div className="flex flex-wrap gap-3">
-              <ActionButton
-                onClick={() => refreshBrief.mutate()}
-                loading={refreshBrief.isPending}
-                variant="secondary"
-              >
-                Refresh Brief
-              </ActionButton>
-              <ActionButton
-                onClick={() => analyzeTenderMutation.mutate()}
-                loading={analyzeTenderMutation.isPending}
-              >
-                Analyze Tender
-              </ActionButton>
-            </div>
-          </div>
+        {overviewQuery.error ? (
+          <TendyyErrorState title="Unable to load tender workspace" message={errorText(overviewQuery.error)} onRetry={() => void overviewQuery.refetch()} />
+        ) : null}
+        {saveTenderMutation.error ? <TendyyErrorState title="Unable to save tender" message={errorText(saveTenderMutation.error)} /> : null}
+        {unsaveTenderMutation.error ? <TendyyErrorState title="Unable to update saved tender" message={errorText(unsaveTenderMutation.error)} /> : null}
 
-          {overviewQuery.error ? <ErrorBanner error={overviewQuery.error} /> : null}
-        </header>
-
-        <section className="grid gap-4 lg:grid-cols-4">
-          <MetricCard label="Questions" value={overviewQuery.data?.counts.questions ?? questions.length} />
-          <MetricCard label="Requirements" value={overviewQuery.data?.counts.requirements ?? requirements.length} />
-          <MetricCard label="Answers" value={overviewQuery.data?.counts.answers ?? answers.length} />
-          <MetricCard label="Reviews" value={overviewQuery.data?.counts.reviews ?? reviews.length} />
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <TendyyMetricCard label="Deadline" value={formatTenderDate(tender?.dueAt)} detail={tender?.timezone ?? "UTC"} icon={<CalendarClock className="h-5 w-5" />} tone={deadlineTone(tender?.dueAt)} />
+          <TendyyMetricCard label="Requirements" value={counts?.requirements ?? requirements.length} detail={`${counts?.questions ?? 0} questions mapped`} icon={<FileText className="h-5 w-5" />} tone="primary" />
+          <TendyyMetricCard label="Documents" value={counts?.documents ?? documents.length} detail={`${counts?.processedDocuments ?? 0} processed, ${counts?.pendingDocuments ?? 0} pending`} icon={<UploadCloud className="h-5 w-5" />} tone={(counts?.pendingDocuments ?? 0) > 0 ? "warning" : "success"} />
+          <TendyyMetricCard label="Estimated value" value={formatTenderValue(tender?.estimatedValue, tender?.currency)} detail={tender?.location || "Location not provided"} icon={<Database className="h-5 w-5" />} tone="neutral" />
         </section>
 
-        <section className="rounded-[10px] border border-[#155EEF]/20 bg-[#F8FAFF] p-4 shadow-[0_12px_30px_rgba(21,94,239,0.08)]">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#155EEF]">Application workflow</p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-950">Prepare this tender for review</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Analyze the tender, generate grounded drafts for up to ten requirements, and run validation.
-              </p>
+        <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+          <TendyyCard>
+            <TendyySectionHeader eyebrow="Overview" title="Tender record" description="This is the persisted tender metadata from PostgreSQL." />
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <OperationalField label="Buyer" value={tender?.buyerName || tender?.name} icon={<Building2 className="h-4 w-4" />} />
+              <OperationalField label="Location" value={tender?.location} icon={<MapPin className="h-4 w-4" />} />
+              <OperationalField label="Reference" value={tender?.referenceNumber} />
+              <OperationalField label="Tender type" value={tender?.tenderType} />
+              <OperationalField label="Source type" value={tender?.sourceType} />
+              <OperationalField label="Source URL" value={tender?.sourceUrl} href={tender?.sourceUrl ?? undefined} />
             </div>
-            <ActionButton
-              onClick={() => runApplyMutation.mutate({ phase: "FULL", limit: 10 })}
-              loading={runApplyMutation.isPending}
-            >
-              {runApplyMutation.isPending ? "Preparing..." : "Prepare application"}
-            </ActionButton>
-          </div>
+            <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--neutral-soft)] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">Description</p>
+              <p className="mt-2 text-[13px] leading-6 text-[var(--text)]">{tender?.description || "No description has been provided for this tender yet."}</p>
+            </div>
+          </TendyyCard>
 
-          {applyProgressQuery.data ? (
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
-              {Object.entries(applyProgressQuery.data.phases).map(([phase, value]) => {
-                const status = value.status;
-                const complete = status === "COMPLETE";
-                return (
-                  <div key={phase} className="rounded-[9px] border border-[#D9E2F3] bg-white px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">{phase}</p>
-                    <p className={`mt-1 text-xs font-semibold ${complete ? "text-emerald-700" : status === "FAILED" ? "text-rose-700" : "text-amber-700"}`}>
-                      {status.replaceAll("_", " ")}
-                    </p>
-                  </div>
-                );
-              })}
+          <TendyyCard>
+            <TendyySectionHeader eyebrow="Future analysis" title="Analysis is not running here" description="AI matching, eligibility, recommendations, and Start RFP remain deferred until the operational tender workspace is stable." />
+            <div className="mt-5 flex items-start gap-3 rounded-[var(--radius-md)] border border-blue-200 bg-blue-50 p-4 text-blue-950">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+              <p className="text-[13px] leading-6">This panel is intentionally informational in milestone 2. No AI job is triggered by opening this page.</p>
             </div>
-          ) : null}
-
-          {applyProgressQuery.error ? <div className="mt-3"><ErrorBanner error={applyProgressQuery.error} /></div> : null}
-          {runApplyMutation.error ? <div className="mt-3"><ErrorBanner error={runApplyMutation.error} /></div> : null}
-          {approveTenderMutation.error ? <div className="mt-3"><ErrorBanner error={approveTenderMutation.error} /></div> : null}
-          {submitTenderMutation.error ? <div className="mt-3"><ErrorBanner error={submitTenderMutation.error} /></div> : null}
-          {applyProgressQuery.data?.phases.validation.ready ? (
-            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#D9E2F3] pt-4">
-              <p className="mr-auto text-xs text-slate-600">Validation is ready. Complete review before approval.</p>
-              <ActionButton
-                onClick={() => approveTenderMutation.mutate()}
-                loading={approveTenderMutation.isPending}
-                variant="secondary"
-                disabled={applyProgressQuery.data.phases.approval.status === "COMPLETE"}
-              >
-                {applyProgressQuery.data.phases.approval.status === "COMPLETE" ? "Approved" : "Approve tender"}
-              </ActionButton>
-              <ActionButton
-                onClick={() => submitTenderMutation.mutate()}
-                loading={submitTenderMutation.isPending}
-                disabled={applyProgressQuery.data.phases.submission.status === "COMPLETE"}
-              >
-                {applyProgressQuery.data.phases.submission.status === "COMPLETE" ? "Submitted" : "Submit tender"}
-              </ActionButton>
-            </div>
-          ) : null}
+          </TendyyCard>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-          <article className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)]">
-            <SectionTitle
-              eyebrow="Tender brief"
-              title="Evidence-aware briefing for contributors"
-              subtitle="The brief is grounded in the live tender, requirements, questions, and source set."
+        <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <TendyyCard>
+            <TendyySectionHeader
+              eyebrow="Sources and documents"
+              title="Intake state"
+              description="Source and document rows come from the existing upload, completion, and parse pipeline."
+              actionHref="/tenders/import"
+              actionLabel="Import documents"
             />
-
-            {brief ? <TenderBriefPanel brief={brief} sections={briefSections} /> : <PanelState label="Loading brief" />}
-          </article>
-
-          <article className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)]">
-            <SectionTitle
-              eyebrow="Validation"
-              title="Workspace readiness"
-              subtitle="Deterministic validation is computed from the current tender data."
-            />
-
-            {validation ? (
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-emerald-900">Current score</p>
-                      <p className="mt-1 text-[30px] font-semibold text-emerald-950">{validation.score}</p>
-                    </div>
-                    <StatusPill tone={validation.ready ? "success" : "warning"}>
-                      {validation.ready ? "Ready" : "Needs work"}
-                    </StatusPill>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {validation.issues.slice(0, 4).map((issue) => (
-                    <div key={issue.id} className="rounded-2xl border border-slate-200 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-slate-900">{issue.title}</p>
-                        <StatusPill tone={issue.severity === "CRITICAL" || issue.severity === "HIGH" ? "danger" : "warning"}>
-                          {issue.severity}
-                        </StatusPill>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">{issue.recommendation}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <PanelState label="Loading validation" />
-            )}
-          </article>
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-          <article className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)]">
-            <SectionTitle
-              eyebrow="Requirements"
-              title="Question and requirement map"
-              subtitle="Click a requirement to open the AI-assisted answer workspace."
-            />
-
-            <div className="grid gap-3">
-              {requirements.map((requirement) => {
-                const questionCount = requirement.questionIds.length;
-                const answer = answers.find((row) => row.questionId === requirement.questionIds[0]);
-                return (
-                  <Link
-                    key={requirement.id}
-                    href={`/tenders/${tenderId}/requirements/${requirement.id}`}
-                    className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-lg"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="max-w-2xl">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-base font-semibold text-slate-900">{requirement.title}</p>
-                          <StatusPill tone={requirement.mandatory ? "danger" : "neutral"}>
-                            {requirement.requirementType}
-                          </StatusPill>
-                        </div>
-                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{requirement.description}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-2 text-right">
-                        <StatusPill tone={answer ? reviewToneFromStatus(answer.status) : "neutral"}>
-                          {answer ? answer.status : "No answer"}
-                        </StatusPill>
-                        <p className="text-xs text-slate-500">
-                          {questionCount} question{questionCount === 1 ? "" : "s"}
-                        </p>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </article>
-
-          <article className="rounded-[10px] border border-[rgba(72,52,31,0.12)] bg-white/90 p-4 shadow-[0_16px_45px_rgba(62,42,23,0.12)]">
-            <SectionTitle
-              eyebrow="Sources"
-              title="Tender sources and parse state"
-              subtitle="This panel shows the live source pack, its ingest state, and whether parsing has completed."
-            />
-
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {overviewQuery.data?.sections.map((section) => (
-                  <div key={section.id} className="rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <p className="text-[13px] font-medium text-slate-900">{section.label}</p>
-                    <p className="text-xs text-slate-500">{section.id}</p>
-                    <p className="mt-1.5 text-[19px] font-semibold text-slate-900">{section.items}</p>
-                  </div>
-                ))}
-              </div>
-
-              {sourcesQuery.error ? <ErrorBanner error={sourcesQuery.error} /> : null}
-
-              {sources.length > 0 ? (
-                <div className="space-y-3">
+            <div className="mt-5 space-y-3">
+              {sourcesQuery.error ? <TendyyErrorState title="Unable to load tender sources" message={errorText(sourcesQuery.error)} onRetry={() => void sourcesQuery.refetch()} /> : null}
+              {sources.length > 0 || documents.length > 0 ? (
+                <>
                   {sources.map((source) => (
-                    <SourceCard
+                    <OperationalSourceCard
                       key={source.id}
                       source={source}
                       isParsing={parseSourceMutation.isPending && parseSourceMutation.variables === source.id}
@@ -326,20 +205,212 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
                       onParse={() => parseSourceMutation.mutate(source.id)}
                     />
                   ))}
-                </div>
+                  {documents.map((document) => (
+                    <OperationalDocumentCard
+                      key={document.id}
+                      document={document}
+                      source={sources.find((source) => source.id === document.tenderSourceId) ?? null}
+                      isParsing={parseSourceMutation.isPending && parseSourceMutation.variables === document.tenderSourceId}
+                      disabled={parseSourceMutation.isPending}
+                      onParse={() => {
+                        if (document.tenderSourceId) parseSourceMutation.mutate(document.tenderSourceId);
+                      }}
+                    />
+                  ))}
+                </>
               ) : (
-                <PanelState label="No tender sources yet" />
+                <TendyyEmptyState title="No sources or documents" description="This tender has no persisted source uploads or linked tender documents yet." actionHref="/tenders/import" actionLabel="Import documents" />
+              )}
+              {parseSourceMutation.error ? <TendyyErrorState title="Unable to parse source" message={errorText(parseSourceMutation.error)} /> : null}
+            </div>
+          </TendyyCard>
+
+          <TendyyCard>
+            <TendyySectionHeader eyebrow="Requirements" title="Persisted requirement map" description="Only real extracted or manually-created requirements are shown." actionHref={`/tenders/${tenderId}/requirements`} actionLabel="Open requirements" />
+            <div className="mt-5 space-y-3">
+              {requirementsQuery.error ? <TendyyErrorState title="Unable to load requirements" message={errorText(requirementsQuery.error)} onRetry={() => void requirementsQuery.refetch()} /> : null}
+              {requirements.length > 0 ? (
+                requirements.slice(0, 8).map((requirement) => <OperationalRequirementRow key={requirement.id} tenderId={tenderId} requirement={requirement} />)
+              ) : (
+                <TendyyEmptyState title="No requirements yet" description="Requirements will appear after the existing parser or manual requirement workflow creates them." />
               )}
             </div>
-
-            {briefQuery.error ? <ErrorBanner error={briefQuery.error} /> : null}
-            {analyzeTenderMutation.error ? <ErrorBanner error={analyzeTenderMutation.error} /> : null}
-            {parseSourceMutation.error ? <ErrorBanner error={parseSourceMutation.error} /> : null}
-          </article>
+          </TendyyCard>
         </section>
+
+        <TendyyCard>
+          <TendyySectionHeader eyebrow="Timeline" title="Tender activity" description="Recent activity events recorded for this tender and workspace." />
+          <div className="mt-5">
+            {timeline.length > 0 ? (
+              <div className="space-y-3">
+                {timeline.map((item) => <OperationalTimelineRow key={item.id} item={item} />)}
+              </div>
+            ) : (
+              <TendyyEmptyState title="No activity yet" description="Timeline rows will appear as users create, update, save, parse, approve, or submit this tender." />
+            )}
+          </div>
+        </TendyyCard>
       </div>
     </AppShell>
   );
+}
+
+function OperationalField({ label, value, href, icon }: { label: string; value?: string | null; href?: string; icon?: React.ReactNode }) {
+  const content = value ? value : "Not provided";
+  return (
+    <div className="min-w-0 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-white p-3">
+      <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
+        {icon}
+        {label}
+      </p>
+      {href && value ? (
+        <a href={href} target="_blank" rel="noreferrer" className="mt-1 block truncate text-[13px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">
+          {content}
+        </a>
+      ) : (
+        <p className="mt-1 truncate text-[13px] font-semibold text-[var(--text)]">{content}</p>
+      )}
+    </div>
+  );
+}
+
+function OperationalSourceCard({ source, isParsing, disabled, onParse }: { source: TenderSource; isParsing: boolean; disabled: boolean; onParse: () => void }) {
+  const parsed = source.parseStatus === "PARSED";
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-white p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-[13px] font-semibold text-[var(--text)]">{source.name}</p>
+            <TendyyStatusBadge tone={toneFromStatus(source.parseStatus)}>{source.parseStatus}</TendyyStatusBadge>
+          </div>
+          <p className="mt-1 text-[12px] leading-5 text-[var(--muted)]">
+            {[source.sourceType, source.mimeType, formatBytes(source.fileSize), formatTenderDate(source.createdAt)].filter(Boolean).join(" | ")}
+          </p>
+          {source.sourceUrl ? <p className="mt-1 truncate text-[12px] text-[var(--primary)]">{source.sourceUrl}</p> : null}
+        </div>
+        <Button type="button" variant="secondary" disabled={disabled || parsed} onClick={onParse}>
+          {isParsing ? "Parsing..." : parsed ? "Parsed" : "Parse"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function OperationalDocumentCard({
+  document,
+  source,
+  isParsing,
+  disabled,
+  onParse,
+}: {
+  document: TenderDocument;
+  source: TenderSource | null;
+  isParsing: boolean;
+  disabled: boolean;
+  onParse: () => void;
+}) {
+  const canParse = Boolean(document.tenderSourceId) && document.status !== "PROCESSING" && document.status !== "PROCESSED";
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-[13px] font-semibold text-[var(--text)]">{document.name}</p>
+            <TendyyStatusBadge tone={toneFromStatus(document.status)}>{document.status}</TendyyStatusBadge>
+          </div>
+          <p className="mt-1 text-[12px] leading-5 text-[var(--muted)]">
+            {[document.documentRole, document.mimeType, formatBytes(document.fileSize), `Uploaded ${formatTenderDate(document.uploadedAt)}`].filter(Boolean).join(" | ")}
+          </p>
+          <p className="mt-1 text-[11px] text-[var(--muted)]">
+            {[document.tenderSourceId ? `Source ${document.tenderSourceId}` : "No linked source", source ? `Source ${source.parseStatus}` : null, document.processedAt ? `Processed ${formatTenderDate(document.processedAt)}` : null].filter(Boolean).join(" | ")}
+          </p>
+          {document.failureReason ? <p className="mt-2 rounded-[var(--radius-sm)] bg-rose-50 px-3 py-2 text-[12px] leading-5 text-rose-800">{document.failureReason}</p> : null}
+        </div>
+        {canParse ? (
+          <Button type="button" variant="secondary" disabled={disabled} onClick={onParse}>
+            {isParsing ? "Processing..." : document.status === "FAILED" ? "Retry" : "Parse"}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function OperationalRequirementRow({ tenderId, requirement }: { tenderId: string; requirement: TenderRequirement }) {
+  return (
+    <Link href={`/tenders/${tenderId}/requirements/${requirement.id}`} className="block rounded-[var(--radius-md)] border border-[var(--border)] bg-white p-3 transition hover:border-blue-200 hover:bg-blue-50/40">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[13px] font-semibold text-[var(--text)]">{requirement.title}</p>
+            <TendyyStatusBadge tone={requirement.mandatory ? "danger" : "neutral"}>{requirement.requirementType}</TendyyStatusBadge>
+          </div>
+          <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-[var(--muted)]">{requirement.description || "No description provided."}</p>
+          <p className="mt-2 text-[11px] text-[var(--muted)]">{requirementProvenance(requirement)}</p>
+        </div>
+        <TendyyStatusBadge tone={toneFromStatus(requirement.status)}>{requirement.status}</TendyyStatusBadge>
+      </div>
+    </Link>
+  );
+}
+
+function OperationalTimelineRow({ item }: { item: TenderTimelineItem }) {
+  return (
+    <div className="flex gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-white p-3">
+      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--primary)]" />
+      <div className="min-w-0">
+        <p className="text-[13px] font-semibold text-[var(--text)]">{item.label}</p>
+        <p className="mt-1 text-[12px] leading-5 text-[var(--muted)]">{item.summary}</p>
+        <p className="mt-1 text-[11px] text-[var(--muted)]">
+          {[item.actorLabel, item.action, formatTenderDate(item.createdAt)].filter(Boolean).join(" | ")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function tenderDescription(tender: WorkspaceOverview["tender"]) {
+  return [tender.buyerName || tender.name, tender.referenceNumber, tender.tenderType, tender.sourceType].filter(Boolean).join(" | ");
+}
+
+function requirementProvenance(requirement: TenderRequirement) {
+  const reference = requirement.sourceReference ?? {};
+  const parts = ["sourceName", "documentName", "fileName", "section", "page", "pageNumber"]
+    .map((key) => [key, reference[key]] as const)
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim().length > 0)
+    .map(([key, value]) => `${humanizeKey(key)}: ${String(value)}`);
+  return parts.length ? parts.join(" | ") : "Provenance unavailable";
+}
+
+function humanizeKey(key: string) {
+  return key.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
+}
+
+function formatTenderDate(value?: string | null) {
+  if (!value) return "Not provided";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Invalid date";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function formatTenderValue(value?: number | null, currency = "INR") {
+  if (value === null || value === undefined) return "Not provided";
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "INR", maximumFractionDigits: 0 }).format(value);
+}
+
+function deadlineTone(value?: string | null) {
+  if (!value) return "neutral";
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return "neutral";
+  const days = (time - Date.now()) / 86_400_000;
+  if (days < 0) return "danger";
+  if (days <= 7) return "warning";
+  return "success";
+}
+
+function errorText(error: unknown) {
+  return error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Something went wrong.";
 }
 
 export function RequirementsIndexClient({ tenderId, initialOverview }: RequirementsIndexClientProps) {
@@ -949,14 +1020,6 @@ function VersionList({ versions, currentAnswer }: { versions: TenderAnswerVersio
       )}
     </div>
   );
-}
-
-function MetricCard({ label, value }: { label: string; value: number }) {
-  return <RfpMetricCard label={label} value={value} />;
-}
-
-function SectionTitle({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
-  return <RfpSectionHeader eyebrow={eyebrow} title={title} description={subtitle} />;
 }
 
 function PanelState({ label }: { label: string }) {

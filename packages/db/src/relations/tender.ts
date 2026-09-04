@@ -103,6 +103,7 @@ export const tenderAnswerReviewsRelations = relations(tenderAnswerReviews, ({ on
 
 export const tenderDocumentsRelations = relations(tenderDocuments, ({ one }) => ({
   tender: one(tenders, { fields: [tenderDocuments.tenderId], references: [tenders.id] }),
+  source: one(tenderSources, { fields: [tenderDocuments.tenderSourceId], references: [tenderSources.id] }),
   document: one(files, { fields: [tenderDocuments.documentId], references: [files.id] }),
 }));
 

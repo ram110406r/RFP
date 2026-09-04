@@ -16,6 +16,7 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  activities,
   assignments,
   files,
   knowledgeSources,
@@ -111,7 +112,10 @@ type TenderSourceRow = typeof tenderSources.$inferSelect;
 type TenderAnswerVersionRow = typeof tenderAnswerVersions.$inferSelect;
 type TenderValidationRunRow = typeof tenderValidationRuns.$inferSelect;
 type TenderSourceWithFileRow = { source: TenderSourceRow; file: typeof files.$inferSelect };
+type TenderDocumentWithFileRow = { document: typeof tenderDocuments.$inferSelect; file: typeof files.$inferSelect };
+type TenderTimelineRow = typeof activities.$inferSelect;
 type TenderQueryRunner = Pick<Database, "select" | "insert" | "update" | "delete">;
+type TenderDocumentStatus = "UPLOADED" | "PROCESSING" | "PROCESSED" | "FAILED";
 type ValidationSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 type ValidationTone = "success" | "warning" | "danger" | "neutral";
 type TenderValidationCategory = {
@@ -153,6 +157,8 @@ const TENDER_ACTIVITY_ACTIONS = {
   SOURCE_CREATED: "source.added",
   SOURCE_PARSED: "source.parsed",
   SOURCE_REMOVED: "source.removed",
+  SAVED: "tender.saved",
+  UNSAVED: "tender.unsaved",
   ANSWER_CREATED: "answer.created",
   ANSWER_UPDATED: "answer.updated",
   ANSWER_EVIDENCE_ADDED: "answer.evidence_added",
@@ -178,6 +184,8 @@ const TENDER_AUDIT_ACTIONS = {
   SOURCE_CREATED: "TENDER_SOURCE_CREATED",
   SOURCE_PARSED: "TENDER_SOURCE_PARSED",
   SOURCE_REMOVED: "TENDER_SOURCE_REMOVED",
+  SAVED: "TENDER_SAVED",
+  UNSAVED: "TENDER_UNSAVED",
   ANSWER_CREATED: "TENDER_ANSWER_CREATED",
   ANSWER_UPDATED: "TENDER_ANSWER_UPDATED",
   REVIEW_CREATED: "TENDER_REVIEW_CREATED",
@@ -619,17 +627,49 @@ export class TendersService {
     this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:update");
     await this.assertPolicyAllows(auth, "update", tender);
 
-    await this.db
-      .insert(savedTenders)
-      .values({
-        organizationId: auth.organizationId,
-        workspaceId: tender.workspaceId,
-        tenderId,
-        savedBy: auth.userId,
-      })
-      .onConflictDoNothing({
-        target: [savedTenders.workspaceId, savedTenders.tenderId],
-      });
+    await withTransaction(async (tx) => {
+      const inserted = await tx
+        .insert(savedTenders)
+        .values({
+          organizationId: auth.organizationId,
+          workspaceId: tender.workspaceId,
+          tenderId,
+          savedBy: auth.userId,
+        })
+        .onConflictDoNothing({
+          target: [savedTenders.workspaceId, savedTenders.tenderId],
+        })
+        .returning();
+
+      if (inserted.length === 0) return;
+
+      await this.audit.record(
+        {
+          organizationId: auth.organizationId,
+          workspaceId: tender.workspaceId,
+          actorId: auth.userId,
+          action: TENDER_AUDIT_ACTIONS.SAVED,
+          entityType: "tender",
+          entityId: tenderId,
+          newValue: { saved: true },
+        },
+        tx,
+      );
+
+      await this.activity.record(
+        {
+          organizationId: auth.organizationId,
+          workspaceId: tender.workspaceId,
+          actorId: auth.userId,
+          label: `Saved tender ${tender.title}`,
+          action: TENDER_ACTIVITY_ACTIONS.SAVED,
+          entityType: "tender",
+          entityId: tenderId,
+          summary: `Saved tender ${tender.title}`,
+        },
+        tx,
+      );
+    });
 
     return serializeTender(tender, { saved: true });
   }
@@ -639,15 +679,48 @@ export class TendersService {
     this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:update");
     await this.assertPolicyAllows(auth, "update", tender);
 
-    await this.db
-      .delete(savedTenders)
-      .where(
-        and(
-          eq(savedTenders.organizationId, auth.organizationId),
-          eq(savedTenders.workspaceId, tender.workspaceId),
-          eq(savedTenders.tenderId, tenderId),
-        ),
+    await withTransaction(async (tx) => {
+      const deleted = await tx
+        .delete(savedTenders)
+        .where(
+          and(
+            eq(savedTenders.organizationId, auth.organizationId),
+            eq(savedTenders.workspaceId, tender.workspaceId),
+            eq(savedTenders.tenderId, tenderId),
+          ),
+        )
+        .returning();
+
+      if (deleted.length === 0) return;
+
+      await this.audit.record(
+        {
+          organizationId: auth.organizationId,
+          workspaceId: tender.workspaceId,
+          actorId: auth.userId,
+          action: TENDER_AUDIT_ACTIONS.UNSAVED,
+          entityType: "tender",
+          entityId: tenderId,
+          previousValue: { saved: true },
+          newValue: { saved: false },
+        },
+        tx,
       );
+
+      await this.activity.record(
+        {
+          organizationId: auth.organizationId,
+          workspaceId: tender.workspaceId,
+          actorId: auth.userId,
+          label: `Removed saved tender ${tender.title}`,
+          action: TENDER_ACTIVITY_ACTIONS.UNSAVED,
+          entityType: "tender",
+          entityId: tenderId,
+          summary: `Removed saved tender ${tender.title}`,
+        },
+        tx,
+      );
+    });
 
     return serializeTender(tender, { saved: false });
   }
@@ -2242,24 +2315,44 @@ export class TendersService {
     this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:read");
     await this.assertPolicyAllows(auth, "read", tender);
 
-    const [questions, requirements, answers, sources, reviews, validation] = await Promise.all([
+    const [questions, requirements, answers, sources, reviews, validation, documents, saved] = await Promise.all([
       this.listQuestions(auth, tenderId),
       this.listRequirements(auth, tenderId),
       this.listAnswers(auth, tenderId),
       this.listSources(auth, tenderId),
       this.listReviews(auth, tenderId),
       this.getValidation(auth, tenderId),
+      this.listTenderDocumentRows(auth.organizationId, tenderId),
+      this.isTenderSaved(auth.organizationId, tender.workspaceId, tender.id),
     ]);
+    const timeline = await this.listTenderTimelineRows(auth, tender, [
+      tender.id,
+      ...sources.items.map((source) => source.id),
+      ...requirements.items.map((requirement) => requirement.id),
+      ...questions.items.map((question) => question.id),
+      ...answers.items.map((answer) => answer.id),
+      ...reviews.items.map((review) => review.id),
+    ]);
+    const serializedDocuments = documents.map(serializeTenderDocument);
+    const processedDocuments = serializedDocuments.filter((document) => document.status === "PROCESSED").length;
+    const pendingDocuments = serializedDocuments.filter((document) => document.status === "UPLOADED" || document.status === "PROCESSING").length;
 
     return {
-      tender: serializeTender(tender),
+      tender: serializeTender(tender, { saved }),
       counts: {
         questions: questions.items.length,
         requirements: requirements.items.length,
         answers: answers.items.length,
         sources: sources.items.length,
+        documents: documents.length,
+        processedDocuments,
+        pendingDocuments,
         reviews: reviews.items.length,
       },
+      sources: sources.items,
+      documents: serializedDocuments,
+      requirements: requirements.items,
+      timeline: timeline.map(serializeTenderTimeline),
       validation,
       sections: [
         {
@@ -2279,6 +2372,127 @@ export class TendersService {
         },
       ],
     };
+  }
+
+  private async listTenderDocumentRows(organizationId: string, tenderId: string) {
+    return this.db
+      .select({ document: tenderDocuments, file: files })
+      .from(tenderDocuments)
+      .innerJoin(files, eq(files.id, tenderDocuments.documentId))
+      .where(
+        and(
+          eq(tenderDocuments.organizationId, organizationId),
+          eq(tenderDocuments.tenderId, tenderId),
+          eq(files.organizationId, organizationId),
+        ),
+      )
+      .orderBy(desc(tenderDocuments.createdAt));
+  }
+
+  private async listTenderTimelineRows(auth: AuthContext, tender: TenderRow, entityIds: string[]) {
+    const uniqueEntityIds = Array.from(new Set(entityIds.filter(Boolean)));
+    return this.db
+      .select()
+      .from(activities)
+      .where(
+        and(
+          eq(activities.organizationId, auth.organizationId),
+          eq(activities.workspaceId, tender.workspaceId),
+          uniqueEntityIds.length > 1 ? inArray(activities.entityId, uniqueEntityIds) : eq(activities.entityId, tender.id),
+        ),
+      )
+      .orderBy(desc(activities.createdAt))
+      .limit(25);
+  }
+
+  private async ensureTenderDocumentForSource(source: TenderSourceRow, tx: Transaction, status: TenderDocumentStatus) {
+    const metadata = source.metadata ?? {};
+    const [inserted] = await tx
+      .insert(tenderDocuments)
+      .values({
+        organizationId: source.organizationId,
+        workspaceId: source.workspaceId,
+        tenderId: source.tenderId,
+        tenderSourceId: source.id,
+        documentId: source.fileId,
+        documentRole: "SOURCE_TENDER",
+        status,
+        failureReason: status === "FAILED" ? failureReasonFromMetadata(metadata) : null,
+        processedAt: status === "PROCESSED" ? parsedAtFromSource(source) : null,
+        metadata: {
+          sourceId: source.id,
+          sourceType: source.sourceType,
+          sourceStatus: source.status,
+          parseStatus: sourceParseStatus(source),
+          ...metadata,
+        },
+      })
+      .onConflictDoNothing({
+        target: tenderDocuments.tenderSourceId,
+      })
+      .returning();
+
+    if (inserted) return inserted;
+
+    const [existing] = await tx
+      .select()
+      .from(tenderDocuments)
+      .where(and(eq(tenderDocuments.organizationId, source.organizationId), eq(tenderDocuments.tenderSourceId, source.id)))
+      .limit(1);
+    if (!existing) throw new TenderSourceNotFoundError();
+    return existing;
+  }
+
+  private async updateTenderDocumentStatusForSource(
+    organizationId: string,
+    sourceId: string,
+    status: TenderDocumentStatus,
+    failureReason: string | null,
+    processedAt: Date | null,
+    tx: Transaction,
+  ) {
+    await tx
+      .update(tenderDocuments)
+      .set({
+        status,
+        failureReason,
+        processedAt,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(tenderDocuments.organizationId, organizationId), eq(tenderDocuments.tenderSourceId, sourceId)));
+  }
+
+  private async markTenderDocumentFailed(organizationId: string, sourceId: string, error: unknown) {
+    await withTransaction(async (tx) => {
+      await this.updateTenderDocumentStatusForSource(
+        organizationId,
+        sourceId,
+        "FAILED",
+        error instanceof Error ? error.message : "Document processing failed.",
+        null,
+        tx,
+      );
+    });
+  }
+
+  private async markTenderSourceParseFailed(
+    organizationId: string,
+    tenderId: string,
+    sourceId: string,
+    metadata: Record<string, unknown>,
+    error: unknown,
+  ) {
+    await this.db
+      .update(tenderSources)
+      .set({
+        metadata: {
+          ...metadata,
+          parseStatus: "FAILED",
+          failureReason: error instanceof Error ? error.message : "Document processing failed.",
+        },
+        updatedAt: new Date(),
+      })
+      .where(and(eq(tenderSources.organizationId, organizationId), eq(tenderSources.tenderId, tenderId), eq(tenderSources.id, sourceId)));
   }
 
   async exportTender(auth: AuthContext, tenderId: string) {
@@ -2424,7 +2638,12 @@ export class TendersService {
 
     const row = await this.requireSourceWithFile(auth.organizationId, tenderId, sourceId);
     if (row.source.status === "REMOVED") throw new TenderSourceNotFoundError();
-    if (row.source.status === "READY") return serializeSource(row.source);
+    if (row.source.status === "READY") {
+      await withTransaction(async (tx) => {
+        await this.ensureTenderDocumentForSource(row.source, tx, sourceParseStatus(row.source) === "PARSED" ? "PROCESSED" : "UPLOADED");
+      });
+      return serializeSource(row.source);
+    }
 
     await this.assertSourcePolicyAllows(auth, "create", tender, {
       sourceType: row.source.sourceType,
@@ -2520,6 +2739,8 @@ export class TendersService {
         .set({ checksumSha256: checksum })
         .where(and(eq(files.organizationId, auth.organizationId), eq(files.id, row.file.id)));
 
+      await this.ensureTenderDocumentForSource(updatedSource, tx, "UPLOADED");
+
       await this.audit.record(
         {
           organizationId: auth.organizationId,
@@ -2565,22 +2786,42 @@ export class TendersService {
 
     const metadata = row.source.metadata ?? {};
     if (sourceParseStatus(row.source) === "PARSED") {
+      await withTransaction(async (tx) => {
+        await this.ensureTenderDocumentForSource(row.source, tx, "PROCESSED");
+        await this.updateTenderDocumentStatusForSource(auth.organizationId, sourceId, "PROCESSED", null, parsedAtFromSource(row.source), tx);
+      });
       return serializeSource(row.source);
     }
 
-    const head = await this.storage.headObject(row.file.objectKey);
-    if (!head) throw new TenderSourceUploadIncompleteError();
+    await withTransaction(async (tx) => {
+      await this.ensureTenderDocumentForSource(row.source, tx, "UPLOADED");
+      await this.updateTenderDocumentStatusForSource(auth.organizationId, sourceId, "PROCESSING", null, null, tx);
+    });
 
-    const bytes = await this.storage.readObject(row.file.objectKey);
-    if (!bytes) throw new TenderSourceUploadIncompleteError();
+    try {
+      const head = await this.storage.headObject(row.file.objectKey);
+      if (!head) throw new TenderSourceUploadIncompleteError();
+
+      const bytes = await this.storage.readObject(row.file.objectKey);
+      if (!bytes) throw new TenderSourceUploadIncompleteError();
+      void bytes;
+    } catch (error) {
+      await this.markTenderDocumentFailed(auth.organizationId, sourceId, error);
+      await this.markTenderSourceParseFailed(auth.organizationId, tenderId, sourceId, metadata, error);
+      throw error;
+    }
 
     const parsedAt = new Date();
     const parsed = await withTransaction(async (tx) => {
+      const { failureReason, processingError, parseError, ...successfulMetadata } = metadata;
+      void failureReason;
+      void processingError;
+      void parseError;
       const [updatedSource] = await tx
         .update(tenderSources)
         .set({
           metadata: {
-            ...metadata,
+            ...successfulMetadata,
             parseStatus: "PARSED",
             parsedAt: parsedAt.toISOString(),
           },
@@ -2595,6 +2836,8 @@ export class TendersService {
         )
         .returning();
       if (!updatedSource) throw new TenderSourceNotFoundError();
+
+      await this.updateTenderDocumentStatusForSource(auth.organizationId, sourceId, "PROCESSED", null, parsedAt, tx);
 
       await this.audit.record(
         {
@@ -4050,10 +4293,54 @@ function serializeSource(row: TenderSourceRow) {
   };
 }
 
+function serializeTenderDocument(row: TenderDocumentWithFileRow) {
+  return {
+    id: row.document.id,
+    organizationId: row.document.organizationId,
+    workspaceId: row.document.workspaceId,
+    tenderId: row.document.tenderId,
+    tenderSourceId: row.document.tenderSourceId,
+    documentId: row.document.documentId,
+    documentRole: row.document.documentRole,
+    name: row.file.filename,
+    filename: row.file.filename,
+    mimeType: row.file.mimeType,
+    fileSize: Number(row.file.sizeBytes),
+    checksum: row.file.checksumSha256,
+    status: row.document.status,
+    failureReason: row.document.failureReason,
+    processedAt: row.document.processedAt,
+    metadata: row.document.metadata,
+    uploadedBy: row.file.uploadedBy,
+    createdAt: row.document.createdAt,
+    updatedAt: row.document.updatedAt,
+    uploadedAt: row.file.createdAt,
+  };
+}
+
+function serializeTenderTimeline(row: TenderTimelineRow) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    workspaceId: row.workspaceId,
+    actorId: row.actorId,
+    actorType: row.actorType,
+    actorLabel: row.actorLabel,
+    kind: row.kind,
+    label: row.label,
+    action: row.action,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    summary: row.summary,
+    metadata: row.metadata,
+    createdAt: row.createdAt,
+  };
+}
+
 function sourceParseStatus(row: TenderSourceRow) {
   const metadata = row.metadata as Record<string, unknown> | null | undefined;
   const parseStatus = metadata?.parseStatus;
-  if (parseStatus === "PARSED" || parseStatus === "UPLOADED" || parseStatus === "REGISTERED") {
+  if (parseStatus === "PARSED" || parseStatus === "UPLOADED" || parseStatus === "REGISTERED" || parseStatus === "FAILED") {
     return parseStatus;
   }
   if (row.status === "REMOVED") return "REMOVED";
@@ -4065,6 +4352,16 @@ function sourceParsedAt(row: TenderSourceRow) {
   const metadata = row.metadata as Record<string, unknown> | null | undefined;
   const parsedAt = metadata?.parsedAt;
   return typeof parsedAt === "string" ? parsedAt : null;
+}
+
+function parsedAtFromSource(row: TenderSourceRow) {
+  const parsedAt = sourceParsedAt(row);
+  return parsedAt ? new Date(parsedAt) : null;
+}
+
+function failureReasonFromMetadata(metadata: Record<string, unknown>) {
+  const reason = metadata.failureReason ?? metadata.processingError ?? metadata.parseError;
+  return typeof reason === "string" && reason.trim() ? reason : null;
 }
 
 function serializeQuestion(row: TenderQuestionRow) {

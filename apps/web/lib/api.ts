@@ -513,6 +513,7 @@ export async function updateTender(
     currency?: string;
     tenderType?: "DOCUMENT" | "ONLINE";
     sourceType?: "DOCUMENT_UPLOAD" | "EMAIL_IMPORT" | "PORTAL" | "MANUAL";
+    sourceUrl?: string | null;
     dueAt?: string | null;
     timezone?: string;
     metadata?: Record<string, unknown>;

@@ -116,6 +116,13 @@ export const tenderDocumentRoleEnum = pgEnum("tender_document_role", [
   "RESPONSE_DOCUMENT",
 ]);
 
+export const tenderDocumentStatusEnum = pgEnum("tender_document_status", [
+  "UPLOADED",
+  "PROCESSING",
+  "PROCESSED",
+  "FAILED",
+]);
+
 export const tenderSourceKindEnum = pgEnum("tender_source_kind", [
   "DOCUMENT",
   "URL",
@@ -506,15 +513,24 @@ export const tenderDocuments = pgTable(
     tenderId: uuid("tender_id")
       .notNull()
       .references(() => tenders.id, { onDelete: "cascade" }),
+    tenderSourceId: uuid("tender_source_id").references(() => tenderSources.id, { onDelete: "set null" }),
     documentId: uuid("document_id")
       .notNull()
       .references(() => files.id, { onDelete: "restrict" }),
     documentRole: tenderDocumentRoleEnum("document_role").notNull(),
+    status: tenderDocumentStatusEnum("status").notNull().default("UPLOADED"),
+    failureReason: text("failure_reason"),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("tender_documents_org_idx").on(t.organizationId),
     index("tender_documents_tender_idx").on(t.tenderId),
+    index("tender_documents_source_idx").on(t.tenderSourceId),
+    index("tender_documents_status_idx").on(t.status),
+    uniqueIndex("tender_documents_source_uq").on(t.tenderSourceId),
     uniqueIndex("tender_documents_tender_document_role_uq").on(
       t.tenderId,
       t.documentId,

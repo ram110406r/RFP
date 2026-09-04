@@ -162,6 +162,13 @@
       "when": 1788489600000,
       "tag": "0022_tender_search_productization",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788566400000,
+      "tag": "0023_tender_document_intake_hardening",
+      "breakpoints": true
     }
   ]
 }

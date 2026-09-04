@@ -50,7 +50,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
   const [questions, setQuestions] = useState<TenderQuestion[]>([]);
   const [categories, setCategories] = useState([...CATEGORIES]);
   const [preferences, setPreferences] = useState({ analyzeRequirements: true, detectMandatory: true, detectRisks: true, searchKnowledge: true, generateInitialAnswers: false });
-  const [form, setForm] = useState({ workspaceId: "", title: "", customer: "", opportunity: "", referenceNumber: "", dueAt: "", estimatedValue: "0", currency: "INR", location: "", sourceType: "DOCUMENT_UPLOAD", description: "" });
+  const [form, setForm] = useState({ workspaceId: "", title: "", customer: "", opportunity: "", referenceNumber: "", dueAt: "", estimatedValue: "0", currency: "INR", location: "", tenderType: "DOCUMENT", sourceType: "DOCUMENT_UPLOAD", sourceUrl: "", description: "" });
 
   const workspaces = workspacesQuery.data?.items ?? [];
   const defaultWorkspaceId = workspaces[0]?.id ?? "";
@@ -70,11 +70,20 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
     if (form.title.trim().length < 2) return "Enter an RFP name.";
     if (!form.customer.trim()) return "Enter the customer organization.";
     if (Number(form.estimatedValue) < 0 || !Number.isFinite(Number(form.estimatedValue))) return "Estimated value must be zero or greater.";
+    if (!/^[A-Z]{3}$/.test(form.currency.trim().toUpperCase())) return "Currency must be a three-letter ISO code.";
+    if (form.dueAt && Number.isNaN(new Date(form.dueAt).getTime())) return "Enter a valid submission deadline.";
+    if (form.sourceUrl.trim()) {
+      try {
+        new URL(form.sourceUrl.trim());
+      } catch {
+        return "Enter a valid source URL.";
+      }
+    }
     return null;
   }
 
   function metadata(nextStep: Step) {
-    return { intake: { mode, step: nextStep, opportunity: form.opportunity.trim(), estimatedContractValue: Number(form.estimatedValue || 0), currency: form.currency.trim().toUpperCase() || "INR", location: form.location.trim(), sourceType: form.sourceType, categories, preferences } };
+    return { intake: { mode, step: nextStep, opportunity: form.opportunity.trim(), estimatedContractValue: Number(form.estimatedValue || 0), currency: form.currency.trim().toUpperCase() || "INR", location: form.location.trim(), tenderType: form.tenderType, sourceType: form.sourceType, sourceUrl: form.sourceUrl.trim() || null, categories, preferences } };
   }
 
   async function persistDetails(nextStep: Step) {
@@ -89,8 +98,9 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
       location: form.location.trim() || undefined,
       estimatedValue: Number(form.estimatedValue || 0),
       currency: form.currency.trim().toUpperCase() || "INR",
-      tenderType: "DOCUMENT" as const,
+      tenderType: form.tenderType as "DOCUMENT" | "ONLINE",
       sourceType: form.sourceType as "DOCUMENT_UPLOAD" | "EMAIL_IMPORT" | "PORTAL" | "MANUAL",
+      sourceUrl: form.sourceUrl.trim() || undefined,
       dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : undefined,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       metadata: metadata(nextStep),
@@ -174,7 +184,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
     }
     if (!tenderId) return;
     const saved = await run(async () => {
-      await updateTender(tenderId, { dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null, buyerName: form.customer.trim(), location: form.location.trim() || null, estimatedValue: Number(form.estimatedValue || 0), currency: form.currency.trim().toUpperCase() || "INR", sourceType: form.sourceType as "DOCUMENT_UPLOAD" | "EMAIL_IMPORT" | "PORTAL" | "MANUAL", metadata: metadata(4) });
+      await updateTender(tenderId, { dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null, buyerName: form.customer.trim(), location: form.location.trim() || null, estimatedValue: Number(form.estimatedValue || 0), currency: form.currency.trim().toUpperCase() || "INR", tenderType: form.tenderType as "DOCUMENT" | "ONLINE", sourceType: form.sourceType as "DOCUMENT_UPLOAD" | "EMAIL_IMPORT" | "PORTAL" | "MANUAL", sourceUrl: form.sourceUrl.trim() || null, metadata: metadata(4) });
       setStep(4);
     });
     if (saved) void startAnalysis(tenderId);
@@ -201,11 +211,13 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
           <Field label="Estimated contract value"><input type="number" min="0" value={form.estimatedValue} onChange={(event) => setForm({ ...form, estimatedValue: event.target.value })} className={input} /></Field>
           <Field label="Currency"><input value={form.currency} maxLength={3} onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })} className={input} /></Field>
           <Field label="Location"><input value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="City, state, region" className={input} /></Field>
+          <Field label="Tender type"><select value={form.tenderType} onChange={(event) => setForm({ ...form, tenderType: event.target.value })} className={input}><option value="DOCUMENT">Document</option><option value="ONLINE">Online portal</option></select></Field>
           <Field label="Source"><select value={form.sourceType} onChange={(event) => setForm({ ...form, sourceType: event.target.value })} className={input}><option value="DOCUMENT_UPLOAD">Document upload</option><option value="EMAIL_IMPORT">Email import</option><option value="PORTAL">Portal</option><option value="MANUAL">Manual</option></select></Field>
           <Field label="Reference"><input value={form.referenceNumber} onChange={(event) => setForm({ ...form, referenceNumber: event.target.value })} placeholder="RFP-2026-014" className={input} /></Field>
+          <Field label="Source URL" wide><input type="url" value={form.sourceUrl} onChange={(event) => setForm({ ...form, sourceUrl: event.target.value })} placeholder="https://portal.example.com/tenders/..." className={input} /></Field>
           <Field label="Description" wide><textarea rows={4} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className={input} /></Field>
         </div></Panel>
-        <Panel title="RFP summary" description="Preview of the persisted draft."><Summary label="Name" value={form.title} /><Summary label="Customer" value={form.customer} /><Summary label="Location" value={form.location} /><Summary label="Opportunity" value={form.opportunity} /><Summary label="Deadline" value={form.dueAt ? new Date(form.dueAt).toLocaleString() : ""} /><Summary label="Est. value" value={new Intl.NumberFormat("en-IN", { style: "currency", currency: form.currency || "INR", maximumFractionDigits: 0 }).format(Number(form.estimatedValue || 0))} /></Panel>
+        <Panel title="RFP summary" description="Preview of the persisted draft."><Summary label="Name" value={form.title} /><Summary label="Customer" value={form.customer} /><Summary label="Location" value={form.location} /><Summary label="Opportunity" value={form.opportunity} /><Summary label="Tender type" value={form.tenderType} /><Summary label="Source" value={form.sourceType} /><Summary label="Deadline" value={form.dueAt ? new Date(form.dueAt).toLocaleString() : ""} /><Summary label="Est. value" value={new Intl.NumberFormat("en-IN", { style: "currency", currency: form.currency || "INR", maximumFractionDigits: 0 }).format(Number(form.estimatedValue || 0))} /></Panel>
       </div> : null}
 
       {step === 2 ? <Panel title="Upload documents" description="Files use the real object-storage upload, completion, and parse pipeline.">
