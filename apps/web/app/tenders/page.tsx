@@ -9,7 +9,6 @@ import {
   Bookmark,
   BookmarkCheck,
   ChevronDown,
-  Clock3,
   Download,
   Eye,
   FileText,
@@ -27,7 +26,17 @@ import {
 
 import { AppShell } from "../../components/app-shell";
 import { RfpEmptyState, RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
-import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import {
+  TendyyCard,
+  TendyyErrorState,
+  TendyyMetricCard,
+  TendyyPageHeader,
+  TendyySectionHeader,
+  TendyySkeletonRows,
+  TendyyStatusBadge,
+  TendyyTable,
+  toneFromStatus,
+} from "../../components/tendyy-ui";
 import { useTender, useTenders } from "../../lib/queries";
 import type { TenderSummary } from "../../lib/models";
 import { Button } from "@rfp-os/ui";
@@ -48,7 +57,6 @@ export default function TendersPage() {
 function TenderSearchPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const session = useFirebaseSession();
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get("q") ?? "");
   const [status, setStatus] = useState(() => searchParams.get("status") ?? "all");
@@ -129,9 +137,13 @@ function TenderSearchPage() {
   const total = tendersQuery.data?.total ?? 0;
   const pageSize = tendersQuery.data?.pageSize ?? 10;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const userName = session?.profile?.displayName ?? session?.user?.displayName ?? "Workspace user";
-  const userRole = session?.profile?.role ?? "Workspace member";
   const lastUpdated = rows[0]?.updatedAt;
+  const dueSoonCount = rows.filter((tender) => {
+    const days = daysUntil(tender.dueAt);
+    return Number.isFinite(days) && days >= 0 && days <= 7;
+  }).length;
+  const missingDeadlineCount = rows.filter((tender) => !tender.dueAt).length;
+  const activeStatusCount = rows.filter((tender) => !["CLOSED", "ARCHIVED", "SUBMITTED"].includes(tender.status)).length;
 
   function selectTender(tenderId: string) {
     updateUrl(router, searchParams, { tender: tenderId });
@@ -171,44 +183,48 @@ function TenderSearchPage() {
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Tender Search" }]}>
       <div className="min-w-0 space-y-5 pb-6">
-        <section className="flex flex-wrap items-center gap-3">
-          <select
-            aria-label="Tender source"
-            title="Source filtering is not available in the current tender list API"
-            disabled
-            className="h-9 max-w-[155px] appearance-none rounded-[8px] border border-slate-200 bg-white px-3 pr-8 text-[13px] font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-80"
-            defaultValue="all"
-          >
-            <option value="all">All sources</option>
-            <option value="portal">Portal imports</option>
-            <option value="manual">Manual entries</option>
-          </select>
-          <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700" aria-label="Notifications">
-            <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" aria-hidden="true" />
-            <Clock3 className="h-[17px] w-[17px]" strokeWidth={1.8} />
-          </button>
-          <div className="hidden items-center gap-2 sm:flex">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF5FF] text-xs font-semibold text-[#155EEF]">{initials(userName)}</div>
-            <div className="min-w-0">
-              <p className="max-w-[130px] truncate text-[13px] font-semibold text-slate-950">{userName}</p>
-              <p className="max-w-[130px] truncate text-[11px] text-slate-500">{userRole}</p>
-            </div>
-          </div>
+        <TendyyPageHeader
+          eyebrow="RFP intake"
+          title="Tender search"
+          description="Find live tender records from the existing workspace API, inspect fit and deadlines, then open the canonical RFP workspace."
+          actions={
+            <>
+              <Button asChild variant="secondary">
+                <Link href="/tenders/import">
+                  <UploadIcon />
+                  Import
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link href="/tenders/new">
+                  New tender
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </>
+          }
+        />
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Tender search metrics">
+          <TendyyMetricCard label="Results" value={tendersQuery.isLoading ? "-" : total} detail="Records matching current query" icon={<Search className="h-5 w-5" />} loading={tendersQuery.isLoading} />
+          <TendyyMetricCard label="Active work" value={activeStatusCount} detail="Visible records not closed or submitted" icon={<FileText className="h-5 w-5" />} loading={tendersQuery.isLoading} tone="primary" />
+          <TendyyMetricCard label="Due soon" value={dueSoonCount} detail="Visible deadlines within seven days" icon={<ClockIcon />} loading={tendersQuery.isLoading} tone={dueSoonCount > 0 ? "warning" : "neutral"} />
+          <TendyyMetricCard label="No deadline" value={missingDeadlineCount} detail="Records missing due dates" icon={<AlertIcon />} loading={tendersQuery.isLoading} tone={missingDeadlineCount > 0 ? "warning" : "neutral"} />
         </section>
 
-        <section className="border border-[#E4E7EC] bg-white p-4 sm:p-5" aria-label="Tender search controls">
+        <TendyyCard aria-label="Tender search controls">
           <div className="flex flex-col gap-3 xl:flex-row">
-            <label className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-[9px] border border-[#D0D5DD] bg-white px-3 text-[#667085] focus-within:border-[#155EEF] focus-within:ring-2 focus-within:ring-[#155EEF]/10">
+            <label className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-[9px] border border-[var(--border)] bg-white px-3 text-[var(--muted)] focus-within:border-[var(--primary)] focus-within:ring-2 focus-within:ring-[rgba(21,94,239,0.1)]">
               <Search className="h-[18px] w-[18px] shrink-0" strokeWidth={1.8} />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by keyword, organization, ID, etc." className="min-w-0 flex-1 bg-transparent text-sm text-[#101828] outline-none placeholder:text-[#98A2B3]" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search tenders by title, authority, reference, or keyword" className="min-w-0 flex-1 bg-transparent text-sm text-[var(--text)] outline-none placeholder:text-[var(--muted-subtle)]" />
               {search ? <button type="button" onClick={() => setSearch("")} className="text-[#98A2B3] hover:text-[#101828]" aria-label="Clear search"><X className="h-4 w-4" /></button> : null}
             </label>
-          <Button type="button" size="lg">
-            <Search className="h-4 w-4" strokeWidth={1.8} /> Search
-          </Button>
-          <Button type="button" variant="secondary" size="lg" disabled title="Saved search persistence is not available in the current API">
-            Saved searches <ChevronDown className="h-4 w-4" strokeWidth={1.8} />
-          </Button>
+            <Button type="button" size="lg" onClick={() => void tendersQuery.refetch()}>
+              <Search className="h-4 w-4" strokeWidth={1.8} /> Search
+            </Button>
+            <Button type="button" variant="secondary" size="lg" disabled title="Saved search persistence is not available in the current API">
+              Saved searches <ChevronDown className="h-4 w-4" strokeWidth={1.8} />
+            </Button>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#F2F4F7] pt-4">
@@ -222,9 +238,9 @@ function TenderSearchPage() {
             </details>
             {(status !== "all" || tenderType !== "all" || search) ? <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={() => { setSearch(""); updateFilter("status", "all"); updateFilter("type", "all"); }}>Clear all</Button> : null}
           </div>
-        </section>
+        </TendyyCard>
 
-        <div className="flex flex-col gap-3 border-b border-[#E4E7EC] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white px-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-5 overflow-x-auto">
             {(["all", "saved", "tracked", "applied"] as TabKey[]).map((item) => (
               <button key={item} type="button" onClick={() => { setTab(item); setPage(1); }} aria-pressed={tab === item} className={`relative whitespace-nowrap pb-3 text-sm font-semibold capitalize ${tab === item ? "text-[#155EEF] after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-[#155EEF]" : "text-[#667085] hover:text-[#344054]"}`}>{item === "all" ? "All tenders" : item}</button>
@@ -243,13 +259,20 @@ function TenderSearchPage() {
           </div>
         </div>
 
-        {tendersQuery.isError ? <div className="border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">Unable to load tenders. <button type="button" onClick={() => void tendersQuery.refetch()} className="font-semibold underline">Retry</button></div> : null}
+        {tendersQuery.isError ? <TendyyErrorState message="Unable to load tenders from the current API." onRetry={() => void tendersQuery.refetch()} /> : null}
 
         <div className={`grid min-w-0 gap-5 ${view === "grid" ? "md:grid-cols-2" : ""} xl:grid-cols-[minmax(0,1fr)_380px]`}>
-          <section className="min-w-0" aria-label="Tender results">
+          <TendyyCard className="min-w-0" aria-label="Tender results">
+            <TendyySectionHeader
+              eyebrow="Search results"
+              title={`${visibleRows.length} visible tender${visibleRows.length === 1 ? "" : "s"}`}
+              description="Rows are backed by the active tender list endpoint and update with the current search, status, type, and pagination filters."
+            />
+            <div className="mt-4">
             {tendersQuery.isLoading ? <TenderSkeleton /> : visibleRows.length > 0 ? view === "list" ? <TenderTable rows={visibleRows} selectedId={selectedId} savedIds={savedIds} onSelect={selectTender} onToggleSaved={toggleSaved} /> : <TenderGrid rows={visibleRows} selectedId={selectedId} savedIds={savedIds} onSelect={selectTender} onToggleSaved={toggleSaved} /> : <RfpEmptyState title="No tenders found" description={tab === "all" ? "Try adjusting your search or filters." : `No tenders are currently ${tab}.`} actionLabel="Show all tenders" onAction={() => setTab("all")} />}
+            </div>
             <Pagination page={page} totalPages={tab === "saved" || tab === "tracked" ? 1 : totalPages} total={tab === "saved" || tab === "tracked" ? visibleRows.length : total} pageSize={pageSize} onPageChange={(nextPage) => { setPage(nextPage); updateUrl(router, searchParams, { page: String(nextPage) }); }} />
-          </section>
+          </TendyyCard>
 
           {selectedTender ? <TenderDetailPanel tender={selectedTender} loading={selectedQuery.isLoading} saved={savedIds.has(selectedTender.id)} tracked={trackedIds.has(selectedTender.id)} onClose={closeDetail} onToggleSaved={() => toggleSaved(selectedTender.id)} onToggleTracked={() => toggleTracked(selectedTender.id)} mobile={!isDesktop} /> : null}
         </div>
@@ -263,21 +286,21 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
 }
 
 function TenderTable({ rows, selectedId, savedIds, onSelect, onToggleSaved }: { rows: TenderSummary[]; selectedId: string; savedIds: Set<string>; onSelect: (id: string) => void; onToggleSaved: (id: string) => void }) {
-  return <div className="overflow-x-auto border border-[#E4E7EC] bg-white"><table className="min-w-[780px] w-full border-collapse text-left"><thead className="border-b border-[#E4E7EC] bg-[#FCFCFD] text-[10px] font-semibold uppercase tracking-[0.08em] text-[#667085]"><tr><th className="px-4 py-3">Tender</th><th className="px-3 py-3">Authority</th><th className="px-3 py-3">Type</th><th className="px-3 py-3">Value</th><th className="px-3 py-3">Deadline</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Updated</th><th className="px-3 py-3" /></tr></thead><tbody className="divide-y divide-[#F2F4F7]">{rows.map((tender) => <TenderTableRow key={tender.id} tender={tender} selected={tender.id === selectedId} saved={savedIds.has(tender.id)} onSelect={onSelect} onToggleSaved={onToggleSaved} />)}</tbody></table></div>;
+  return <TendyyTable minWidth={860}><thead className="tendyy-table-head"><tr><th className="px-4 py-3">Tender</th><th className="px-3 py-3">Authority</th><th className="px-3 py-3">Type</th><th className="px-3 py-3">Value</th><th className="px-3 py-3">Deadline</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Updated</th><th className="px-3 py-3" /></tr></thead><tbody>{rows.map((tender) => <TenderTableRow key={tender.id} tender={tender} selected={tender.id === selectedId} saved={savedIds.has(tender.id)} onSelect={onSelect} onToggleSaved={onToggleSaved} />)}</tbody></TendyyTable>;
 }
 
 function TenderTableRow({ tender, selected, saved, onSelect, onToggleSaved }: { tender: TenderSummary; selected: boolean; saved: boolean; onSelect: (id: string) => void; onToggleSaved: (id: string) => void }) {
-  return <tr className={`align-top text-xs text-[#344054] transition hover:bg-[#F8FAFC] ${selected ? "bg-[#EFF5FF]/60" : ""}`}><td className="max-w-[245px] px-4 py-3"><button type="button" onClick={() => onSelect(tender.id)} className="flex w-full items-start gap-3 text-left"><TenderIcon tender={tender} /><span className="min-w-0"><span className="block font-semibold leading-5 text-[#101828]">{tender.title}</span><span className="mt-1 block truncate text-[11px] text-[#667085]">ID: {tender.referenceNumber ?? tender.id}</span><span className="mt-1 block text-[10px] text-[#98A2B3]">{isRecentlyUpdated(tender.updatedAt) ? "LIVE" : "Workspace record"}</span></span></button></td><td className="max-w-[140px] px-3 py-4 text-xs leading-5">{tender.name}</td><td className="px-3 py-4 text-xs">{formatStatus(tender.tenderType)}</td><td className="whitespace-nowrap px-3 py-4 font-medium text-[#101828]">{getTenderValue(tender.metadata)}</td><td className="whitespace-nowrap px-3 py-4">{formatDate(tender.dueAt)}<span className="mt-1 block text-[10px] text-[#98A2B3]">{tender.dueAt ? formatTime(tender.dueAt, tender.timezone) : ""}</span></td><td className="px-3 py-4"><RfpStatusBadge tone={statusTone(tender.status)}>{formatStatus(tender.status)}</RfpStatusBadge></td><td className="whitespace-nowrap px-3 py-4 text-[#667085]">{relativeTime(tender.updatedAt)}</td><td className="px-3 py-4"><div className="flex items-center gap-1"><button type="button" onClick={() => onToggleSaved(tender.id)} className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[#667085] hover:bg-[#EFF5FF] hover:text-[#155EEF]" aria-label={saved ? "Remove saved tender" : "Save tender"}>{saved ? <BookmarkCheck className="h-4 w-4 text-[#155EEF]" /> : <Bookmark className="h-4 w-4" />}</button><button type="button" onClick={() => onSelect(tender.id)} className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[#667085] hover:bg-[#EFF5FF] hover:text-[#155EEF]" aria-label="Preview tender"><Eye className="h-4 w-4" /></button></div></td></tr>;
+  return <tr className={`tendyy-table-row align-top text-xs text-[#344054] ${selected ? "bg-[#EFF5FF]/60" : ""}`}><td className="max-w-[280px] px-4 py-3"><button type="button" onClick={() => onSelect(tender.id)} className="flex w-full items-start gap-3 text-left"><TenderIcon tender={tender} /><span className="min-w-0"><span className="block font-semibold leading-5 text-[#101828]">{tender.title}</span><span className="mt-1 block truncate text-[11px] text-[#667085]">ID: {tender.referenceNumber ?? tender.id}</span><span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#98A2B3]">{isRecentlyUpdated(tender.updatedAt) ? "Live update" : "Workspace record"}</span></span></button></td><td className="max-w-[150px] px-3 py-4 text-xs leading-5">{tender.name}</td><td className="px-3 py-4 text-xs">{formatStatus(tender.tenderType)}</td><td className="whitespace-nowrap px-3 py-4 font-medium text-[#101828]">{getTenderValue(tender.metadata)}</td><td className="whitespace-nowrap px-3 py-4">{formatDate(tender.dueAt)}<span className={`mt-1 block text-[10px] ${daysUntil(tender.dueAt) <= 7 ? "text-amber-700" : "text-[#98A2B3]"}`}>{tender.dueAt ? deadlineLabel(tender.dueAt) : "No due date"}</span></td><td className="px-3 py-4"><RfpStatusBadge tone={statusTone(tender.status)}>{formatStatus(tender.status)}</RfpStatusBadge></td><td className="whitespace-nowrap px-3 py-4 text-[#667085]">{relativeTime(tender.updatedAt)}</td><td className="px-3 py-4"><div className="flex items-center gap-1"><button type="button" onClick={() => onToggleSaved(tender.id)} className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[#667085] hover:bg-[#EFF5FF] hover:text-[#155EEF]" aria-label={saved ? "Remove saved tender" : "Save tender"}>{saved ? <BookmarkCheck className="h-4 w-4 text-[#155EEF]" /> : <Bookmark className="h-4 w-4" />}</button><button type="button" onClick={() => onSelect(tender.id)} className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[#667085] hover:bg-[#EFF5FF] hover:text-[#155EEF]" aria-label="Preview tender"><Eye className="h-4 w-4" /></button></div></td></tr>;
 }
 
 function TenderGrid({ rows, selectedId, savedIds, onSelect, onToggleSaved }: { rows: TenderSummary[]; selectedId: string; savedIds: Set<string>; onSelect: (id: string) => void; onToggleSaved: (id: string) => void }) {
-  return <div className="grid gap-3">{rows.map((tender) => <button type="button" key={tender.id} onClick={() => onSelect(tender.id)} className={`border p-4 text-left transition hover:bg-[#F8FAFC] ${selectedId === tender.id ? "border-[#155EEF] bg-[#EFF5FF]/60" : "border-[#E4E7EC] bg-white"}`}><div className="flex items-start gap-3"><TenderIcon tender={tender} /><div className="min-w-0 flex-1"><p className="font-semibold text-[#101828]">{tender.title}</p><p className="mt-1 text-xs text-[#667085]">{tender.name}</p></div><span onClick={(event) => { event.stopPropagation(); onToggleSaved(tender.id); }} className="text-[#667085]">{savedIds.has(tender.id) ? <BookmarkCheck className="h-4 w-4 text-[#155EEF]" /> : <Bookmark className="h-4 w-4" />}</span></div><div className="mt-4 grid grid-cols-3 gap-2 border-t border-[#F2F4F7] pt-3 text-xs"><span><b className="block text-[#98A2B3]">Deadline</b>{formatDate(tender.dueAt)}</span><span><b className="block text-[#98A2B3]">Value</b>{getTenderValue(tender.metadata)}</span><span><b className="block text-[#98A2B3]">Status</b>{formatStatus(tender.status)}</span></div></button>)}</div>;
+  return <div className="grid gap-3">{rows.map((tender) => <button type="button" key={tender.id} onClick={() => onSelect(tender.id)} className={`rounded-[var(--radius-md)] border p-4 text-left transition hover:bg-[#F8FAFC] ${selectedId === tender.id ? "border-[#155EEF] bg-[#EFF5FF]/60" : "border-[#E4E7EC] bg-white"}`}><div className="flex items-start gap-3"><TenderIcon tender={tender} /><div className="min-w-0 flex-1"><p className="font-semibold text-[#101828]">{tender.title}</p><p className="mt-1 text-xs text-[#667085]">{tender.name}</p></div><span onClick={(event) => { event.stopPropagation(); onToggleSaved(tender.id); }} className="text-[#667085]">{savedIds.has(tender.id) ? <BookmarkCheck className="h-4 w-4 text-[#155EEF]" /> : <Bookmark className="h-4 w-4" />}</span></div><div className="mt-4 grid grid-cols-3 gap-2 border-t border-[#F2F4F7] pt-3 text-xs"><span><b className="block text-[#98A2B3]">Deadline</b>{formatDate(tender.dueAt)}</span><span><b className="block text-[#98A2B3]">Value</b>{getTenderValue(tender.metadata)}</span><span><b className="block text-[#98A2B3]">Status</b>{formatStatus(tender.status)}</span></div></button>)}</div>;
 }
 
 function TenderDetailPanel({ tender, loading, saved, tracked, onClose, onToggleSaved, onToggleTracked, mobile }: { tender: TenderSummary; loading: boolean; saved: boolean; tracked: boolean; onClose: () => void; onToggleSaved: () => void; onToggleTracked: () => void; mobile: boolean }) {
   const [activeTab, setActiveTab] = useState<"overview" | "documents" | "updates" | "timeline">("overview");
   const sourceUrl = tender.sourceUrl;
-  const panel = <aside className={`min-w-0 border border-[#E4E7EC] bg-white ${mobile ? "fixed inset-y-0 right-0 z-40 w-[min(390px,100vw)] overflow-y-auto shadow-[-12px_0_32px_rgba(16,24,40,0.12)]" : "xl:sticky xl:top-6 xl:self-start"}`} aria-label="Tender details"><div className="flex items-center justify-between border-b border-[#F2F4F7] px-5 py-4"><span className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {isRecentlyUpdated(tender.updatedAt) ? "LIVE" : "WORKSPACE RECORD"}</span><button type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[#667085] hover:bg-[#F8FAFC]" aria-label="Close tender details"><X className="h-4 w-4" /></button></div><div className="border-b border-[#F2F4F7] px-5 py-5"><div className="flex items-start gap-3"><TenderIcon tender={tender} /><div className="min-w-0"><h2 className="text-lg font-semibold leading-6 text-[#101828]">{tender.title}</h2><p className="mt-2 text-sm text-[#667085]">{tender.name}</p><p className="mt-2 text-xs text-[#98A2B3]">ID: {tender.referenceNumber ?? tender.id}</p></div></div><div className="mt-4 flex flex-wrap items-center gap-2"><RfpStatusBadge tone={statusTone(tender.status)}>{formatStatus(tender.status)}</RfpStatusBadge><span className="text-xs text-[#667085]">Updated {relativeTime(tender.updatedAt)}</span></div><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={onToggleSaved} className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Bookmark className="h-3.5 w-3.5" />{saved ? "Saved" : "Save"}</button><button type="button" onClick={onToggleTracked} className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Clock3 className="h-3.5 w-3.5" />{tracked ? "Tracked" : "Track"}</button><button type="button" onClick={() => void navigator.clipboard?.writeText(window.location.href)} className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Share2 className="h-3.5 w-3.5" />Share</button>{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Download className="h-3.5 w-3.5" />Source</a> : null}</div></div><div className="flex gap-4 overflow-x-auto border-b border-[#F2F4F7] px-5 pt-3">{(["overview", "documents", "updates", "timeline"] as const).map((tab) => <button type="button" key={tab} onClick={() => setActiveTab(tab)} className={`whitespace-nowrap pb-3 text-xs font-semibold capitalize ${activeTab === tab ? "border-b-2 border-[#155EEF] text-[#155EEF]" : "text-[#667085]"}`}>{tab}</button>)}</div>{loading ? <div className="space-y-3 p-5"><div className="h-4 w-28 animate-pulse bg-slate-100" /><div className="h-4 w-full animate-pulse bg-slate-100" /><div className="h-4 w-4/5 animate-pulse bg-slate-100" /></div> : activeTab === "overview" ? <DetailOverview tender={tender} /> : <div className="p-5 text-sm leading-6 text-[#667085]">This workspace tab is ready for its corresponding persisted data. Open the full tender workspace to inspect {activeTab}.</div>}<div className="border-t border-[#F2F4F7] p-5"><Link href={`/tenders/${tender.id}`} className="flex h-10 w-full items-center justify-center gap-2 rounded-[9px] bg-[#155EEF] text-sm font-semibold text-white hover:bg-[#0F4BD6]">Open tender workspace <ArrowRight className="h-4 w-4" /></Link></div></aside>;
+  const panel = <aside className={`tendyy-surface min-w-0 overflow-hidden ${mobile ? "fixed inset-y-0 right-0 z-40 w-[min(390px,100vw)] overflow-y-auto rounded-none shadow-[-12px_0_32px_rgba(16,24,40,0.12)]" : "xl:sticky xl:top-6 xl:self-start"}`} aria-label="Tender details"><div className="flex items-center justify-between border-b border-[#F2F4F7] px-5 py-4"><TendyyStatusBadge tone={isRecentlyUpdated(tender.updatedAt) ? "success" : "neutral"}>{isRecentlyUpdated(tender.updatedAt) ? "Live" : "Workspace record"}</TendyyStatusBadge><button type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[#667085] hover:bg-[#F8FAFC]" aria-label="Close tender details"><X className="h-4 w-4" /></button></div><div className="border-b border-[#F2F4F7] px-5 py-5"><div className="flex items-start gap-3"><TenderIcon tender={tender} /><div className="min-w-0"><h2 className="text-lg font-semibold leading-6 text-[#101828]">{tender.title}</h2><p className="mt-2 text-sm text-[#667085]">{tender.name}</p><p className="mt-2 text-xs text-[#98A2B3]">ID: {tender.referenceNumber ?? tender.id}</p></div></div><div className="mt-4 flex flex-wrap items-center gap-2"><TendyyStatusBadge tone={toneFromStatus(tender.status)}>{formatStatus(tender.status)}</TendyyStatusBadge><span className="text-xs text-[#667085]">Updated {relativeTime(tender.updatedAt)}</span></div><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={onToggleSaved} className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Bookmark className="h-3.5 w-3.5" />{saved ? "Saved" : "Save"}</button><button type="button" onClick={onToggleTracked} className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><ClockIcon small />{tracked ? "Tracked" : "Track"}</button><button type="button" onClick={() => void navigator.clipboard?.writeText(window.location.href)} className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Share2 className="h-3.5 w-3.5" />Share</button>{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#344054] hover:border-[#155EEF] hover:text-[#155EEF]"><Download className="h-3.5 w-3.5" />Source</a> : null}</div></div><div className="flex gap-4 overflow-x-auto border-b border-[#F2F4F7] px-5 pt-3">{(["overview", "documents", "updates", "timeline"] as const).map((tab) => <button type="button" key={tab} onClick={() => setActiveTab(tab)} className={`whitespace-nowrap pb-3 text-xs font-semibold capitalize ${activeTab === tab ? "border-b-2 border-[#155EEF] text-[#155EEF]" : "text-[#667085]"}`}>{tab}</button>)}</div>{loading ? <div className="p-5"><TendyySkeletonRows count={3} /></div> : activeTab === "overview" ? <DetailOverview tender={tender} /> : <div className="p-5 text-sm leading-6 text-[#667085]">This workspace tab is ready for its corresponding persisted data. Open the full tender workspace to inspect {activeTab}.</div>}<div className="border-t border-[#F2F4F7] p-5"><Link href={`/tenders/${tender.id}`} className="flex h-10 w-full items-center justify-center gap-2 rounded-[9px] bg-[#155EEF] text-sm font-semibold text-white hover:bg-[#0F4BD6]">Open tender workspace <ArrowRight className="h-4 w-4" /></Link></div></aside>;
   return mobile ? <div className="fixed inset-0 z-30 bg-[#101828]/25" onClick={onClose}><div onClick={(event) => event.stopPropagation()}>{panel}</div></div> : panel;
 }
 
@@ -300,7 +323,7 @@ function Pagination({ page, totalPages, total, pageSize, onPageChange }: { page:
 }
 
 function TenderSkeleton() {
-  return <div className="space-y-2 border border-[#E4E7EC] bg-white p-4">{[1, 2, 3, 4, 5].map((item) => <div key={item} className="flex animate-pulse items-center gap-3 border-b border-[#F2F4F7] py-4 last:border-0"><div className="h-9 w-9 bg-slate-100" /><div className="flex-1 space-y-2"><div className="h-3 w-3/5 bg-slate-100" /><div className="h-2 w-2/5 bg-slate-100" /></div><div className="h-3 w-16 bg-slate-100" /></div>)}</div>;
+  return <TendyySkeletonRows count={5} />;
 }
 
 function SearchLoadingState() { return <AppShell breadcrumbs={[{ label: "Tender Search" }]}><TenderSkeleton /></AppShell>; }
@@ -365,8 +388,19 @@ function formatStatus(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function initials(value: string) {
-  return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0)).join("").toUpperCase() || "TW";
+function daysUntil(value: string | null | undefined) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return Number.POSITIVE_INFINITY;
+  return Math.ceil((date.getTime() - Date.now()) / 86400000);
+}
+
+function deadlineLabel(value: string | null | undefined) {
+  const days = daysUntil(value);
+  if (!Number.isFinite(days)) return "No due date";
+  if (days < 0) return `${Math.abs(days)}d overdue`;
+  if (days === 0) return "Due today";
+  return `${days}d left`;
 }
 
 function paginationPages(page: number, totalPages: number): Array<number | "..."> {
@@ -374,4 +408,27 @@ function paginationPages(page: number, totalPages: number): Array<number | "..."
   if (page <= 3) return [1, 2, 3, "...", totalPages];
   if (page >= totalPages - 2) return [1, "...", totalPages - 2, totalPages - 1, totalPages];
   return [1, "...", page, "...", totalPages];
+}
+
+function UploadIcon() {
+  return <FileText className="h-4 w-4" />;
+}
+
+function ClockIcon({ small = false }: { small?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className={small ? "h-3.5 w-3.5" : "h-5 w-5"} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function AlertIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+      <path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+    </svg>
+  );
 }
