@@ -3,16 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Brain,
   Building2,
+  Bell,
   ChevronLeft,
   ChevronRight,
+  CircleHelp,
   ClipboardList,
+  CircleAlert,
   FilePenLine,
   FileText,
+  FolderOpen,
   GitBranch,
   Home,
   LayoutGrid,
@@ -112,7 +116,18 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       },
       { href: "/pipeline", label: "Pipeline", icon: GitBranch, section: "main", exact: true },
       { href: "/analytics", label: "Analytics", icon: PanelsTopLeft, section: "main", exact: true },
-      { href: "/knowledge", label: "Knowledge Brain", icon: Brain, section: "main", submenu: [{ href: "/knowledge", label: "Knowledge library", icon: Brain }, { href: "/templates", label: "Response templates", icon: ClipboardList }] },
+      {
+        href: "/knowledge",
+        label: "Knowledge Brain",
+        icon: Brain,
+        section: "main",
+        submenu: [
+          { href: "/knowledge/library", label: "Knowledge library", icon: Brain },
+          { href: "/knowledge/sources", label: "Sources", icon: FolderOpen },
+          { href: "/templates", label: "Response templates", icon: ClipboardList },
+          { href: "/knowledge/issues", label: "Knowledge issues", icon: CircleAlert },
+        ],
+      },
       { href: "/organization", label: "Organization", icon: Building2, section: "main", exact: true },
     ],
   },
@@ -351,7 +366,10 @@ function ShellHeader({
 }) {
   const workspacesQuery = useWorkspaces();
   const selectedWorkspaceId = useSelectedWorkspaceId();
-  const workspaces = workspacesQuery.data?.items.filter((workspace) => workspace.status === "active") ?? [];
+  const workspaces = useMemo(
+    () => workspacesQuery.data?.items.filter((workspace) => workspace.status === "active") ?? [],
+    [workspacesQuery.data?.items],
+  );
 
   useEffect(() => {
     if (workspaces.length > 0 && !workspaces.some((workspace) => workspace.id === selectedWorkspaceId)) {
@@ -360,7 +378,7 @@ function ShellHeader({
   }, [selectedWorkspaceId, workspaces]);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[#E8ECF2] bg-white">
+    <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-white/95 backdrop-blur">
       <div className="flex h-[60px] items-center gap-4 px-4 sm:px-5 lg:px-6">
         {isMobile ? (
           <>
@@ -430,6 +448,36 @@ function ShellHeader({
                 <span>K</span>
               </span>
             </label>
+
+            {workspaces.length > 0 ? (
+              <label className="hidden items-center gap-2 text-[11px] font-medium text-slate-600 lg:flex">
+                <span className="sr-only">Selected workspace</span>
+                <select
+                  value={selectedWorkspaceId ?? workspaces[0]!.id}
+                  onChange={(event) => selectWorkspace(event.target.value)}
+                  className="h-9 max-w-[190px] rounded-[8px] border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 outline-none focus:border-[#155EEF]"
+                >
+                  {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                </select>
+              </label>
+            ) : null}
+
+            <Link
+              href="/notifications"
+              className="relative inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50"
+              aria-label="Notifications"
+            >
+              <Bell className="h-4 w-4" strokeWidth={1.75} />
+              <span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#155EEF]" aria-hidden="true" />
+            </Link>
+
+            <Link
+              href="/settings"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50"
+              aria-label="Help and settings"
+            >
+              <CircleHelp className="h-4 w-4" strokeWidth={1.75} />
+            </Link>
 
             <button
               type="button"
@@ -554,7 +602,7 @@ export function AppShell({
     if (viewport !== "desktop") {
       setSidebarCollapsed(true);
     }
-  }, [viewport]);
+  }, [setSidebarCollapsed, viewport]);
 
   useEffect(() => {
     setActiveFlyout(null);
@@ -573,7 +621,7 @@ export function AppShell({
     : { marginLeft: sidebarReady ? sidebarWidth : SIDEBAR_WIDTH_COLLAPSED };
 
   return (
-    <div className="min-h-screen bg-white text-slate-950">
+    <div className="min-h-screen bg-[var(--bg-deep)] text-slate-950">
       {!isMobile ? (
         <aside
           className={`fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white transition-[width] duration-300 ease-out md:flex ${
@@ -660,8 +708,8 @@ export function AppShell({
           />
         ) : null}
 
-        <main className="min-w-0 px-4 py-5 sm:px-5 sm:py-6 lg:px-6 lg:py-6">
-          <div className="min-w-0 w-full">{children}</div>
+        <main className="min-w-0 px-3 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
+          <div className="mx-auto min-w-0 w-full max-w-[1480px]">{children}</div>
         </main>
       </div>
     </div>

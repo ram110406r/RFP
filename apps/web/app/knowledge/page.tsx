@@ -1,5 +1,5 @@
-import { KnowledgeWorkspaceClient } from "../../components/knowledge-workspace";
+import { KnowledgeOverviewPage } from "../../components/knowledge-brain-pages";
 
 export default function KnowledgePage() {
-  return <KnowledgeWorkspaceClient />;
+  return <KnowledgeOverviewPage />;
 }

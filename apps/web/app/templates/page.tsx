@@ -1,3 +1,3 @@
-import { TemplatesPage } from "../../components/operations-pages";
+import { ResponseTemplatesPage } from "../../components/knowledge-brain-pages";
 
-export default TemplatesPage;
+export default ResponseTemplatesPage;

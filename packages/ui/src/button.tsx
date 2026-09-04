@@ -11,13 +11,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  primary: "bg-[#05091A] text-white shadow-[0_1px_2px_rgba(16,24,40,0.08)] hover:bg-[#0B1028] active:bg-[#02050F]",
+  primary: "bg-[#155EEF] text-white shadow-[0_1px_2px_rgba(16,24,40,0.08)] hover:bg-[#0F4BD6] active:bg-[#0B3EB6]",
   secondary: "border border-[#D0D5DD] bg-white text-black hover:border-[#B6C2D1] hover:bg-[#F8FAFC] active:bg-[#F2F4F7]",
   ghost: "bg-transparent text-black hover:bg-[#F8FAFC] active:bg-[#F2F4F7]",
   destructive: "bg-[#D92D20] text-white hover:bg-[#B42318] active:bg-[#912018]",
   outline: "border border-[#D0D5DD] bg-transparent text-black hover:border-[#B6C2D1] hover:bg-[#F8FAFC]",
   icon: "border border-[#D0D5DD] bg-white text-black hover:border-[#B6C2D1] hover:bg-[#F8FAFC]",
-  compact: "bg-[#05091A] text-white shadow-[0_1px_2px_rgba(16,24,40,0.08)] hover:bg-[#0B1028] active:bg-[#02050F]",
+  compact: "bg-[#155EEF] text-white shadow-[0_1px_2px_rgba(16,24,40,0.08)] hover:bg-[#0F4BD6] active:bg-[#0B3EB6]",
 };
 
 const sizeClasses: Record<NonNullable<ButtonProps["size"]>, string> = {
