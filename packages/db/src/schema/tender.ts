@@ -152,6 +152,10 @@ export const tenders = pgTable(
     title: text("title").notNull(),
     referenceNumber: text("reference_number"),
     description: text("description").notNull().default(""),
+    buyerName: text("buyer_name"),
+    location: text("location"),
+    estimatedValue: numeric("estimated_value", { precision: 14, scale: 2 }),
+    currency: text("currency").notNull().default("INR"),
     tenderType: tenderTypeEnum("tender_type").notNull(),
     sourceType: tenderSourceTypeEnum("source_type").notNull(),
     sourceReference: jsonb("source_reference").$type<Record<string, unknown>>().notNull().default({}),
@@ -173,9 +177,39 @@ export const tenders = pgTable(
     index("tenders_workspace_idx").on(t.workspaceId),
     index("tenders_org_status_idx").on(t.organizationId, t.status),
     index("tenders_org_type_idx").on(t.organizationId, t.tenderType),
+    index("tenders_org_source_type_idx").on(t.organizationId, t.sourceType),
+    index("tenders_org_buyer_idx").on(t.organizationId, t.buyerName),
+    index("tenders_org_location_idx").on(t.organizationId, t.location),
+    index("tenders_estimated_value_idx").on(t.estimatedValue),
     index("tenders_owner_idx").on(t.ownerId),
     index("tenders_due_idx").on(t.dueAt),
     uniqueIndex("tenders_org_reference_uq").on(t.organizationId, t.referenceNumber),
+  ],
+);
+
+export const savedTenders = pgTable(
+  "saved_tenders",
+  {
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    tenderId: uuid("tender_id")
+      .notNull()
+      .references(() => tenders.id, { onDelete: "cascade" }),
+    savedBy: uuid("saved_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.workspaceId, t.tenderId] }),
+    index("saved_tenders_org_idx").on(t.organizationId),
+    index("saved_tenders_workspace_idx").on(t.workspaceId),
+    index("saved_tenders_tender_idx").on(t.tenderId),
+    index("saved_tenders_saved_by_idx").on(t.savedBy),
   ],
 );
 

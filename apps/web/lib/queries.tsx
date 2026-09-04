@@ -58,9 +58,11 @@ import {
   removeTeamMember,
   removeWorkspaceMember,
   parseTenderSource,
+  saveTender,
   transitionTender,
   runRfpApply,
   submitTender,
+  unsaveTender,
 } from "./api";
 import type {
   DashboardOverview,
@@ -127,7 +129,17 @@ export const tenderListKeys = {
     workspaceId?: string;
     status?: string;
     tenderType?: string;
+    sourceType?: string;
+    q?: string;
     search?: string;
+    buyer?: string;
+    location?: string;
+    minValue?: number;
+    maxValue?: number;
+    deadlineFrom?: string;
+    deadlineTo?: string;
+    sort?: string;
+    saved?: boolean;
     includeArchived?: boolean;
     page?: number;
     pageSize?: number;
@@ -137,7 +149,16 @@ export const tenderListKeys = {
       params?.workspaceId ?? "all-workspaces",
       params?.status ?? "all-statuses",
       params?.tenderType ?? "all-types",
-      params?.search ?? "all-search",
+      params?.sourceType ?? "all-sources",
+      params?.q ?? params?.search ?? "all-search",
+      params?.buyer ?? "all-buyers",
+      params?.location ?? "all-locations",
+      params?.minValue ?? "no-min-value",
+      params?.maxValue ?? "no-max-value",
+      params?.deadlineFrom ?? "no-deadline-from",
+      params?.deadlineTo ?? "no-deadline-to",
+      params?.sort ?? "updated",
+      params?.saved ? "saved" : "all-save-states",
       params?.includeArchived ? "archived" : "active",
       params?.page ?? 1,
       params?.pageSize ?? 25,
@@ -302,7 +323,17 @@ export function useTenders(
     workspaceId?: string;
     status?: string;
     tenderType?: string;
+    sourceType?: string;
+    q?: string;
     search?: string;
+    buyer?: string;
+    location?: string;
+    minValue?: number;
+    maxValue?: number;
+    deadlineFrom?: string;
+    deadlineTo?: string;
+    sort?: string;
+    saved?: boolean;
     includeArchived?: boolean;
     page?: number;
     pageSize?: number;
@@ -530,6 +561,10 @@ export function useCreateTender() {
       title: string;
       referenceNumber?: string;
       description?: string;
+      buyerName?: string;
+      location?: string;
+      estimatedValue?: number;
+      currency?: string;
       tenderType?: "DOCUMENT" | "ONLINE";
       sourceType?: "DOCUMENT_UPLOAD" | "EMAIL_IMPORT" | "PORTAL" | "MANUAL";
       sourceReference?: Record<string, unknown>;
@@ -547,6 +582,29 @@ export function useCreateTender() {
       ]);
     },
   });
+}
+
+function useTenderSaveMutation(saved: boolean) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tenderId: string) => (saved ? saveTender(tenderId) : unsaveTender(tenderId)),
+    onSuccess: async (tender) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["tenders"] }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.detail(tender.id) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.workspace(tender.id) }),
+      ]);
+    },
+  });
+}
+
+export function useSaveTender() {
+  return useTenderSaveMutation(true);
+}
+
+export function useUnsaveTender() {
+  return useTenderSaveMutation(false);
 }
 
 export function useActivities(params: { workspaceId?: string; q?: string; action?: string; entityType?: string; rfpId?: string; actorId?: string } = {}) {

@@ -39,7 +39,20 @@ export const listTendersSchema = z
     workspaceId: uuid.optional(),
     status: tenderStatusSchema.optional(),
     tenderType: tenderTypeSchema.optional(),
+    sourceType: tenderSourceTypeSchema.optional(),
+    q: z.string().trim().max(200).optional(),
     search: z.string().trim().max(200).optional(),
+    buyer: z.string().trim().max(200).optional(),
+    location: z.string().trim().max(200).optional(),
+    minValue: z.coerce.number().nonnegative().optional(),
+    maxValue: z.coerce.number().nonnegative().optional(),
+    deadlineFrom: isoDateTime.optional(),
+    deadlineTo: isoDateTime.optional(),
+    sort: z.enum(["updated", "created", "deadline", "title", "value"]).default("updated"),
+    saved: z
+      .union([z.boolean(), z.enum(["true", "false"])])
+      .transform((value) => value === true || value === "true")
+      .optional(),
     includeArchived: z
       .union([z.boolean(), z.enum(["true", "false"])])
       .transform((value) => value === true || value === "true")
@@ -64,6 +77,10 @@ export const createTenderSchema = z
     title: text.max(500),
     referenceNumber: z.string().trim().max(120).optional(),
     description: longText.optional(),
+    buyerName: z.string().trim().max(300).optional(),
+    location: z.string().trim().max(300).optional(),
+    estimatedValue: z.coerce.number().nonnegative().optional(),
+    currency: z.string().trim().length(3).optional(),
     tenderType: tenderTypeSchema,
     sourceType: tenderSourceTypeSchema,
     sourceReference: z.record(z.unknown()).optional(),
@@ -83,6 +100,10 @@ export const updateTenderSchema = z
     title: text.max(500).optional(),
     referenceNumber: z.string().trim().max(120).nullable().optional(),
     description: longText.optional(),
+    buyerName: z.string().trim().max(300).nullable().optional(),
+    location: z.string().trim().max(300).nullable().optional(),
+    estimatedValue: z.coerce.number().nonnegative().nullable().optional(),
+    currency: z.string().trim().length(3).optional(),
     tenderType: tenderTypeSchema.optional(),
     sourceType: tenderSourceTypeSchema.optional(),
     sourceReference: z.record(z.unknown()).optional(),

@@ -414,7 +414,17 @@ export async function fetchTenders(
     workspaceId?: string;
     status?: string;
     tenderType?: string;
+    sourceType?: string;
+    q?: string;
     search?: string;
+    buyer?: string;
+    location?: string;
+    minValue?: number;
+    maxValue?: number;
+    deadlineFrom?: string;
+    deadlineTo?: string;
+    sort?: string;
+    saved?: boolean;
     includeArchived?: boolean;
     page?: number;
     pageSize?: number;
@@ -425,7 +435,17 @@ export async function fetchTenders(
   if (params.workspaceId) query.set("workspaceId", params.workspaceId);
   if (params.status) query.set("status", params.status);
   if (params.tenderType) query.set("tenderType", params.tenderType);
+  if (params.sourceType) query.set("sourceType", params.sourceType);
+  if (params.q) query.set("q", params.q);
   if (params.search) query.set("search", params.search);
+  if (params.buyer) query.set("buyer", params.buyer);
+  if (params.location) query.set("location", params.location);
+  if (typeof params.minValue === "number") query.set("minValue", String(params.minValue));
+  if (typeof params.maxValue === "number") query.set("maxValue", String(params.maxValue));
+  if (params.deadlineFrom) query.set("deadlineFrom", params.deadlineFrom);
+  if (params.deadlineTo) query.set("deadlineTo", params.deadlineTo);
+  if (params.sort) query.set("sort", params.sort);
+  if (typeof params.saved === "boolean") query.set("saved", String(params.saved));
   if (typeof params.includeArchived === "boolean") query.set("includeArchived", String(params.includeArchived));
   query.set("page", String(params.page ?? 1));
   query.set("pageSize", String(params.pageSize ?? 25));
@@ -457,6 +477,10 @@ export async function createTender(
     title: string;
     referenceNumber?: string;
     description?: string;
+    buyerName?: string;
+    location?: string;
+    estimatedValue?: number;
+    currency?: string;
     tenderType?: "DOCUMENT" | "ONLINE";
     sourceType?: "DOCUMENT_UPLOAD" | "EMAIL_IMPORT" | "PORTAL" | "MANUAL";
     sourceReference?: Record<string, unknown>;
@@ -483,6 +507,10 @@ export async function updateTender(
     title?: string;
     referenceNumber?: string | null;
     description?: string;
+    buyerName?: string | null;
+    location?: string | null;
+    estimatedValue?: number | null;
+    currency?: string;
     tenderType?: "DOCUMENT" | "ONLINE";
     sourceType?: "DOCUMENT_UPLOAD" | "EMAIL_IMPORT" | "PORTAL" | "MANUAL";
     dueAt?: string | null;
@@ -495,6 +523,20 @@ export async function updateTender(
     ...init,
     method: "PATCH",
     body: JSON.stringify(body),
+  });
+}
+
+export async function saveTender(tenderId: string, init?: ApiInit) {
+  return requestJson<WorkspaceOverview["tender"]>(`/tenders/${tenderId}/save`, {
+    ...init,
+    method: "POST",
+  });
+}
+
+export async function unsaveTender(tenderId: string, init?: ApiInit) {
+  return requestJson<WorkspaceOverview["tender"]>(`/tenders/${tenderId}/save`, {
+    ...init,
+    method: "DELETE",
   });
 }
 

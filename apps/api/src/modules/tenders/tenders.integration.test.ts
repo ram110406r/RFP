@@ -20,6 +20,7 @@ import {
   organizationMembers,
   organizations,
   policyConditions,
+  savedTenders,
   tenderAnswerReviews,
   tenderAnswerVersions,
   tenderAnswers,
@@ -355,6 +356,7 @@ describeDb("Tender integration", () => {
       "tender_documents",
       "tender_sources",
       "tender_answer_evidence",
+      "saved_tenders",
     ] as const;
 
     for (const tableName of expectedTables) {
@@ -380,6 +382,10 @@ describeDb("Tender integration", () => {
         "title",
         "reference_number",
         "description",
+        "buyer_name",
+        "location",
+        "estimated_value",
+        "currency",
         "tender_type",
         "source_type",
         "source_reference",
@@ -411,6 +417,10 @@ describeDb("Tender integration", () => {
       receivedAt: "2026-08-25T00:00:00.000Z",
       dueAt: "2026-09-01T00:00:00.000Z",
       timezone: "Asia/Kolkata",
+      buyerName: "Document Authority",
+      location: "Bengaluru, India",
+      estimatedValue: 25000000,
+      currency: "INR",
       metadata: { channel: "document" },
     });
     expect(tenderDocument.status).toBe(201);
@@ -425,6 +435,10 @@ describeDb("Tender integration", () => {
       tenderType: "ONLINE",
       sourceType: "PORTAL",
       ownerId: ownerA,
+      buyerName: "Online Authority",
+      location: "Mumbai, India",
+      estimatedValue: 9800000,
+      currency: "INR",
       metadata: { channel: "online" },
     });
     expect(tenderOnline.status).toBe(201);
@@ -470,6 +484,45 @@ describeDb("Tender integration", () => {
     expect(getById.body.tenderType).toBe("DOCUMENT");
     expect(getById.body.sourceType).toBe("DOCUMENT_UPLOAD");
     expect(getById.body.status).toBe("DRAFT");
+    expect(getById.body.buyerName).toBe("Document Authority");
+    expect(getById.body.location).toBe("Bengaluru, India");
+    expect(getById.body.estimatedValue).toBe(25000000);
+    expect(getById.body.currency).toBe("INR");
+    expect(getById.body.saved).toBe(false);
+
+    const filtered = await requestJson(
+      "GET",
+      `/api/v1/tenders?workspaceId=${workspaceA1}&q=Authority&sourceType=DOCUMENT_UPLOAD&buyer=Document&location=Bengaluru&minValue=20000000&maxValue=30000000&deadlineFrom=2026-08-31T00:00:00.000Z&deadlineTo=2026-09-02T00:00:00.000Z&sort=deadline`,
+      ownerA,
+      orgA,
+    );
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.items.map((item: { id: string }) => item.id)).toContain(documentTenderId);
+    expect(filtered.body.items.map((item: { id: string }) => item.id)).not.toContain(onlineTenderId);
+
+    const saveTender = await requestJson("POST", `/api/v1/tenders/${documentTenderId}/save`, ownerA, orgA);
+    expect(saveTender.status).toBe(200);
+    expect(saveTender.body.saved).toBe(true);
+
+    const saveTenderAgain = await requestJson("POST", `/api/v1/tenders/${documentTenderId}/save`, ownerA, orgA);
+    expect(saveTenderAgain.status).toBe(200);
+    const saveRows = await db
+      .select()
+      .from(savedTenders)
+      .where(and(eq(savedTenders.organizationId, orgA), eq(savedTenders.tenderId, documentTenderId)));
+    expect(saveRows).toHaveLength(1);
+
+    const savedDetail = await requestJson("GET", `/api/v1/tenders/${documentTenderId}`, ownerA, orgA);
+    expect(savedDetail.status).toBe(200);
+    expect(savedDetail.body.saved).toBe(true);
+
+    const savedList = await requestJson("GET", `/api/v1/tenders?workspaceId=${workspaceA1}&saved=true`, ownerA, orgA);
+    expect(savedList.status).toBe(200);
+    expect(savedList.body.items.map((item: { id: string }) => item.id)).toEqual([documentTenderId]);
+
+    const unsaveTender = await requestJson("DELETE", `/api/v1/tenders/${documentTenderId}/save`, ownerA, orgA);
+    expect(unsaveTender.status).toBe(200);
+    expect(unsaveTender.body.saved).toBe(false);
 
     const update = await requestJson("PATCH", `/api/v1/tenders/${documentTenderId}`, ownerA, orgA, {
       name: `Document Tender Updated ${suffix}`,

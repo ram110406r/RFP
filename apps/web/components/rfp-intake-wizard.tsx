@@ -50,7 +50,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
   const [questions, setQuestions] = useState<TenderQuestion[]>([]);
   const [categories, setCategories] = useState([...CATEGORIES]);
   const [preferences, setPreferences] = useState({ analyzeRequirements: true, detectMandatory: true, detectRisks: true, searchKnowledge: true, generateInitialAnswers: false });
-  const [form, setForm] = useState({ workspaceId: "", title: "", customer: "", opportunity: "", referenceNumber: "", dueAt: "", estimatedValue: "0", description: "" });
+  const [form, setForm] = useState({ workspaceId: "", title: "", customer: "", opportunity: "", referenceNumber: "", dueAt: "", estimatedValue: "0", currency: "INR", location: "", sourceType: "DOCUMENT_UPLOAD", description: "" });
 
   const workspaces = workspacesQuery.data?.items ?? [];
   const defaultWorkspaceId = workspaces[0]?.id ?? "";
@@ -74,7 +74,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
   }
 
   function metadata(nextStep: Step) {
-    return { intake: { mode, step: nextStep, opportunity: form.opportunity.trim(), estimatedContractValue: Number(form.estimatedValue || 0), currency: "INR", categories, preferences } };
+    return { intake: { mode, step: nextStep, opportunity: form.opportunity.trim(), estimatedContractValue: Number(form.estimatedValue || 0), currency: form.currency.trim().toUpperCase() || "INR", location: form.location.trim(), sourceType: form.sourceType, categories, preferences } };
   }
 
   async function persistDetails(nextStep: Step) {
@@ -85,8 +85,12 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
       title: form.title.trim(),
       referenceNumber: form.referenceNumber.trim() || undefined,
       description: form.description.trim() || undefined,
+      buyerName: form.customer.trim(),
+      location: form.location.trim() || undefined,
+      estimatedValue: Number(form.estimatedValue || 0),
+      currency: form.currency.trim().toUpperCase() || "INR",
       tenderType: "DOCUMENT" as const,
-      sourceType: "DOCUMENT_UPLOAD" as const,
+      sourceType: form.sourceType as "DOCUMENT_UPLOAD" | "EMAIL_IMPORT" | "PORTAL" | "MANUAL",
       dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : undefined,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       metadata: metadata(nextStep),
@@ -170,7 +174,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
     }
     if (!tenderId) return;
     const saved = await run(async () => {
-      await updateTender(tenderId, { dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null, metadata: metadata(4) });
+      await updateTender(tenderId, { dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null, buyerName: form.customer.trim(), location: form.location.trim() || null, estimatedValue: Number(form.estimatedValue || 0), currency: form.currency.trim().toUpperCase() || "INR", sourceType: form.sourceType as "DOCUMENT_UPLOAD" | "EMAIL_IMPORT" | "PORTAL" | "MANUAL", metadata: metadata(4) });
       setStep(4);
     });
     if (saved) void startAnalysis(tenderId);
@@ -195,10 +199,13 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
           <Field label="RFP owner"><div className={`${input} flex items-center bg-slate-100 text-slate-700`}>{owner}</div></Field>
           <Field label="Submission deadline"><input type="datetime-local" value={form.dueAt} onChange={(event) => setForm({ ...form, dueAt: event.target.value })} className={input} /></Field>
           <Field label="Estimated contract value"><input type="number" min="0" value={form.estimatedValue} onChange={(event) => setForm({ ...form, estimatedValue: event.target.value })} className={input} /></Field>
+          <Field label="Currency"><input value={form.currency} maxLength={3} onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })} className={input} /></Field>
+          <Field label="Location"><input value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="City, state, region" className={input} /></Field>
+          <Field label="Source"><select value={form.sourceType} onChange={(event) => setForm({ ...form, sourceType: event.target.value })} className={input}><option value="DOCUMENT_UPLOAD">Document upload</option><option value="EMAIL_IMPORT">Email import</option><option value="PORTAL">Portal</option><option value="MANUAL">Manual</option></select></Field>
           <Field label="Reference"><input value={form.referenceNumber} onChange={(event) => setForm({ ...form, referenceNumber: event.target.value })} placeholder="RFP-2026-014" className={input} /></Field>
           <Field label="Description" wide><textarea rows={4} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className={input} /></Field>
         </div></Panel>
-        <Panel title="RFP summary" description="Preview of the persisted draft."><Summary label="Name" value={form.title} /><Summary label="Customer" value={form.customer} /><Summary label="Opportunity" value={form.opportunity} /><Summary label="Deadline" value={form.dueAt ? new Date(form.dueAt).toLocaleString() : ""} /><Summary label="Est. value" value={new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(form.estimatedValue || 0))} /></Panel>
+        <Panel title="RFP summary" description="Preview of the persisted draft."><Summary label="Name" value={form.title} /><Summary label="Customer" value={form.customer} /><Summary label="Location" value={form.location} /><Summary label="Opportunity" value={form.opportunity} /><Summary label="Deadline" value={form.dueAt ? new Date(form.dueAt).toLocaleString() : ""} /><Summary label="Est. value" value={new Intl.NumberFormat("en-IN", { style: "currency", currency: form.currency || "INR", maximumFractionDigits: 0 }).format(Number(form.estimatedValue || 0))} /></Panel>
       </div> : null}
 
       {step === 2 ? <Panel title="Upload documents" description="Files use the real object-storage upload, completion, and parse pipeline.">

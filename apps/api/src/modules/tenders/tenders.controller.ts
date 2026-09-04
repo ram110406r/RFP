@@ -74,6 +74,20 @@ export class TendersController {
     return this.tenders.getById(auth, id);
   }
 
+  @Post(":id/save")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions("tender:update")
+  async save(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
+    return this.tenders.save(auth, id);
+  }
+
+  @Delete(":id/save")
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions("tender:update")
+  async unsave(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
+    return this.tenders.unsave(auth, id);
+  }
+
   @Patch(":id")
   @RequirePermissions("tender:update")
   @ZodBody(updateTenderSchema)

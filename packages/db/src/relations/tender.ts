@@ -10,6 +10,7 @@ import {
   tenderAnswerVersions,
   tenderAnswers,
   tenderDocuments,
+  savedTenders,
   tenderSources,
   tenderQuestionRequirements,
   tenderQuestions,
@@ -35,6 +36,23 @@ export const tendersRelations = relations(tenders, ({ one, many }) => ({
   answers: many(tenderAnswers),
   documents: many(tenderDocuments),
   sources: many(tenderSources),
+  savedByWorkspaces: many(savedTenders),
+}));
+
+export const savedTendersRelations = relations(savedTenders, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [savedTenders.organizationId],
+    references: [organizations.id],
+  }),
+  workspace: one(workspaces, {
+    fields: [savedTenders.workspaceId],
+    references: [workspaces.id],
+  }),
+  tender: one(tenders, {
+    fields: [savedTenders.tenderId],
+    references: [tenders.id],
+  }),
+  savedByUser: one(users, { fields: [savedTenders.savedBy], references: [users.id] }),
 }));
 
 export const tenderQuestionsRelations = relations(tenderQuestions, ({ one, many }) => ({

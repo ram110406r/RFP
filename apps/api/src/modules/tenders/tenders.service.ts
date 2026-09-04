@@ -8,8 +8,10 @@ import {
   asc,
   desc,
   eq,
+  gte,
   ilike,
   inArray,
+  lte,
   or,
   sql,
 } from "drizzle-orm";
@@ -23,6 +25,7 @@ import {
   tenderAnswerVersions,
   tenderAnswers,
   tenderDocuments,
+  savedTenders,
   tenderQuestions,
   tenderQuestionRequirements,
   tenderRequirements,
@@ -251,17 +254,28 @@ export class TendersService {
 
   async list(auth: AuthContext, filters: ListTendersInput) {
     const workspaceIds = this.resolveWorkspaceScope(auth, filters.workspaceId);
+    const search = filters.q ?? filters.search;
     const where = and(
       eq(tenders.organizationId, auth.organizationId),
       workspaceIds && workspaceIds.length > 0 ? inArray(tenders.workspaceId, workspaceIds) : undefined,
       filters.status ? eq(tenders.status, filters.status) : undefined,
       filters.tenderType ? eq(tenders.tenderType, filters.tenderType) : undefined,
-      filters.search
+      filters.sourceType ? eq(tenders.sourceType, filters.sourceType) : undefined,
+      filters.buyer ? ilike(tenders.buyerName, `%${filters.buyer}%`) : undefined,
+      filters.location ? ilike(tenders.location, `%${filters.location}%`) : undefined,
+      filters.minValue !== undefined ? gte(tenders.estimatedValue, filters.minValue.toString()) : undefined,
+      filters.maxValue !== undefined ? lte(tenders.estimatedValue, filters.maxValue.toString()) : undefined,
+      filters.deadlineFrom ? gte(tenders.dueAt, new Date(filters.deadlineFrom)) : undefined,
+      filters.deadlineTo ? lte(tenders.dueAt, new Date(filters.deadlineTo)) : undefined,
+      filters.saved ? sql`${savedTenders.tenderId} is not null` : undefined,
+      search
         ? or(
-            ilike(tenders.name, `%${filters.search}%`),
-            ilike(tenders.title, `%${filters.search}%`),
-            ilike(tenders.referenceNumber, `%${filters.search}%`),
-            ilike(tenders.description, `%${filters.search}%`),
+            ilike(tenders.name, `%${search}%`),
+            ilike(tenders.title, `%${search}%`),
+            ilike(tenders.referenceNumber, `%${search}%`),
+            ilike(tenders.description, `%${search}%`),
+            ilike(tenders.buyerName, `%${search}%`),
+            ilike(tenders.location, `%${search}%`),
           )
         : undefined,
       filters.includeArchived ? undefined : sql`${tenders.archivedAt} is null`,
@@ -270,17 +284,34 @@ export class TendersService {
     const [totalRow] = await this.db
       .select({ value: sql<number>`count(*)` })
       .from(tenders)
+      .leftJoin(
+        savedTenders,
+        and(
+          eq(savedTenders.organizationId, auth.organizationId),
+          eq(savedTenders.workspaceId, tenders.workspaceId),
+          eq(savedTenders.tenderId, tenders.id),
+        ),
+      )
       .where(where);
-    const items = await this.db
-      .select()
+    const orderBy = this.tenderListOrder(filters.sort);
+    const rows = await this.db
+      .select({ tender: tenders, savedTenderId: savedTenders.tenderId })
       .from(tenders)
+      .leftJoin(
+        savedTenders,
+        and(
+          eq(savedTenders.organizationId, auth.organizationId),
+          eq(savedTenders.workspaceId, tenders.workspaceId),
+          eq(savedTenders.tenderId, tenders.id),
+        ),
+      )
       .where(where)
-      .orderBy(desc(tenders.createdAt))
+      .orderBy(...orderBy)
       .limit(filters.pageSize)
       .offset((filters.page - 1) * filters.pageSize);
 
     return {
-      items: items.map(serializeTender),
+      items: rows.map((row) => serializeTender(row.tender, { saved: Boolean(row.savedTenderId) })),
       total: Number(totalRow?.value ?? 0),
       page: filters.page,
       pageSize: filters.pageSize,
@@ -498,7 +529,7 @@ export class TendersService {
     const tender = await this.requireTender(auth.organizationId, tenderId);
     this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:read");
     await this.assertPolicyAllows(auth, "read", tender);
-    return serializeTender(tender);
+    return serializeTender(tender, { saved: await this.isTenderSaved(auth.organizationId, tender.workspaceId, tender.id) });
   }
 
   async create(auth: AuthContext, input: CreateTenderInput) {
@@ -520,6 +551,10 @@ export class TendersService {
           title: input.title,
           referenceNumber: input.referenceNumber ?? null,
           description: input.description ?? "",
+          buyerName: input.buyerName ?? input.name,
+          location: input.location ?? null,
+          estimatedValue: input.estimatedValue !== undefined ? input.estimatedValue.toString() : null,
+          currency: input.currency ?? "INR",
           tenderType: input.tenderType,
           sourceType: input.sourceType,
           sourceReference: input.sourceReference ?? {},
@@ -579,6 +614,44 @@ export class TendersService {
     return serializeTender(created);
   }
 
+  async save(auth: AuthContext, tenderId: string) {
+    const tender = await this.requireTender(auth.organizationId, tenderId);
+    this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:update");
+    await this.assertPolicyAllows(auth, "update", tender);
+
+    await this.db
+      .insert(savedTenders)
+      .values({
+        organizationId: auth.organizationId,
+        workspaceId: tender.workspaceId,
+        tenderId,
+        savedBy: auth.userId,
+      })
+      .onConflictDoNothing({
+        target: [savedTenders.workspaceId, savedTenders.tenderId],
+      });
+
+    return serializeTender(tender, { saved: true });
+  }
+
+  async unsave(auth: AuthContext, tenderId: string) {
+    const tender = await this.requireTender(auth.organizationId, tenderId);
+    this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:update");
+    await this.assertPolicyAllows(auth, "update", tender);
+
+    await this.db
+      .delete(savedTenders)
+      .where(
+        and(
+          eq(savedTenders.organizationId, auth.organizationId),
+          eq(savedTenders.workspaceId, tender.workspaceId),
+          eq(savedTenders.tenderId, tenderId),
+        ),
+      );
+
+    return serializeTender(tender, { saved: false });
+  }
+
   async update(auth: AuthContext, tenderId: string, input: UpdateTenderInput) {
     const existing = await this.requireTender(auth.organizationId, tenderId);
     this.assertEditable(existing);
@@ -594,6 +667,12 @@ export class TendersService {
     if (input.title !== undefined) patch.title = input.title;
     if (input.referenceNumber !== undefined) patch.referenceNumber = input.referenceNumber;
     if (input.description !== undefined) patch.description = input.description;
+    if (input.buyerName !== undefined) patch.buyerName = input.buyerName;
+    if (input.location !== undefined) patch.location = input.location;
+    if (input.estimatedValue !== undefined) {
+      patch.estimatedValue = input.estimatedValue === null ? null : input.estimatedValue.toString();
+    }
+    if (input.currency !== undefined) patch.currency = input.currency;
     if (input.tenderType !== undefined) patch.tenderType = input.tenderType;
     if (input.sourceType !== undefined) patch.sourceType = input.sourceType;
     if (input.sourceReference !== undefined) patch.sourceReference = input.sourceReference;
@@ -3464,6 +3543,29 @@ export class TendersService {
     return row;
   }
 
+  private async isTenderSaved(organizationId: string, workspaceId: string, tenderId: string) {
+    const [row] = await this.db
+      .select({ tenderId: savedTenders.tenderId })
+      .from(savedTenders)
+      .where(
+        and(
+          eq(savedTenders.organizationId, organizationId),
+          eq(savedTenders.workspaceId, workspaceId),
+          eq(savedTenders.tenderId, tenderId),
+        ),
+      )
+      .limit(1);
+    return Boolean(row);
+  }
+
+  private tenderListOrder(sort: ListTendersInput["sort"]) {
+    if (sort === "deadline") return [asc(tenders.dueAt), desc(tenders.createdAt)];
+    if (sort === "title") return [asc(tenders.title), desc(tenders.createdAt)];
+    if (sort === "value") return [desc(tenders.estimatedValue), desc(tenders.createdAt)];
+    if (sort === "created") return [desc(tenders.createdAt)];
+    return [desc(tenders.updatedAt), desc(tenders.createdAt)];
+  }
+
   private async requireWorkspace(organizationId: string, workspaceId: string) {
     const [row] = await this.db
       .select()
@@ -3832,7 +3934,7 @@ function deriveGroundingStatus(analysis: {
   return "SUPPORTED" as const;
 }
 
-function serializeTender(row: TenderRow) {
+function serializeTender(row: TenderRow, options: { saved?: boolean } = {}) {
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -3841,6 +3943,10 @@ function serializeTender(row: TenderRow) {
     title: row.title,
     referenceNumber: row.referenceNumber,
     description: row.description,
+    buyerName: row.buyerName,
+    location: row.location,
+    estimatedValue: row.estimatedValue === null ? null : Number(row.estimatedValue),
+    currency: row.currency,
     tenderType: row.tenderType,
     sourceType: row.sourceType,
     sourceReference: row.sourceReference,
@@ -3853,6 +3959,7 @@ function serializeTender(row: TenderRow) {
     timezone: row.timezone,
     metadata: row.metadata,
     archivedAt: row.archivedAt,
+    saved: options.saved ?? false,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

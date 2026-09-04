@@ -17,6 +17,10 @@ export interface TenderSummary {
   title: string;
   referenceNumber: string | null;
   description: string;
+  buyerName: string | null;
+  location: string | null;
+  estimatedValue: number | null;
+  currency: string;
   tenderType: string;
   sourceType: string;
   sourceReference: Record<string, unknown>;
@@ -29,6 +33,7 @@ export interface TenderSummary {
   timezone: string;
   metadata: Record<string, unknown>;
   archivedAt: string | null;
+  saved: boolean;
   createdAt: string;
   updatedAt: string;
 }

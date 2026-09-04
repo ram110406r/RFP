@@ -52,6 +52,7 @@ describe("schema barrel", () => {
     "tenderDocuments",
     "tenderSources",
     "tenderValidationRuns",
+    "savedTenders",
     // knowledge
     "knowledgeSources",
     "knowledgeClaims",
@@ -127,6 +128,7 @@ describe("multi-tenancy", () => {
     "tenderDocuments",
     "tenderSources",
     "tenderValidationRuns",
+    "savedTenders",
     "knowledgeSources",
     "rfps",
     "documentExtractions",
