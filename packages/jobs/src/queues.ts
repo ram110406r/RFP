@@ -1,5 +1,6 @@
 import type { DocumentJobName, DocumentJobPayload } from "./document-jobs";
 import type { TenderIngestionJobName, TenderIngestionJobPayload } from "./tender-ingestion-jobs";
+import type { RfpAutomationJobName, RfpAutomationJobPayload } from "./rfp-automation-jobs";
 
 /**
  * Queue names. One queue per domain rather than one per job type: the four
@@ -11,6 +12,7 @@ export const QUEUES = {
   PLATFORM: "platform",
   DOCUMENTS: "documents",
   TENDER_INGESTION: "tender-ingestion",
+  RFP_AUTOMATION: "rfp-automation",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -22,6 +24,7 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 export interface QueueJobMap {
   [QUEUES.DOCUMENTS]: { name: DocumentJobName; payload: DocumentJobPayload };
   [QUEUES.TENDER_INGESTION]: { name: TenderIngestionJobName; payload: TenderIngestionJobPayload };
+  [QUEUES.RFP_AUTOMATION]: { name: RfpAutomationJobName; payload: RfpAutomationJobPayload };
 }
 
 export type QueueWithJobs = keyof QueueJobMap;

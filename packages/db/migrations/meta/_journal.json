@@ -204,6 +204,20 @@
       "when": 1788836400000,
       "tag": "0028_tender_discovery_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788922800000,
+      "tag": "0029_tender_apply_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788926400000,
+      "tag": "0030_tender_automation_active_run",
+      "breakpoints": true
     }
   ]
 }

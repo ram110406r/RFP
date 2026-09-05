@@ -4,6 +4,7 @@ import { Worker } from "bullmq";
 
 import { createDocumentsWorker } from "./documents/documents.worker";
 import { createTenderDiscoveryWorker, startTenderDiscoveryScheduler } from "./tender-discovery/tender-ingestion.worker";
+import { createRfpAutomationWorker, startRfpAutomationScheduler } from "./rfp-automation/rfp-automation.worker";
 import { createRedisConnection } from "./redis";
 
 const logger = createLogger("worker");
@@ -36,8 +37,10 @@ platformWorker.on("error", (err) => logger.error({ err }, "worker connection err
 const documentsWorker = createDocumentsWorker(connection);
 const tenderDiscoveryWorker = createTenderDiscoveryWorker(connection);
 const tenderDiscoveryScheduler = startTenderDiscoveryScheduler(connection);
+const rfpAutomationWorker = createRfpAutomationWorker(connection);
+const rfpAutomationScheduler = startRfpAutomationScheduler(connection);
 
-const workers = [platformWorker, documentsWorker, tenderDiscoveryWorker];
+const workers = [platformWorker, documentsWorker, tenderDiscoveryWorker, rfpAutomationWorker];
 
 /**
  * Graceful shutdown.
@@ -55,6 +58,7 @@ async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "shutting down, waiting for in-flight jobs");
   await Promise.allSettled(workers.map((w) => w.close()));
   await tenderDiscoveryScheduler.stop();
+  await rfpAutomationScheduler.stop();
   await connection.quit();
   process.exit(0);
 }

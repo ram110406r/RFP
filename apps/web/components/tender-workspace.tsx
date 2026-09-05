@@ -66,6 +66,7 @@ import {
   useUnsaveTender,
 } from "../lib/queries";
 import { getGenerationId, getGenerationMeta, reviewToneFromStatus } from "../lib/workspace-utils";
+import { ApplyAutomationPanel } from "./apply-automation-panel";
 
 type TenderWorkspaceClientProps = {
   tenderId: string;
@@ -181,13 +182,15 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
           </TendyyCard>
 
           <TendyyCard>
-            <TendyySectionHeader eyebrow="Future analysis" title="Analysis is not running here" description="AI matching, eligibility, recommendations, and Start RFP remain deferred until the operational tender workspace is stable." />
+            <TendyySectionHeader eyebrow="Application control" title="Human-gated automation" description="Preparation runs only when a permitted user explicitly starts it. Approval and submission always remain human actions." />
             <div className="mt-5 flex items-start gap-3 rounded-[var(--radius-md)] border border-blue-200 bg-blue-50 p-4 text-blue-950">
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
-              <p className="text-[13px] leading-6">This panel is intentionally informational in milestone 2. No AI job is triggered by opening this page.</p>
+              <p className="text-[13px] leading-6">Generated answers preserve evidence links and version history. Missing evidence creates visible work instead of unsupported text.</p>
             </div>
           </TendyyCard>
         </section>
+
+        {tender ? <ApplyAutomationPanel tender={tender} /> : null}
 
         <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
           <TendyyCard>

@@ -308,6 +308,26 @@ export interface RfpApplyRunResult {
   nextAction: string | null;
 }
 
+export type AutomationStatus = "QUEUED" | "RUNNING" | "WAITING_FOR_INPUT" | "BLOCKED" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "CANCELLED";
+export interface TenderRequirementCandidate {
+  id: string;
+  title: string;
+  description: string;
+  sourceExcerpt: string;
+  candidateType: string;
+  confidence: string;
+  mandatory: boolean;
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "SUPERSEDED";
+  acceptedRequirementId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+export interface TenderAutomationStep { id: string; kind: string; sequence: number; status: AutomationStatus; result: Record<string, unknown>; failureReason: string | null; }
+export interface TenderAutomationRun { id: string; tenderId: string; status: AutomationStatus; configuration: Record<string, unknown>; summary: Record<string, unknown>; failureReason: string | null; createdAt: string; completedAt: string | null; steps?: TenderAutomationStep[]; items?: Array<{ id: string; requirementId: string | null; status: AutomationStatus; result: Record<string, unknown>; failureReason: string | null }>; }
+export interface TenderSubmissionPackage { id: string; version: number; status: "GENERATING" | "READY" | "FAILED" | "STALE" | "APPROVED"; contentDigest: string; generatorVersion: string; failureReason: string | null; createdAt: string; completedAt: string | null; artifacts: Array<{ id: string; kind: string; filename: string; mimeType: string; sizeBytes: number }>; }
+export interface TenderMilestone { id: string; kind: "REVIEW" | "APPROVAL" | "PACKAGE" | "SUBMISSION"; offsetDays: number; dueAt: string; status: "PENDING" | "COMPLETE" | "OVERDUE" | "CANCELLED"; completedAt: string | null; }
+export interface TenderSubmission { id: string; packageId: string; portal: string; portalReference: string; submittedAt: string; notes: string; createdAt: string; }
+
 export interface TenderListPayload {
   items: TenderSummary[];
   total: number;

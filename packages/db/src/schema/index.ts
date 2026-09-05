@@ -18,6 +18,7 @@ export * from "./files";
 export * from "./knowledge";
 export * from "./tender-discovery";
 export * from "./tender";
+export * from "./tender-automation";
 export * from "./rfp";
 export * from "./rfp-lifecycle";
 export * from "./extraction";

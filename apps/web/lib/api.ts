@@ -38,6 +38,11 @@ import type {
   TeamSummary,
   TeamMemberSummary,
   WorkspaceMemberSummary,
+  TenderAutomationRun,
+  TenderRequirementCandidate,
+  TenderSubmissionPackage,
+  TenderMilestone,
+  TenderSubmission,
 } from "./models";
 
 export interface TenderDiscoveryParams {
@@ -428,6 +433,21 @@ export async function runRfpApply(
     body: JSON.stringify(body),
   });
 }
+
+export const fetchTenderRequirementCandidates = (tenderId: string) => requestJson<{ items: TenderRequirementCandidate[] }>(`/tenders/${tenderId}/requirement-candidates`);
+export const extractTenderRequirements = (tenderId: string) => requestJson<{ created: number; reused: number }>(`/tenders/${tenderId}/requirement-extraction`, { method: "POST" });
+export const decideTenderRequirementCandidates = (tenderId: string, decisions: Array<{ candidateId: string; decision: "ACCEPTED" | "REJECTED" }>) => requestJson<{ items: TenderRequirementCandidate[] }>(`/tenders/${tenderId}/requirement-candidates/decisions`, { method: "POST", body: JSON.stringify({ decisions }) });
+export const fetchTenderAutomationRuns = (tenderId: string) => requestJson<{ items: TenderAutomationRun[] }>(`/rfp-apply/${tenderId}/runs`);
+export const createTenderAutomationRun = (tenderId: string, body: { includePackage?: boolean; requirementIds?: string[] }) => requestJson<TenderAutomationRun>(`/rfp-apply/${tenderId}/runs`, { method: "POST", body: JSON.stringify(body) });
+export const retryTenderAutomationRun = (tenderId: string, runId: string) => requestJson<TenderAutomationRun>(`/rfp-apply/${tenderId}/runs/${runId}/retry`, { method: "POST" });
+export const fetchTenderPackages = (tenderId: string) => requestJson<{ items: TenderSubmissionPackage[] }>(`/tenders/${tenderId}/packages`);
+export const createTenderPackage = (tenderId: string) => requestJson<TenderSubmissionPackage>(`/tenders/${tenderId}/packages`, { method: "POST", body: JSON.stringify({}) });
+export const approveTenderPackage = (tenderId: string, packageId: string, comment = "") => requestJson<TenderSubmissionPackage>(`/tenders/${tenderId}/packages/${packageId}/approve`, { method: "POST", body: JSON.stringify({ comment }) });
+export const downloadTenderPackage = (tenderId: string, packageId: string) => requestJson<{ url: string; expiresInSeconds: number }>(`/tenders/${tenderId}/packages/${packageId}/download`);
+export const fetchTenderMilestones = (tenderId: string) => requestJson<{ items: TenderMilestone[] }>(`/tenders/${tenderId}/milestones`);
+export const updateTenderMilestones = (tenderId: string, milestones: Array<{ kind: TenderMilestone["kind"]; offsetDays: number }>) => requestJson<{ items: TenderMilestone[] }>(`/tenders/${tenderId}/milestones`, { method: "PUT", body: JSON.stringify({ milestones }) });
+export const fetchTenderSubmissions = (tenderId: string) => requestJson<{ items: TenderSubmission[] }>(`/tenders/${tenderId}/submissions`);
+export const createTenderSubmission = (tenderId: string, body: { packageId: string; portal: string; portalReference: string; submittedAt: string; notes?: string; receiptFileIds?: string[] }) => requestJson<TenderSubmission>(`/tenders/${tenderId}/submissions`, { method: "POST", body: JSON.stringify(body) });
 
 export async function fetchDashboardSummary(
   params: { pageSize?: number } = {},

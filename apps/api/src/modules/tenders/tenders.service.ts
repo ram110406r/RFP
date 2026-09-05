@@ -3835,7 +3835,12 @@ export class TendersService {
     }
 
     const mandatoryRequirements = requirements.filter((requirement) => requirement.mandatory);
-    const approvedMandatory = mandatoryRequirements.filter((requirement) => requirement.status === "APPROVED");
+    const requirementIsApproved = (requirement: typeof tenderRequirements.$inferSelect) => {
+      if (requirement.status === "APPROVED") return true;
+      const linkedQuestionIds = questionIdsByRequirement.get(requirement.id) ?? [];
+      return linkedQuestionIds.length > 0 && linkedQuestionIds.every((questionId) => answerByQuestionId.get(questionId)?.status === "APPROVED");
+    };
+    const approvedMandatory = mandatoryRequirements.filter(requirementIsApproved);
     const answeredQuestions = questions.filter((question) => answerByQuestionId.has(question.id));
     const answeredWithEvidence = answers.filter((answer) => (evidenceCountByAnswer.get(answer.id) ?? 0) > 0);
     const reviewedAnswers = answers.filter((answer) => (reviewCountByAnswer.get(answer.id) ?? 0) > 0);
@@ -3894,14 +3899,14 @@ export class TendersService {
     ];
 
     for (const requirement of mandatoryRequirements) {
-      if (requirement.status === "APPROVED") continue;
+      if (requirementIsApproved(requirement)) continue;
       addIssue(
         {
           id: `requirement-${requirement.id}-not-approved`,
           severity: "HIGH",
           title: `Mandatory requirement ${requirement.title} is not approved`,
           detail: "A mandatory requirement still needs approval before this tender can be submitted.",
-          recommendation: "Assign a reviewer, resolve comments, and move the requirement to APPROVED.",
+          recommendation: "Assign a reviewer and approve every answer linked to this requirement.",
           blocking: true,
           requirementId: requirement.id,
         },

@@ -73,6 +73,20 @@ import {
   saveTenderNotice,
   unsaveTenderNotice,
   startTenderApplication,
+  fetchTenderRequirementCandidates,
+  extractTenderRequirements,
+  decideTenderRequirementCandidates,
+  fetchTenderAutomationRuns,
+  createTenderAutomationRun,
+  retryTenderAutomationRun,
+  fetchTenderPackages,
+  createTenderPackage,
+  approveTenderPackage,
+  downloadTenderPackage,
+  fetchTenderMilestones,
+  updateTenderMilestones,
+  fetchTenderSubmissions,
+  createTenderSubmission,
 } from "./api";
 import type { TenderDiscoveryParams } from "./api";
 import type {
@@ -121,6 +135,11 @@ export const tenderKeys = {
   answerEvidence: (tenderId: string, answerId: string) => ["tender", tenderId, "answers", answerId, "evidence"] as const,
   requirementEvidence: (tenderId: string, requirementId: string) =>
     ["tender", tenderId, "requirements", requirementId, "evidence"] as const,
+  requirementCandidates: (tenderId: string) => ["tender", tenderId, "requirement-candidates"] as const,
+  automationRuns: (tenderId: string) => ["tender", tenderId, "automation-runs"] as const,
+  packages: (tenderId: string) => ["tender", tenderId, "packages"] as const,
+  milestones: (tenderId: string) => ["tender", tenderId, "milestones"] as const,
+  submissions: (tenderId: string) => ["tender", tenderId, "submissions"] as const,
 };
 
 export const knowledgeKeys = {
@@ -231,6 +250,40 @@ export function useRfpApplyProgress(tenderId: string) {
     enabled: Boolean(tenderId),
   });
 }
+
+export function useTenderRequirementCandidates(tenderId: string) { return useQuery({ queryKey: tenderKeys.requirementCandidates(tenderId), queryFn: () => fetchTenderRequirementCandidates(tenderId), enabled: Boolean(tenderId) }); }
+export function useTenderAutomationRuns(tenderId: string) { return useQuery({ queryKey: tenderKeys.automationRuns(tenderId), queryFn: () => fetchTenderAutomationRuns(tenderId), enabled: Boolean(tenderId), refetchInterval: (query) => query.state.data?.items.some((item) => item.status === "RUNNING" || item.status === "QUEUED") ? 2000 : false }); }
+export function useTenderPackages(tenderId: string) { return useQuery({ queryKey: tenderKeys.packages(tenderId), queryFn: () => fetchTenderPackages(tenderId), enabled: Boolean(tenderId) }); }
+export function useTenderMilestones(tenderId: string) { return useQuery({ queryKey: tenderKeys.milestones(tenderId), queryFn: () => fetchTenderMilestones(tenderId), enabled: Boolean(tenderId) }); }
+export function useTenderSubmissions(tenderId: string) { return useQuery({ queryKey: tenderKeys.submissions(tenderId), queryFn: () => fetchTenderSubmissions(tenderId), enabled: Boolean(tenderId) }); }
+
+function useAutomationMutation<TInput, TResult>(tenderId: string, mutationFn: (input: TInput) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn, onSuccess: async () => { await Promise.all([
+    queryClient.invalidateQueries({ queryKey: tenderKeys.requirementCandidates(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.requirements(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.questions(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.answers(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.reviews(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.workspace(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.applyProgress(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.automationRuns(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.packages(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.milestones(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: tenderKeys.submissions(tenderId) }),
+    queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+  ]); } });
+}
+
+export function useExtractTenderRequirements(tenderId: string) { return useAutomationMutation<void, { created: number; reused: number }>(tenderId, () => extractTenderRequirements(tenderId)); }
+export function useDecideTenderRequirementCandidates(tenderId: string) { return useAutomationMutation<Array<{ candidateId: string; decision: "ACCEPTED" | "REJECTED" }>, unknown>(tenderId, (decisions) => decideTenderRequirementCandidates(tenderId, decisions)); }
+export function useCreateTenderAutomationRun(tenderId: string) { return useAutomationMutation<{ includePackage?: boolean }, unknown>(tenderId, (body) => createTenderAutomationRun(tenderId, body)); }
+export function useRetryTenderAutomationRun(tenderId: string) { return useAutomationMutation<string, unknown>(tenderId, (runId) => retryTenderAutomationRun(tenderId, runId)); }
+export function useCreateTenderPackage(tenderId: string) { return useAutomationMutation<void, unknown>(tenderId, () => createTenderPackage(tenderId)); }
+export function useApproveTenderPackage(tenderId: string) { return useAutomationMutation<{ packageId: string; comment?: string }, unknown>(tenderId, ({ packageId, comment }) => approveTenderPackage(tenderId, packageId, comment)); }
+export function useDownloadTenderPackage(tenderId: string) { return useMutation({ mutationFn: async (packageId: string) => { const result = await downloadTenderPackage(tenderId, packageId); window.location.assign(result.url); return result; } }); }
+export function useUpdateTenderMilestones(tenderId: string) { return useAutomationMutation<Array<{ kind: "REVIEW" | "APPROVAL" | "PACKAGE" | "SUBMISSION"; offsetDays: number }>, unknown>(tenderId, (milestones) => updateTenderMilestones(tenderId, milestones)); }
+export function useCreateTenderSubmission(tenderId: string) { return useAutomationMutation<{ packageId: string; portal: string; portalReference: string; submittedAt: string; notes?: string; receiptFileIds?: string[] }, unknown>(tenderId, (body) => createTenderSubmission(tenderId, body)); }
 
 export function useTenderBrief(tenderId: string, initialData?: TenderBriefPayload | null) {
   return useQuery({

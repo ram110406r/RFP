@@ -106,4 +106,20 @@ describe("migration history", () => {
     expect(sql).toContain('CREATE TABLE "tender_ingestion_alerts"');
     expect(sql).toContain('"connectorVerified":true');
   });
+
+  test("0029 adds durable apply automation and immutable submission records", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0029_tender_apply_automation.sql"), "utf8");
+    expect(sql).toContain('CREATE TABLE "tender_requirement_candidates"');
+    expect(sql).toContain('CREATE TABLE "tender_automation_runs"');
+    expect(sql).toContain('CREATE TABLE "tender_submission_packages"');
+    expect(sql).toContain('CREATE UNIQUE INDEX "tender_submission_packages_digest_uq"');
+    expect(sql).toContain('CREATE TABLE "tender_submissions"');
+    expect(sql).toContain('CREATE UNIQUE INDEX "tender_submissions_tender_reference_uq"');
+  });
+
+  test("0030 prevents concurrent active automation runs", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0030_tender_automation_active_run.sql"), "utf8");
+    expect(sql).toContain('CREATE UNIQUE INDEX "tender_automation_runs_active_uq"');
+    expect(sql).toContain("WHERE \"status\" IN ('QUEUED', 'RUNNING')");
+  });
 });
