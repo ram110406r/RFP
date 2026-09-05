@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 
-import { TenderDiscoveryController } from "./tender-discovery.controller";
+import { PlatformTenderSourcesController, TenderDiscoveryController } from "./tender-discovery.controller";
 import { TenderDiscoveryService } from "./tender-discovery.service";
 
-@Module({ controllers: [TenderDiscoveryController], providers: [TenderDiscoveryService] })
+@Module({ controllers: [TenderDiscoveryController, PlatformTenderSourcesController], providers: [TenderDiscoveryService] })
 export class TenderDiscoveryModule {}

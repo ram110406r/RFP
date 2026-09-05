@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import {
   canonicalNoticeKey,
+  effectiveNoticeStatus,
   normalizeGemNotice,
   normalizeOfficialFeedItem,
   parseCpppLatestHtml,
+  parseGepnicLatestHtml,
   payloadHash,
 } from "./connector";
 
@@ -100,5 +102,20 @@ describe("official tender feed normalization", () => {
     expect(items[0]?.deadlineAt).toBe("2026-09-26T09:30:00.000Z");
     expect(items[0]?.sourceUrl).toBe("https://eprocure.gov.in/eprocure/app?service=restart");
     expect(items[0]?.documents?.[0]?.name).toBe("Open CPPP and search by reference");
+  });
+
+  test("expires active notices after their deadline but preserves explicit terminal states", () => {
+    const now = new Date("2026-09-06T12:00:00.000Z");
+    expect(effectiveNoticeStatus("ACTIVE", "2026-09-05T12:00:00.000Z", now)).toBe("EXPIRED");
+    expect(effectiveNoticeStatus("ACTIVE", "2026-09-07T12:00:00.000Z", now)).toBe("ACTIVE");
+    expect(effectiveNoticeStatus("CANCELLED", "2026-09-07T12:00:00.000Z", now)).toBe("CANCELLED");
+    expect(effectiveNoticeStatus("AWARDED", "2026-09-05T12:00:00.000Z", now)).toBe("AWARDED");
+  });
+
+  test("reuses the GePNIC public window while preserving portal state and durable navigation", () => {
+    const [item] = parseGepnicLatestHtml(`<table id="activeTenders"><tr><td><a href="?session=short">1. Road works</a></td><td>MH/12</td><td>26-Sep-2026 03:00 PM</td><td>30-Sep-2026 03:30 PM</td></tr></table>`, { portalName: "mahatenders", state: "Maharashtra", entryUrl: "https://mahatenders.gov.in/nicgep/app" });
+    expect(item?.state).toBe("Maharashtra");
+    expect(item?.sourceUrl).toBe("https://mahatenders.gov.in/nicgep/app");
+    expect(item?.metadata.coverageMode).toBe("LATEST_PUBLIC_WINDOW");
   });
 });

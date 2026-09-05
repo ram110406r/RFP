@@ -6,6 +6,12 @@ describe("tender discovery request contracts", () => {
   test("coerces pagination, booleans, and value filters", () => {
     const result = listTenderDiscoverySchema.parse({ page: "2", pageSize: "50", saved: "true", minValue: "1000", maxValue: "5000", sort: "deadline" });
     expect(result).toMatchObject({ page: 2, pageSize: 50, saved: true, minValue: 1000, maxValue: 5000, sort: "deadline" });
+    expect(result.freshness).toBe("current");
+  });
+
+  test("accepts explicit stale and all-catalog freshness filters", () => {
+    expect(listTenderDiscoverySchema.parse({ freshness: "stale" }).freshness).toBe("stale");
+    expect(listTenderDiscoverySchema.parse({ freshness: "all" }).freshness).toBe("all");
   });
 
   test("rejects inverted values and unknown filters", () => {

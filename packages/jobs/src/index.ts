@@ -16,5 +16,5 @@ export type {
 
 export { DEFAULT_JOB_OPTIONS, QUEUES } from "./queues";
 export type { QueueJobMap, QueueName, QueueWithJobs } from "./queues";
-export { TENDER_INGESTION_JOBS, tenderIngestionJobId, tenderNoticeDocumentImportJobId } from "./tender-ingestion-jobs";
+export { TENDER_INGESTION_JOBS, tenderCatalogReconcileJobId, tenderIngestionJobId, tenderNoticeDocumentImportJobId } from "./tender-ingestion-jobs";
 export type { TenderIngestionJobName, TenderIngestionJobPayload, TenderPortalSyncJobPayload, TenderNoticeDocumentImportJobPayload } from "./tender-ingestion-jobs";

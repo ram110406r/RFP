@@ -97,4 +97,13 @@ describe("migration history", () => {
     expect(sql).toContain("SEARCH_BY_REFERENCE");
     expect(sql).toContain("Open CPPP and search by reference");
   });
+
+  test("0028 adds per-source lifecycle state and protected operations", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0028_tender_discovery_operations.sql"), "utf8");
+    expect(sql).toContain('ADD COLUMN "last_seen_run_id"');
+    expect(sql).toContain('ADD COLUMN "missed_syncs"');
+    expect(sql).toContain('CREATE TABLE "platform_administrators"');
+    expect(sql).toContain('CREATE TABLE "tender_ingestion_alerts"');
+    expect(sql).toContain('"connectorVerified":true');
+  });
 });

@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 import { timestamps } from "./_shared";
 import { workspaces } from "./foundation";
@@ -44,6 +45,22 @@ export const tenderSyncStatusEnum = pgEnum("tender_sync_status", [
   "SUCCEEDED",
   "FAILED",
 ]);
+export const tenderSyncModeEnum = pgEnum("tender_sync_mode", [
+  "HEAD",
+  "BACKFILL",
+  "FULL_REFRESH",
+  "RECONCILE",
+]);
+export const tenderIngestionAlertStatusEnum = pgEnum("tender_ingestion_alert_status", [
+  "OPEN",
+  "RESOLVED",
+]);
+export const tenderIngestionAlertKindEnum = pgEnum("tender_ingestion_alert_kind", [
+  "CONSECUTIVE_FAILURES",
+  "STALE_SOURCE",
+  "CURSOR_STALLED",
+  "VOLUME_ANOMALY",
+]);
 export const tenderNoticeStatusEnum = pgEnum("tender_notice_status", [
   "ACTIVE",
   "CLOSED",
@@ -70,6 +87,10 @@ export const tenderPortals = pgTable(
     connectorType: tenderConnectorTypeEnum("connector_type").notNull(),
     scheduleMinutes: integer("schedule_minutes").notNull().default(60),
     syncCursor: text("sync_cursor"),
+    syncState: jsonb("sync_state").$type<Record<string, unknown>>().notNull().default({}),
+    lastFullSyncAt: timestamp("last_full_sync_at", { withTimezone: true }),
+    backfillCompletedAt: timestamp("backfill_completed_at", { withTimezone: true }),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
     enabled: boolean("enabled").notNull().default(false),
     health: tenderPortalHealthEnum("health").notNull().default("PENDING"),
     lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
@@ -93,6 +114,9 @@ export const tenderSyncRuns = pgTable(
       .notNull()
       .references(() => tenderPortals.id, { onDelete: "cascade" }),
     status: tenderSyncStatusEnum("status").notNull().default("RUNNING"),
+    mode: tenderSyncModeEnum("mode").notNull().default("HEAD"),
+    scope: jsonb("scope").$type<Record<string, unknown>>().notNull().default({}),
+    fullSnapshot: boolean("full_snapshot").notNull().default(false),
     cursor: text("cursor"),
     windowStartedAt: timestamp("window_started_at", { withTimezone: true }),
     discoveredCount: integer("discovered_count").notNull().default(0),
@@ -190,13 +214,63 @@ export const tenderNoticeSources = pgTable(
       .references(() => tenderSourceRecords.id, { onDelete: "restrict" }),
     sourceNoticeKey: text("source_notice_key").notNull(),
     sourceUrl: text("source_url").notNull(),
+    sourceStatus: tenderNoticeStatusEnum("source_status").notNull().default("UNKNOWN"),
+    lastSeenRunId: uuid("last_seen_run_id").references(() => tenderSyncRuns.id, {
+      onDelete: "set null",
+    }),
     isPrimary: boolean("is_primary").notNull().default(false),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    missedSyncs: integer("missed_syncs").notNull().default(0),
+    staleAt: timestamp("stale_at", { withTimezone: true }),
   },
   (t) => [
     primaryKey({ columns: [t.noticeId, t.portalId] }),
     uniqueIndex("tender_notice_sources_portal_notice_uq").on(t.portalId, t.sourceNoticeKey),
     index("tender_notice_sources_record_idx").on(t.sourceRecordId),
+    index("tender_notice_sources_freshness_idx").on(t.portalId, t.staleAt, t.lastSeenAt),
+    index("tender_notice_sources_run_idx").on(t.lastSeenRunId),
+  ],
+);
+
+export const platformAdministrators = pgTable("platform_administrators", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  grantedBy: uuid("granted_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const tenderPortalEvents = pgTable(
+  "tender_portal_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    portalId: uuid("portal_id").notNull().references(() => tenderPortals.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("tender_portal_events_portal_created_idx").on(t.portalId, t.createdAt)],
+);
+
+export const tenderIngestionAlerts = pgTable(
+  "tender_ingestion_alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    portalId: uuid("portal_id").notNull().references(() => tenderPortals.id, { onDelete: "cascade" }),
+    kind: tenderIngestionAlertKindEnum("kind").notNull(),
+    status: tenderIngestionAlertStatusEnum("status").notNull().default("OPEN"),
+    message: text("message").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("tender_ingestion_alerts_open_uq")
+      .on(t.portalId, t.kind)
+      .where(sql`${t.status} = 'OPEN'`),
+    index("tender_ingestion_alerts_status_idx").on(t.status, t.openedAt),
   ],
 );
 

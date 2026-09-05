@@ -17,7 +17,7 @@ import type { TenderNoticeDetail, TenderNoticeSummary } from "../../lib/models";
 
 type Tab = "all" | "saved" | "applied";
 type ResultView = "list" | "grid";
-type FilterKey = "portal" | "state" | "category" | "status" | "buyer" | "authorityType" | "location" | "procurementType" | "minValue" | "maxValue" | "publishedFrom" | "publishedTo" | "deadlineFrom" | "deadlineTo";
+type FilterKey = "portal" | "state" | "category" | "status" | "buyer" | "authorityType" | "location" | "procurementType" | "minValue" | "maxValue" | "publishedFrom" | "publishedTo" | "deadlineFrom" | "deadlineTo" | "freshness";
 
 export default function TendersPage() {
   return <Suspense fallback={<PageSkeleton />}><TenderDiscoveryPage /></Suspense>;
@@ -61,6 +61,7 @@ function TenderDiscoveryPage() {
     deadlineTo: dateEnd(params.get("deadlineTo")),
     saved: tab === "saved" ? true : undefined,
     applied: tab === "applied" ? true : undefined,
+    freshness: parseFreshness(params.get("freshness")),
     sort,
     page,
     pageSize: 20,
@@ -141,6 +142,7 @@ function TenderDiscoveryPage() {
             <div className="flex flex-wrap items-center gap-3 pb-3 text-[11px] text-[var(--muted)]">
               <span className="font-semibold text-[var(--text-soft)]">{query.isLoading ? "Searching..." : `${formatNumber(query.data?.total ?? 0)} found`}</span>
               <CoverageStatus coverage={coverage} />
+              {query.data?.catalog ? <span>{formatNumber(query.data.catalog.active)} active | {formatNumber(query.data.catalog.expired)} expired{query.data.catalog.stale ? ` | ${formatNumber(query.data.catalog.stale)} stale` : ""}</span> : null}
               <button type="button" onClick={() => void query.refetch()} className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] hover:bg-[var(--surface-muted)]" aria-label="Refresh results"><RefreshCw className="h-3.5 w-3.5" /></button>
               <label className="inline-flex items-center gap-1">Sort
                 <select value={sort} onChange={(event) => replaceParams(router, params, { sort: event.target.value === "relevance" ? null : event.target.value, page: null })} className="bg-transparent font-semibold text-[var(--text-soft)] outline-none">
@@ -218,6 +220,7 @@ function AdvancedFilters({ params, facets, onSet, onClose }: { params: URLSearch
     <FilterField label="Portal"><select value={params.get("portal") ?? ""} onChange={(e) => onSet("portal", e.target.value)} className="filter-input"><option value="">All reporting portals</option><optgroup label="Connected">{reportingPortals.map((portal) => <option key={portal.key} value={portal.key}>{portal.name} ({formatNumber(portal.count)})</option>)}</optgroup>{pendingPortals.length ? <optgroup label="Not connected yet">{pendingPortals.map((portal) => <option key={portal.key} value={portal.key} disabled>{portal.name} - unavailable</option>)}</optgroup> : null}</select></FilterField>
     <FilterField label="Category"><select value={params.get("category") ?? ""} onChange={(e) => onSet("category", e.target.value)} className="filter-input"><option value="">All categories</option>{categories.map((category) => category.value ? <option key={category.value} value={category.value}>{category.value} ({category.count})</option> : null)}</select></FilterField>
     <FilterField label="Status"><select value={params.get("status") ?? ""} onChange={(e) => onSet("status", e.target.value)} className="filter-input"><option value="">All statuses</option>{(facets?.statuses ?? []).map((status) => <option key={status.value} value={status.value}>{status.value} ({formatNumber(status.count)})</option>)}</select></FilterField>
+    <FilterField label="Freshness"><select value={params.get("freshness") ?? "current"} onChange={(e) => onSet("freshness", e.target.value === "current" ? null : e.target.value)} className="filter-input"><option value="current">Current notices</option><option value="stale">Stale notices</option><option value="all">All indexed notices</option></select></FilterField>
     <FilterField label="Buyer"><input key={params.get("buyer")} defaultValue={params.get("buyer") ?? ""} onBlur={(e) => onSet("buyer", e.target.value.trim())} className="filter-input" placeholder="Ministry, PSU or authority" /></FilterField>
     <FilterField label="Authority type"><select value={params.get("authorityType") ?? ""} onChange={(e) => onSet("authorityType", e.target.value)} className="filter-input"><option value="">All authorities</option>{(facets?.authorityTypes ?? []).map((item) => item.value ? <option key={item.value} value={item.value}>{item.value} ({formatNumber(item.count)})</option> : null)}</select></FilterField>
     <FilterField label="Location"><input key={params.get("location")} defaultValue={params.get("location") ?? ""} onBlur={(e) => onSet("location", e.target.value.trim())} disabled={Boolean(availability && !availability.location)} className="filter-input disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]" placeholder={availability && !availability.location ? "Unavailable from current sources" : "City or district"} /></FilterField>
@@ -241,17 +244,18 @@ function CoverageStatus({ coverage }: { coverage?: { registeredSources: number; 
 function Pagination({ page, totalPages, total, onPage }: { page: number; totalPages: number; total: number; onPage: (page: number) => void }) { if (totalPages <= 1) return total ? <p className="mt-4 text-[11px] text-[var(--muted)]">Showing all {formatNumber(total)} results</p> : null; return <div className="mt-4 flex items-center justify-between border-t border-[var(--border-subtle)] pt-4 text-[11px] text-[var(--muted)]"><span>Page {page} of {totalPages}</span><div className="flex gap-1"><button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} className="page-button" aria-label="Previous page"><ArrowLeft className="h-3.5 w-3.5" /></button><button type="button" disabled={page >= totalPages} onClick={() => onPage(page + 1)} className="page-button" aria-label="Next page"><ArrowRight className="h-3.5 w-3.5" /></button></div></div>; }
 function PageSkeleton() { return <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Tender Search" }]}><div className="p-4"><TendyySkeletonRows count={8} /></div></AppShell>; }
 
-function filterChips(params: URLSearchParams): Array<{ key: FilterKey; label: string }> { const labels: Record<FilterKey, string> = { portal: "Portal", state: "State", category: "Category", status: "Status", buyer: "Buyer", authorityType: "Authority", location: "Location", procurementType: "Procurement", minValue: "Min value", maxValue: "Max value", publishedFrom: "Published from", publishedTo: "Published to", deadlineFrom: "Deadline from", deadlineTo: "Deadline to" }; return (Object.keys(labels) as FilterKey[]).flatMap((key) => { const value = params.get(key); return value ? [{ key, label: `${labels[key]}: ${value}` }] : []; }); }
+function filterChips(params: URLSearchParams): Array<{ key: FilterKey; label: string }> { const labels: Record<FilterKey, string> = { portal: "Portal", state: "State", category: "Category", status: "Status", buyer: "Buyer", authorityType: "Authority", location: "Location", procurementType: "Procurement", minValue: "Min value", maxValue: "Max value", publishedFrom: "Published from", publishedTo: "Published to", deadlineFrom: "Deadline from", deadlineTo: "Deadline to", freshness: "Freshness" }; return (Object.keys(labels) as FilterKey[]).flatMap((key) => { const value = params.get(key); return value ? [{ key, label: `${labels[key]}: ${value}` }] : []; }); }
 function replaceParams(router: ReturnType<typeof useRouter>, current: URLSearchParams, updates: Record<string, string | null>) { const next = new URLSearchParams(current.toString()); for (const [key, value] of Object.entries(updates)) { if (value) next.set(key, value); else next.delete(key); } router.replace(next.size ? `/tenders?${next}` : "/tenders", { scroll: false }); }
 function parseTab(value: string | null): Tab { return value === "saved" || value === "applied" ? value : "all"; }
 function positiveInt(value: string | null) { const number = Number(value); return Number.isInteger(number) && number > 0 ? number : 1; }
 function optionalNumber(value: string | null) { if (!value) return undefined; const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : undefined; }
+function parseFreshness(value: string | null): "current" | "stale" | "all" { return value === "stale" || value === "all" ? value : "current"; }
 function dateStart(value: string | null) { return value ? new Date(`${value}T00:00:00+05:30`).toISOString() : undefined; }
 function dateEnd(value: string | null) { return value ? new Date(`${value}T23:59:59+05:30`).toISOString() : undefined; }
 function formatNumber(value: number) { return new Intl.NumberFormat("en-IN").format(value); }
 function formatCurrency(value: number | null, currency: string) { if (value === null) return "Value not published"; return new Intl.NumberFormat("en-IN", { style: "currency", currency: currency || "INR", maximumFractionDigits: 0 }).format(value); }
 function formatDate(value: string | null) { if (!value) return "Not published"; return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value)); }
-function deadlineLabel(value: string | null) { if (!value) return "Deadline unavailable"; const days = Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000); if (days < 0) return "Closed"; if (days === 0) return "Closes today"; return `${days} day${days === 1 ? "" : "s"} left`; }
+function deadlineLabel(value: string | null) { if (!value) return "Deadline unavailable"; const days = Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000); if (days < 0) return "Expired"; if (days === 0) return "Closes today"; return `${days} day${days === 1 ? "" : "s"} left`; }
 function deadlineTone(value: string | null) { if (!value) return "text-[var(--muted)]"; const days = Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000); return days < 0 ? "text-[var(--muted)]" : days <= 3 ? "text-[var(--danger)]" : days <= 10 ? "text-[var(--warning)]" : "text-[var(--text-soft)]"; }
 function relativeTime(value: string) { const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60_000)); if (minutes < 2) return "just now"; if (minutes < 60) return `${minutes}m ago`; const hours = Math.round(minutes / 60); if (hours < 24) return `${hours}h ago`; return `${Math.round(hours / 24)}d ago`; }
 function mutationError(error: Error | null) { return error?.message ?? null; }

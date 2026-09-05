@@ -8,6 +8,7 @@ import {
   organizationMemberRoles,
   organizationMembers,
   organizations,
+  platformAdministrators,
   permissions,
   rolePermissions,
   roles,
@@ -196,6 +197,11 @@ export class AuthService {
       membership.organizationId,
       workspaceScopedPermissions(role, basePermissions),
     );
+    const [platformAdministrator] = await this.db
+      .select({ userId: platformAdministrators.userId })
+      .from(platformAdministrators)
+      .where(eq(platformAdministrators.userId, session.userId))
+      .limit(1);
 
     return {
       userId: session.userId,
@@ -211,6 +217,7 @@ export class AuthService {
       workspaceIds: Object.keys(workspaceAccess.workspaceMemberIds),
       workspacePermissions: workspaceAccess.workspacePermissions,
       workspaceMemberIds: workspaceAccess.workspaceMemberIds,
+      isPlatformAdmin: Boolean(platformAdministrator),
     };
   }
 

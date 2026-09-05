@@ -88,6 +88,40 @@ export interface TenderDiscoveryPayload {
     availability: { buyer: number; location: number; state: number; estimatedValue: number; publishedAt: number; deadlineAt: number };
   };
   coverage: { registeredSources: number; enabledSources: number; healthySources: number; degradedSources: number; lastRefreshedAt: string | null };
+  catalog: { indexed: number; active: number; expired: number; stale: number };
+}
+
+export interface TenderSourceHealth {
+  id: string;
+  key: string;
+  name: string;
+  category: string;
+  state: string | null;
+  officialUrl: string;
+  connectorType: string;
+  scheduleMinutes: number;
+  enabled: boolean;
+  health: "PENDING" | "HEALTHY" | "DEGRADED" | "DISABLED";
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  lastFullSyncAt: string | null;
+  backfillCompletedAt: string | null;
+  consecutiveFailures: number;
+  syncState: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  noticeCount: number;
+  currentCount: number;
+  lastRunStatus: string | null;
+  lastRunDiscovered: number | null;
+  openAlerts: number;
+  isPlatformAdmin: boolean;
+}
+
+export interface TenderIngestionAlert {
+  alert: { id: string; kind: string; status: "OPEN" | "RESOLVED"; message: string; metadata: Record<string, unknown>; openedAt: string; resolvedAt: string | null };
+  portalKey: string;
+  portalName: string;
 }
 
 export interface TenderNoticeDetail extends TenderNoticeSummary {

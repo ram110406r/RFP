@@ -6,8 +6,10 @@ import {
   documentJobId,
   QUEUES,
   tenderNoticeDocumentImportJobId,
+  tenderIngestionJobId,
   TENDER_INGESTION_JOBS,
   type TenderNoticeDocumentImportJobPayload,
+  type TenderPortalSyncJobPayload,
 } from "@rfp-os/jobs";
 import { Queue } from "bullmq";
 import type IORedis from "ioredis";
@@ -34,6 +36,10 @@ export abstract class JobQueue {
   ): Promise<EnqueueResult>;
 
   async enqueueTenderNoticeDocument(_payload: TenderNoticeDocumentImportJobPayload): Promise<EnqueueResult> {
+    throw new Error("Tender discovery ingestion is not configured.");
+  }
+
+  async enqueueTenderPortalSync(_payload: TenderPortalSyncJobPayload): Promise<EnqueueResult> {
     throw new Error("Tender discovery ingestion is not configured.");
   }
 
@@ -72,6 +78,14 @@ export class BullMqJobQueue extends JobQueue {
     const jobId = tenderNoticeDocumentImportJobId(payload.tenderId, payload.noticeDocumentId);
     const existing = await this.tenderIngestion.getJob(jobId);
     await this.tenderIngestion.add(TENDER_INGESTION_JOBS.IMPORT_DOCUMENT, payload, { ...DEFAULT_JOB_OPTIONS, jobId });
+    return { enqueued: !existing, jobId };
+  }
+
+  override async enqueueTenderPortalSync(payload: TenderPortalSyncJobPayload): Promise<EnqueueResult> {
+    const mode = payload.mode ?? "HEAD";
+    const jobId = tenderIngestionJobId(payload.portalKey, payload.windowStartedAt, mode);
+    const existing = await this.tenderIngestion.getJob(jobId);
+    await this.tenderIngestion.add(TENDER_INGESTION_JOBS.SYNC_PORTAL, payload, { ...DEFAULT_JOB_OPTIONS, jobId });
     return { enqueued: !existing, jobId };
   }
 
@@ -139,6 +153,12 @@ export class NoopJobQueue extends JobQueue {
   override async enqueueTenderNoticeDocument(payload: TenderNoticeDocumentImportJobPayload): Promise<EnqueueResult> {
     const jobId = tenderNoticeDocumentImportJobId(payload.tenderId, payload.noticeDocumentId);
     this.logger.warn(`REDIS_URL is not configured; dropping tender document import job jobId=${jobId}.`, "JobQueue");
+    return { enqueued: false, jobId };
+  }
+
+  override async enqueueTenderPortalSync(payload: TenderPortalSyncJobPayload): Promise<EnqueueResult> {
+    const jobId = tenderIngestionJobId(payload.portalKey, payload.windowStartedAt, payload.mode ?? "HEAD");
+    this.logger.warn(`REDIS_URL is not configured; dropping tender portal sync job jobId=${jobId}.`, "JobQueue");
     return { enqueued: false, jobId };
   }
 

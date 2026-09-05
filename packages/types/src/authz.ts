@@ -497,6 +497,7 @@ export interface AuthContext {
   workspaceIds?: readonly string[];
   workspacePermissions?: Readonly<Record<string, readonly Permission[]>>;
   workspaceMemberIds?: Readonly<Record<string, string>>;
+  isPlatformAdmin?: boolean;
 }
 
 export function hasPermission(auth: AuthContext, permission: Permission): boolean {

@@ -1,5 +1,6 @@
 export const TENDER_INGESTION_JOBS = {
   SYNC_PORTAL: "TENDER_PORTAL_SYNC",
+  RECONCILE_CATALOG: "TENDER_CATALOG_RECONCILE",
   IMPORT_DOCUMENT: "TENDER_NOTICE_DOCUMENT_IMPORT",
 } as const;
 
@@ -11,6 +12,13 @@ export interface TenderPortalSyncJobPayload {
   portalKey: string;
   windowStartedAt: string;
   cursor?: string | null;
+  mode?: "HEAD" | "BACKFILL" | "FULL_REFRESH";
+  scope?: Record<string, unknown>;
+}
+
+export interface TenderCatalogReconcileJobPayload {
+  kind: "RECONCILE_CATALOG";
+  windowStartedAt: string;
 }
 
 export interface TenderNoticeDocumentImportJobPayload {
@@ -22,10 +30,14 @@ export interface TenderNoticeDocumentImportJobPayload {
   actorId: string | null;
 }
 
-export type TenderIngestionJobPayload = TenderPortalSyncJobPayload | TenderNoticeDocumentImportJobPayload;
+export type TenderIngestionJobPayload = TenderPortalSyncJobPayload | TenderCatalogReconcileJobPayload | TenderNoticeDocumentImportJobPayload;
 
-export function tenderIngestionJobId(portalKey: string, windowStartedAt: string) {
-  return `${TENDER_INGESTION_JOBS.SYNC_PORTAL}-${portalKey}-${windowStartedAt}`;
+export function tenderIngestionJobId(portalKey: string, windowStartedAt: string, mode = "HEAD") {
+  return `${TENDER_INGESTION_JOBS.SYNC_PORTAL}-${portalKey}-${mode}-${windowStartedAt}`;
+}
+
+export function tenderCatalogReconcileJobId(windowStartedAt: string) {
+  return `${TENDER_INGESTION_JOBS.RECONCILE_CATALOG}-${windowStartedAt}`;
 }
 
 export function tenderNoticeDocumentImportJobId(tenderId: string, noticeDocumentId: string) {

@@ -24,6 +24,8 @@ import type {
   TenderDocumentContentPayload,
   TenderDiscoveryPayload,
   TenderNoticeDetail,
+  TenderSourceHealth,
+  TenderIngestionAlert,
   TenderListPayload,
   TenderQuestion,
   TenderSource,
@@ -57,6 +59,7 @@ export interface TenderDiscoveryParams {
   deadlineTo?: string;
   saved?: boolean;
   applied?: boolean;
+  freshness?: "current" | "stale" | "all";
   sort?: string;
   page?: number;
   pageSize?: number;
@@ -509,6 +512,22 @@ export function unsaveTenderNotice(noticeId: string, workspaceId: string, init?:
 
 export function startTenderApplication(noticeId: string, workspaceId: string, init?: ApiInit) {
   return requestJson<{ tenderId: string; created: boolean }>(`/tender-discovery/${noticeId}/start-application`, { ...init, method: "POST", body: JSON.stringify({ workspaceId }) });
+}
+
+export function fetchTenderSourceHealth(init?: ApiInit) {
+  return requestJson<{ items: TenderSourceHealth[] }>("/tender-discovery/sources", init);
+}
+
+export function fetchTenderIngestionAlerts(init?: ApiInit) {
+  return requestJson<{ items: TenderIngestionAlert[] }>("/platform/tender-sources/alerts", init);
+}
+
+export function setTenderPortalEnabled(portalKey: string, enabled: boolean, init?: ApiInit) {
+  return requestJson<{ portalKey: string; enabled: boolean }>(`/platform/tender-sources/${encodeURIComponent(portalKey)}/${enabled ? "enable" : "disable"}`, { ...init, method: "POST" });
+}
+
+export function syncTenderPortal(portalKey: string, init?: ApiInit) {
+  return requestJson<{ enqueued: boolean; jobId: string }>(`/platform/tender-sources/${encodeURIComponent(portalKey)}/sync`, { ...init, method: "POST" });
 }
 
 export async function fetchActivities(

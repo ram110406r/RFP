@@ -23,6 +23,7 @@ export const listTenderDiscoverySchema = z.object({
   deadlineTo: date.optional(),
   saved: booleanQuery.optional(),
   applied: booleanQuery.optional(),
+  freshness: z.enum(["current", "stale", "all"]).default("current"),
   sort: z.enum(["relevance", "newest", "deadline", "value", "updated"]).default("relevance"),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(20),

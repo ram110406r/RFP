@@ -40,14 +40,21 @@ export interface ConnectorNotice {
 export interface ConnectorPage {
   items: ConnectorNotice[];
   nextCursor: string | null;
+  total?: number;
+}
+export interface ConnectorFetchOptions {
+  mode?: "HEAD" | "BACKFILL" | "FULL_REFRESH";
+  deadlineFrom?: string;
+  deadlineTo?: string;
 }
 export interface TenderConnector {
-  fetchPage(cursor?: string | null): Promise<ConnectorPage>;
+  fetchPage(cursor?: string | null, options?: ConnectorFetchOptions): Promise<ConnectorPage>;
 }
 export interface ConnectorPortal {
   key: string;
   connectorType: string;
   officialUrl: string;
+  state?: string | null;
   metadata: Record<string, unknown>;
 }
 
@@ -60,6 +67,7 @@ export function connectorForPortal(portal: ConnectorPortal): TenderConnector {
       : portal.connectorType;
   if (builtIn === "GEM") return new GemConnector();
   if (builtIn === "CPPP_LATEST") return new CpppLatestConnector();
+  if (builtIn === "GEPNIC_LATEST") return new GepnicLatestConnector(portal);
   throw new Error("No verified official connector is configured for this portal.");
 }
 
@@ -92,7 +100,7 @@ export class GemConnector implements TenderConnector {
   private csrfValue: string | null = null;
   private cookie = "";
 
-  async fetchPage(cursor?: string | null): Promise<ConnectorPage> {
+  async fetchPage(cursor?: string | null, options?: ConnectorFetchOptions): Promise<ConnectorPage> {
     if (!this.csrfName || !this.csrfValue) await this.createSession();
     const page = positiveInteger(cursor) ?? 1;
     const requestPayload = {
@@ -101,7 +109,10 @@ export class GemConnector implements TenderConnector {
         bidStatusType: "ongoing_bids",
         byType: "all",
         highBidValue: "",
-        byEndDate: { from: "", to: "" },
+        byEndDate: {
+          from: gemDate(options?.deadlineFrom),
+          to: gemDate(options?.deadlineTo),
+        },
         sort: "Bid-Start-Date-Latest",
       },
       page,
@@ -132,6 +143,7 @@ export class GemConnector implements TenderConnector {
     return {
       items,
       nextCursor: items.length > 0 && start + items.length < total ? String(page + 1) : null,
+      total,
     };
   }
 
@@ -167,6 +179,46 @@ export class CpppLatestConnector implements TenderConnector {
       throw new Error(`CPPP public latest-tenders page returned HTTP ${response.status}.`);
     return { items: parseCpppLatestHtml(await response.text()), nextCursor: null };
   }
+}
+
+export class GepnicLatestConnector implements TenderConnector {
+  constructor(private readonly portal: ConnectorPortal) {}
+
+  async fetchPage(cursor?: string | null): Promise<ConnectorPage> {
+    if (cursor) return { items: [], nextCursor: null };
+    const appPath = typeof this.portal.metadata.appPath === "string" ? this.portal.metadata.appPath : "/nicgep/app";
+    const appUrl = new URL(appPath, this.portal.officialUrl).toString();
+    const response = await fetch(appUrl, {
+      headers: { accept: "text/html", "user-agent": "TENDYY-TenderDiscovery/1.0" },
+    });
+    if (!response.ok) throw new Error(`GePNIC public latest-tenders page returned HTTP ${response.status}.`);
+    return {
+      items: parseGepnicLatestHtml(await response.text(), {
+        portalName: this.portal.key,
+        state: this.portal.state ?? null,
+        entryUrl: appUrl,
+      }),
+      nextCursor: null,
+    };
+  }
+}
+
+export function parseGepnicLatestHtml(
+  html: string,
+  context: { portalName: string; state: string | null; entryUrl: string },
+) {
+  return parseCpppLatestHtml(html).map((item) => ({
+    ...item,
+    state: item.state ?? context.state,
+    sourceUrl: context.entryUrl,
+    documents: (item.documents ?? []).map((document) => ({ ...document, url: context.entryUrl })),
+    metadata: {
+      ...item.metadata,
+      source: context.portalName,
+      coverageMode: "LATEST_PUBLIC_WINDOW",
+      navigation: "SEARCH_BY_REFERENCE",
+    },
+  }));
 }
 
 export function normalizeGemNotice(value: unknown): ConnectorNotice {
@@ -330,6 +382,13 @@ export function payloadHash(raw: Record<string, unknown>) {
   return createHash("sha256").update(stableJson(raw)).digest("hex");
 }
 
+export function effectiveNoticeStatus(status: NoticeStatus | undefined, deadlineAt: string | null | undefined, now = new Date()): NoticeStatus {
+  const normalized = status ?? "UNKNOWN";
+  if (normalized === "CLOSED" || normalized === "CANCELLED" || normalized === "AWARDED") return normalized;
+  if (deadlineAt && new Date(deadlineAt).getTime() < now.getTime()) return "EXPIRED";
+  return normalized;
+}
+
 function normalizeDocuments(value: unknown): ConnectorDocument[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
@@ -382,6 +441,17 @@ function optionalDate(value: unknown) {
   if (!raw) return null;
   const date = new Date(raw);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+function gemDate(value: string | undefined) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00+05:30`);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  }).format(date);
 }
 function normalizeKeyPart(value: string | null | undefined) {
   return (value ?? "")

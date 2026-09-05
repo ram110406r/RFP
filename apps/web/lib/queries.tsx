@@ -41,6 +41,10 @@ import {
   fetchTenders,
   fetchTenderDiscovery,
   fetchTenderNotice,
+  fetchTenderSourceHealth,
+  fetchTenderIngestionAlerts,
+  setTenderPortalEnabled,
+  syncTenderPortal,
   getTenderDocumentContent,
   fetchTeams,
   fetchWorkspaces,
@@ -180,6 +184,8 @@ export const tenderDiscoveryKeys = {
   all: ["tender-discovery"] as const,
   list: (params?: TenderDiscoveryParams) => ["tender-discovery", "list", params ?? {}] as const,
   detail: (noticeId: string, workspaceId?: string) => ["tender-discovery", "detail", noticeId, workspaceId ?? ""] as const,
+  sources: () => ["tender-discovery", "sources"] as const,
+  alerts: () => ["tender-discovery", "alerts"] as const,
 };
 
 export const organizationKeys = {
@@ -414,6 +420,24 @@ export function useStartTenderApplication() {
     mutationFn: (noticeId: string) => { if (!workspaceId) throw new Error("Select a workspace before starting an application."); return startTenderApplication(noticeId, workspaceId); },
     onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.all }), queryClient.invalidateQueries({ queryKey: ["tenders"] }), queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] })]); },
   });
+}
+
+export function useTenderSourceHealth() {
+  return useQuery({ queryKey: tenderDiscoveryKeys.sources(), queryFn: () => fetchTenderSourceHealth(), retry: false });
+}
+
+export function useTenderIngestionAlerts(enabled: boolean) {
+  return useQuery({ queryKey: tenderDiscoveryKeys.alerts(), queryFn: () => fetchTenderIngestionAlerts(), enabled, retry: false });
+}
+
+export function useSetTenderPortalEnabled() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: ({ portalKey, enabled }: { portalKey: string; enabled: boolean }) => setTenderPortalEnabled(portalKey, enabled), onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.sources() }), queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.all })]); } });
+}
+
+export function useSyncTenderPortal() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (portalKey: string) => syncTenderPortal(portalKey), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.sources() }); } });
 }
 
 export function useOrganizationCurrent(initialData?: OrganizationSummary | null) {
