@@ -4,6 +4,14 @@ import { basename, extname } from "node:path";
 import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
+  DocxDocumentParser,
+  PdfDocumentParser,
+  SNIFF_LENGTH,
+  contradictsDeclaredType,
+  sniffFormat,
+  type ExtractionResult,
+} from "@rfp-os/document-processing";
+import {
   and,
   asc,
   desc,
@@ -25,6 +33,8 @@ import {
   tenderAnswerReviews,
   tenderAnswerVersions,
   tenderAnswers,
+  tenderDocumentContent,
+  tenderDocumentExtractions,
   tenderDocuments,
   savedTenders,
   tenderQuestions,
@@ -85,6 +95,7 @@ import {
   TenderOwnerNotFoundError,
   TenderPermissionError,
   TenderSourceDuplicateError,
+  TenderDocumentNotFoundError,
   TenderSourceInvalidFileError,
   TenderSourceNotFoundError,
   TenderSourceStorageNotConfiguredError,
@@ -112,7 +123,14 @@ type TenderSourceRow = typeof tenderSources.$inferSelect;
 type TenderAnswerVersionRow = typeof tenderAnswerVersions.$inferSelect;
 type TenderValidationRunRow = typeof tenderValidationRuns.$inferSelect;
 type TenderSourceWithFileRow = { source: TenderSourceRow; file: typeof files.$inferSelect };
-type TenderDocumentWithFileRow = { document: typeof tenderDocuments.$inferSelect; file: typeof files.$inferSelect };
+type TenderDocumentRow = typeof tenderDocuments.$inferSelect;
+type TenderDocumentExtractionRow = typeof tenderDocumentExtractions.$inferSelect;
+type TenderDocumentContentRow = typeof tenderDocumentContent.$inferSelect;
+type TenderDocumentWithFileRow = {
+  document: TenderDocumentRow;
+  file: typeof files.$inferSelect;
+  extraction: TenderDocumentExtractionRow | null;
+};
 type TenderTimelineRow = typeof activities.$inferSelect;
 type TenderQueryRunner = Pick<Database, "select" | "insert" | "update" | "delete">;
 type TenderDocumentStatus = "UPLOADED" | "PROCESSING" | "PROCESSED" | "FAILED";
@@ -245,6 +263,9 @@ const TENDER_SOURCE_UPLOAD_FORMATS: TenderSourceUploadFormat[] = [
 
 @Injectable()
 export class TendersService {
+  private readonly pdfParser = new PdfDocumentParser();
+  private readonly docxParser = new DocxDocumentParser();
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly storage: ObjectStorage,
@@ -2374,11 +2395,69 @@ export class TendersService {
     };
   }
 
-  private async listTenderDocumentRows(organizationId: string, tenderId: string) {
-    return this.db
-      .select({ document: tenderDocuments, file: files })
+  async getTenderDocumentContent(auth: AuthContext, tenderId: string, documentId: string) {
+    const tender = await this.requireTender(auth.organizationId, tenderId);
+    this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:read");
+
+    const [row] = await this.db
+      .select({ document: tenderDocuments, file: files, extraction: tenderDocumentExtractions })
       .from(tenderDocuments)
       .innerJoin(files, eq(files.id, tenderDocuments.documentId))
+      .leftJoin(
+        tenderDocumentExtractions,
+        and(
+          eq(tenderDocumentExtractions.organizationId, auth.organizationId),
+          eq(tenderDocumentExtractions.tenderDocumentId, tenderDocuments.id),
+        ),
+      )
+      .where(
+        and(
+          eq(tenderDocuments.organizationId, auth.organizationId),
+          eq(tenderDocuments.workspaceId, tender.workspaceId),
+          eq(tenderDocuments.tenderId, tender.id),
+          eq(tenderDocuments.id, documentId),
+          eq(files.organizationId, auth.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (!row) throw new TenderDocumentNotFoundError();
+
+    const content = row.extraction
+      ? await this.db
+          .select()
+          .from(tenderDocumentContent)
+          .where(
+            and(
+              eq(tenderDocumentContent.organizationId, auth.organizationId),
+              eq(tenderDocumentContent.workspaceId, tender.workspaceId),
+              eq(tenderDocumentContent.tenderId, tender.id),
+              eq(tenderDocumentContent.tenderDocumentId, documentId),
+              eq(tenderDocumentContent.extractionId, row.extraction.id),
+            ),
+          )
+          .orderBy(asc(tenderDocumentContent.sequence))
+      : [];
+
+    return {
+      document: serializeTenderDocument(row),
+      extraction: row.extraction ? serializeTenderDocumentExtraction(row.extraction) : null,
+      content: content.map(serializeTenderDocumentContent),
+    };
+  }
+
+  private async listTenderDocumentRows(organizationId: string, tenderId: string) {
+    return this.db
+      .select({ document: tenderDocuments, file: files, extraction: tenderDocumentExtractions })
+      .from(tenderDocuments)
+      .innerJoin(files, eq(files.id, tenderDocuments.documentId))
+      .leftJoin(
+        tenderDocumentExtractions,
+        and(
+          eq(tenderDocumentExtractions.organizationId, organizationId),
+          eq(tenderDocumentExtractions.tenderDocumentId, tenderDocuments.id),
+        ),
+      )
       .where(
         and(
           eq(tenderDocuments.organizationId, organizationId),
@@ -2468,11 +2547,160 @@ export class TendersService {
         organizationId,
         sourceId,
         "FAILED",
-        error instanceof Error ? error.message : "Document processing failed.",
+        typeof error === "string" ? error : error instanceof Error ? error.message : "Document processing failed.",
         null,
         tx,
       );
     });
+  }
+
+  private async findTenderDocumentExtraction(organizationId: string, tenderDocumentId: string) {
+    const [extraction] = await this.db
+      .select()
+      .from(tenderDocumentExtractions)
+      .where(
+        and(
+          eq(tenderDocumentExtractions.organizationId, organizationId),
+          eq(tenderDocumentExtractions.tenderDocumentId, tenderDocumentId),
+        ),
+      )
+      .limit(1);
+    return extraction ?? null;
+  }
+
+  private async saveTenderDocumentExtractionSuccess(
+    tenderDocument: TenderDocumentRow,
+    file: typeof files.$inferSelect,
+    parsed: ExtractionResult,
+    tx: Transaction,
+  ) {
+    const rows = tenderContentRowsFromExtraction(parsed);
+    if (!rows.length) {
+      throw new Error("No extractable text found. OCR is not currently supported for this document.");
+    }
+
+    const [extraction] = await tx
+      .insert(tenderDocumentExtractions)
+      .values({
+        organizationId: tenderDocument.organizationId,
+        workspaceId: tenderDocument.workspaceId,
+        tenderId: tenderDocument.tenderId,
+        tenderDocumentId: tenderDocument.id,
+        extractor: parsed.extractor,
+        status: "succeeded",
+        pageCount: rows.length,
+        characterCount: rows.reduce((sum, row) => sum + row.text.length, 0),
+        tableCount: parsed.tables.length,
+        failureReason: null,
+        metadata: {
+          source: "tender.parseSource",
+          mimeType: file.mimeType,
+          filename: file.filename,
+        },
+        completedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: tenderDocumentExtractions.tenderDocumentId,
+        set: {
+          extractor: parsed.extractor,
+          status: "succeeded",
+          pageCount: rows.length,
+          characterCount: rows.reduce((sum, row) => sum + row.text.length, 0),
+          tableCount: parsed.tables.length,
+          failureReason: null,
+          metadata: {
+            source: "tender.parseSource",
+            mimeType: file.mimeType,
+            filename: file.filename,
+          },
+          completedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    if (!extraction) throw new Error("Failed to persist tender document extraction.");
+
+    await tx.delete(tenderDocumentContent).where(eq(tenderDocumentContent.extractionId, extraction.id));
+    await tx.insert(tenderDocumentContent).values(
+      rows.map((row) => ({
+        organizationId: tenderDocument.organizationId,
+        workspaceId: tenderDocument.workspaceId,
+        tenderId: tenderDocument.tenderId,
+        tenderDocumentId: tenderDocument.id,
+        extractionId: extraction.id,
+        sequence: row.sequence,
+        pageNumber: row.pageNumber,
+        section: row.section,
+        kind: row.kind,
+        text: row.text,
+        contentHash: row.contentHash,
+        metadata: row.metadata,
+      })),
+    );
+  }
+
+  private async saveTenderDocumentExtractionFailure(
+    tenderDocument: TenderDocumentRow,
+    file: typeof files.$inferSelect,
+    reason: string,
+  ) {
+    await withTransaction(async (tx) => {
+      const [extraction] = await tx
+        .insert(tenderDocumentExtractions)
+        .values({
+          organizationId: tenderDocument.organizationId,
+          workspaceId: tenderDocument.workspaceId,
+          tenderId: tenderDocument.tenderId,
+          tenderDocumentId: tenderDocument.id,
+          extractor: "tender.parseSource",
+          status: "failed",
+          pageCount: null,
+          characterCount: 0,
+          tableCount: 0,
+          failureReason: reason,
+          metadata: {
+            mimeType: file.mimeType,
+            filename: file.filename,
+          },
+          completedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: tenderDocumentExtractions.tenderDocumentId,
+          set: {
+            extractor: "tender.parseSource",
+            status: "failed",
+            pageCount: null,
+            characterCount: 0,
+            tableCount: 0,
+            failureReason: reason,
+            metadata: {
+              mimeType: file.mimeType,
+              filename: file.filename,
+            },
+            completedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+
+      if (extraction) {
+        await tx.delete(tenderDocumentContent).where(eq(tenderDocumentContent.extractionId, extraction.id));
+      }
+    });
+  }
+
+  private selectTenderParser(mimeType: string, filename: string) {
+    const normalized = mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+    const extension = extname(filename).toLowerCase();
+    if (normalized === "application/pdf" || extension === ".pdf") return this.pdfParser;
+    if (
+      normalized === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      extension === ".docx"
+    ) {
+      return this.docxParser;
+    }
+    return null;
   }
 
   private async markTenderSourceParseFailed(
@@ -2488,7 +2716,7 @@ export class TendersService {
         metadata: {
           ...metadata,
           parseStatus: "FAILED",
-          failureReason: error instanceof Error ? error.message : "Document processing failed.",
+          failureReason: typeof error === "string" ? error : error instanceof Error ? error.message : "Document processing failed.",
         },
         updatedAt: new Date(),
       })
@@ -2785,34 +3013,56 @@ export class TendersService {
     if (row.source.status !== "READY") throw new TenderSourceUploadIncompleteError();
 
     const metadata = row.source.metadata ?? {};
+    let tenderDocument = await withTransaction(async (tx) => this.ensureTenderDocumentForSource(row.source, tx, "UPLOADED"));
     if (sourceParseStatus(row.source) === "PARSED") {
-      await withTransaction(async (tx) => {
-        await this.ensureTenderDocumentForSource(row.source, tx, "PROCESSED");
-        await this.updateTenderDocumentStatusForSource(auth.organizationId, sourceId, "PROCESSED", null, parsedAtFromSource(row.source), tx);
-      });
-      return serializeSource(row.source);
+      const existingExtraction = await this.findTenderDocumentExtraction(auth.organizationId, tenderDocument.id);
+      if (existingExtraction?.status === "succeeded") {
+        await withTransaction(async (tx) => {
+          await this.updateTenderDocumentStatusForSource(auth.organizationId, sourceId, "PROCESSED", null, parsedAtFromSource(row.source), tx);
+        });
+        return serializeSource(row.source);
+      }
     }
 
     await withTransaction(async (tx) => {
-      await this.ensureTenderDocumentForSource(row.source, tx, "UPLOADED");
+      tenderDocument = await this.ensureTenderDocumentForSource(row.source, tx, "UPLOADED");
       await this.updateTenderDocumentStatusForSource(auth.organizationId, sourceId, "PROCESSING", null, null, tx);
     });
 
+    let parsedContent: ExtractionResult;
     try {
-      const head = await this.storage.headObject(row.file.objectKey);
-      if (!head) throw new TenderSourceUploadIncompleteError();
+      const prefix = await this.storage.readObjectPrefix(row.file.objectKey, SNIFF_LENGTH);
+      if (!prefix) throw new TenderSourceUploadIncompleteError();
+
+      const sniffed = sniffFormat(prefix);
+      if (contradictsDeclaredType(sniffed, row.file.mimeType)) {
+        throw new Error(`Content is ${sniffed} but the upload declared ${row.file.mimeType}.`);
+      }
 
       const bytes = await this.storage.readObject(row.file.objectKey);
       if (!bytes) throw new TenderSourceUploadIncompleteError();
-      void bytes;
+
+      const parser = this.selectTenderParser(row.file.mimeType, row.file.filename);
+      if (!parser) {
+        throw new Error("Unsupported document format. Supported formats are PDF and DOCX.");
+      }
+
+      parsedContent = await parser.parse(bytes);
+      const contentRows = tenderContentRowsFromExtraction(parsedContent);
+      if (!contentRows.length) {
+        throw new Error("No extractable text found. OCR is not currently supported for this document.");
+      }
     } catch (error) {
-      await this.markTenderDocumentFailed(auth.organizationId, sourceId, error);
-      await this.markTenderSourceParseFailed(auth.organizationId, tenderId, sourceId, metadata, error);
-      throw error;
+      const reason = userSafeTenderParseFailure(error);
+      await this.markTenderDocumentFailed(auth.organizationId, sourceId, reason);
+      await this.saveTenderDocumentExtractionFailure(tenderDocument, row.file, reason);
+      await this.markTenderSourceParseFailed(auth.organizationId, tenderId, sourceId, metadata, reason);
+      if (error instanceof TenderSourceUploadIncompleteError) throw error;
+      throw new TenderSourceInvalidFileError(reason);
     }
 
     const parsedAt = new Date();
-    const parsed = await withTransaction(async (tx) => {
+    const parsedSource = await withTransaction(async (tx) => {
       const { failureReason, processingError, parseError, ...successfulMetadata } = metadata;
       void failureReason;
       void processingError;
@@ -2837,6 +3087,7 @@ export class TendersService {
         .returning();
       if (!updatedSource) throw new TenderSourceNotFoundError();
 
+      await this.saveTenderDocumentExtractionSuccess(tenderDocument, row.file, parsedContent, tx);
       await this.updateTenderDocumentStatusForSource(auth.organizationId, sourceId, "PROCESSED", null, parsedAt, tx);
 
       await this.audit.record(
@@ -2880,7 +3131,7 @@ export class TendersService {
       return updatedSource;
     });
 
-    return serializeSource(parsed);
+    return serializeSource(parsedSource);
   }
 
   async removeSource(auth: AuthContext, tenderId: string, sourceId: string) {
@@ -4310,11 +4561,56 @@ function serializeTenderDocument(row: TenderDocumentWithFileRow) {
     status: row.document.status,
     failureReason: row.document.failureReason,
     processedAt: row.document.processedAt,
+    pageCount: row.extraction?.pageCount ?? null,
+    contentBlocks: row.extraction?.status === "succeeded" ? row.extraction.pageCount ?? 0 : 0,
+    extractionStatus: row.extraction?.status ?? null,
+    extractionId: row.extraction?.id ?? null,
     metadata: row.document.metadata,
     uploadedBy: row.file.uploadedBy,
     createdAt: row.document.createdAt,
     updatedAt: row.document.updatedAt,
     uploadedAt: row.file.createdAt,
+  };
+}
+
+function serializeTenderDocumentExtraction(row: TenderDocumentExtractionRow) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    workspaceId: row.workspaceId,
+    tenderId: row.tenderId,
+    tenderDocumentId: row.tenderDocumentId,
+    extractor: row.extractor,
+    status: row.status,
+    pageCount: row.pageCount,
+    characterCount: row.characterCount,
+    tableCount: row.tableCount,
+    failureReason: row.failureReason,
+    metadata: row.metadata,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function serializeTenderDocumentContent(row: TenderDocumentContentRow) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    workspaceId: row.workspaceId,
+    tenderId: row.tenderId,
+    tenderDocumentId: row.tenderDocumentId,
+    extractionId: row.extractionId,
+    sequence: row.sequence,
+    pageNumber: row.pageNumber,
+    section: row.section,
+    kind: row.kind,
+    text: row.text,
+    contentHash: row.contentHash,
+    metadata: row.metadata,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -4362,6 +4658,83 @@ function parsedAtFromSource(row: TenderSourceRow) {
 function failureReasonFromMetadata(metadata: Record<string, unknown>) {
   const reason = metadata.failureReason ?? metadata.processingError ?? metadata.parseError;
   return typeof reason === "string" && reason.trim() ? reason : null;
+}
+
+type TenderContentRowInput = {
+  sequence: number;
+  pageNumber: number | null;
+  section: string | null;
+  kind: "page" | "heading" | "paragraph" | "listItem" | "table";
+  text: string;
+  contentHash: string;
+  metadata: Record<string, unknown>;
+};
+
+function tenderContentRowsFromExtraction(parsed: ExtractionResult): TenderContentRowInput[] {
+  const blockRows: TenderContentRowInput[] = [];
+  for (const [index, block] of parsed.blocks?.entries() ?? []) {
+    const text = normalizeExtractedText(block.kind === "table" ? serializeTenderContentTable(block.cells ?? []) : block.text ?? "");
+    if (!text) continue;
+    const section = block.headingPath.length ? block.headingPath.join(" > ") : null;
+    const sequence = index + 1;
+    blockRows.push({
+      sequence,
+      pageNumber: null,
+      section,
+      kind: block.kind,
+      text,
+      contentHash: tenderContentHash({ sequence, pageNumber: null, kind: block.kind, text }),
+      metadata: {
+        headingPath: block.headingPath,
+        sourceRef: block.sourceRef,
+      },
+    });
+  }
+
+  if (blockRows.length) return blockRows;
+
+  const pageRows: TenderContentRowInput[] = [];
+  for (const [index, page] of parsed.pages.entries()) {
+    const text = normalizeExtractedText(page.text);
+    if (!text) continue;
+    const sequence = index + 1;
+    pageRows.push({
+      sequence,
+      pageNumber: page.pageNumber,
+      section: page.label?.trim() || null,
+      kind: "page",
+      text,
+      contentHash: tenderContentHash({ sequence, pageNumber: page.pageNumber, kind: "page", text }),
+      metadata: page.label ? { label: page.label } : {},
+    });
+  }
+  return pageRows;
+}
+
+function normalizeExtractedText(text: string) {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function serializeTenderContentTable(cells: string[][]) {
+  return cells.map((row) => row.join("\t")).join("\n");
+}
+
+function tenderContentHash(input: { sequence: number; pageNumber: number | null; kind: string; text: string }) {
+  return createHash("sha256")
+    .update(JSON.stringify(input))
+    .digest("hex");
+}
+
+function userSafeTenderParseFailure(error: unknown) {
+  if (error instanceof TenderSourceUploadIncompleteError) return "File could not be retrieved from storage.";
+  if (!(error instanceof Error)) return "Document parser failed.";
+  if (error.message.includes("Unsupported document format")) return error.message;
+  if (error.message.includes("No extractable text found")) return error.message;
+  if (error.message.includes("Content is ")) return "Uploaded file content does not match the declared document type.";
+  if (error.message.includes("Encrypted or password-protected")) return "Encrypted or password-protected DOCX files are not supported.";
+  if (error.message.includes("Invalid DOCX") || error.message.includes("Malformed DOCX")) return "Document parser failed.";
+  if (error.message.includes("Invalid PDF") || error.message.includes("PDF")) return "Document parser failed.";
+  return "Document parser failed.";
 }
 
 function serializeQuestion(row: TenderQuestionRow) {

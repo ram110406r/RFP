@@ -314,6 +314,16 @@ export class TendersController {
     return this.tenders.getWorkspaceOverview(auth, id);
   }
 
+  @Get(":id/documents/:documentId/content")
+  @RequirePermissions("tender:read")
+  async getDocumentContent(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id") id: string,
+    @Param("documentId") documentId: string,
+  ) {
+    return this.tenders.getTenderDocumentContent(auth, id, documentId);
+  }
+
   @Post(":id/analysis/brief")
   @HttpCode(HttpStatus.OK)
   @RequirePermissions("ai.tender.analyze")

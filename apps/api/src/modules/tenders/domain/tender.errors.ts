@@ -102,6 +102,12 @@ export class TenderSourceNotFoundError extends NotFoundException {
   }
 }
 
+export class TenderDocumentNotFoundError extends NotFoundException {
+  constructor() {
+    super({ code: "TENDER_DOCUMENT_NOT_FOUND", message: "Tender document not found." });
+  }
+}
+
 export class TenderSourceDuplicateError extends ConflictException {
   constructor() {
     super({

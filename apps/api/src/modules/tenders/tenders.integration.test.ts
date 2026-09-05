@@ -24,6 +24,8 @@ import {
   tenderAnswerReviews,
   tenderAnswerVersions,
   tenderAnswers,
+  tenderDocumentContent,
+  tenderDocumentExtractions,
   tenderDocuments,
   tenderQuestionRequirements,
   tenderQuestions,
@@ -109,7 +111,7 @@ const config = {
 
 class FakeObjectStorage {
   readonly bucket = "rfp-os-documents";
-  private readonly objects = new Map<string, { sizeBytes: number; mimeType: string }>();
+  private readonly objects = new Map<string, { sizeBytes: number; mimeType: string; bytes?: Uint8Array }>();
 
   async presignPut(input: { objectKey: string }): Promise<string> {
     return `https://storage.invalid/${encodeURIComponent(input.objectKey)}?put=1`;
@@ -127,7 +129,13 @@ class FakeObjectStorage {
   async readObject(objectKey: string): Promise<Uint8Array | null> {
     const entry = this.objects.get(objectKey);
     if (!entry) return null;
+    if (entry.bytes) return entry.bytes;
     return new Uint8Array(entry.sizeBytes).fill(97);
+  }
+
+  async readObjectPrefix(objectKey: string, bytes: number): Promise<Uint8Array | null> {
+    const object = await this.readObject(objectKey);
+    return object ? object.subarray(0, bytes) : null;
   }
 
   async deleteObject(objectKey: string): Promise<void> {
@@ -138,8 +146,8 @@ class FakeObjectStorage {
     return true;
   }
 
-  put(objectKey: string, sizeBytes: number, mimeType: string): void {
-    this.objects.set(objectKey, { sizeBytes, mimeType });
+  put(objectKey: string, sizeBytes: number, mimeType: string, bytes?: Uint8Array): void {
+    this.objects.set(objectKey, { sizeBytes: bytes?.byteLength ?? sizeBytes, mimeType, bytes });
   }
 
   has(objectKey: string): boolean {
@@ -1009,19 +1017,20 @@ describeDb("Tender integration", () => {
     expect(tenderB.status).toBe(201);
     const tenderBId = tenderB.body.id as string;
 
+    const sourceA1Bytes = buildPdf(["Tender page one requires ISO 9001.", "Tender page two includes submission dates."]);
     const sourceCreate = await requestJson("POST", `/api/v1/tenders/${tenderA1Id}/sources`, ownerA, orgA, {
       sourceType: "DOCUMENT",
       name: "Questionnaire",
       filename: "questionnaire.pdf",
       mimeType: "application/pdf",
-      sizeBytes: 2048,
+      sizeBytes: sourceA1Bytes.byteLength,
       metadata: { receivedVia: "email" },
     });
     expect(sourceCreate.status).toBe(201);
     const sourceA1Id = sourceCreate.body.sourceId as string;
     const sourceA1ObjectKey = sourceCreate.body.objectKey as string;
     expect(sourceCreate.body.source.status).toBe("REGISTERED");
-    storage.put(sourceA1ObjectKey, 2048, "application/pdf");
+    storage.put(sourceA1ObjectKey, sourceA1Bytes.byteLength, "application/pdf", sourceA1Bytes);
 
     const completeA1 = await requestJson(
       "POST",
@@ -1067,6 +1076,32 @@ describeDb("Tender integration", () => {
     });
     expect(parsedDocumentA1?.status).toBe("PROCESSED");
     expect(parsedDocumentA1?.processedAt).toBeTruthy();
+    expect(parsedDocumentA1?.id).toBeTruthy();
+
+    const extractionA1 = await db.query.tenderDocumentExtractions.findFirst({
+      where: eq(tenderDocumentExtractions.tenderDocumentId, parsedDocumentA1?.id ?? ""),
+    });
+    expect(extractionA1?.status).toBe("succeeded");
+    expect(extractionA1?.pageCount).toBe(2);
+    expect(extractionA1?.characterCount).toBeGreaterThan(0);
+
+    const contentA1 = await db
+      .select()
+      .from(tenderDocumentContent)
+      .where(eq(tenderDocumentContent.tenderDocumentId, parsedDocumentA1?.id ?? ""))
+      .orderBy(tenderDocumentContent.sequence);
+    expect(contentA1).toHaveLength(2);
+    expect(contentA1.map((content) => content.pageNumber)).toEqual([1, 2]);
+    expect(contentA1[0]?.text).toContain("ISO 9001");
+    expect(contentA1[1]?.text).toContain("submission dates");
+
+    const parsedAgainA1 = await requestJson("POST", `/api/v1/tenders/${tenderA1Id}/sources/${sourceA1Id}/parse`, ownerA, orgA);
+    expect(parsedAgainA1.status).toBe(200);
+    const contentAfterReparseA1 = await db
+      .select()
+      .from(tenderDocumentContent)
+      .where(eq(tenderDocumentContent.tenderDocumentId, parsedDocumentA1?.id ?? ""));
+    expect(contentAfterReparseA1).toHaveLength(2);
 
     const workspaceA1Response = await requestJson("GET", `/api/v1/tenders/${tenderA1Id}/workspace`, ownerA, orgA);
     expect(workspaceA1Response.status).toBe(200);
@@ -1076,6 +1111,34 @@ describeDb("Tender integration", () => {
     expect(workspaceA1Response.body.documents).toHaveLength(1);
     expect(workspaceA1Response.body.documents[0].tenderSourceId).toBe(sourceA1Id);
     expect(workspaceA1Response.body.documents[0].status).toBe("PROCESSED");
+    expect(workspaceA1Response.body.documents[0].pageCount).toBe(2);
+    expect(workspaceA1Response.body.documents[0].contentBlocks).toBe(2);
+
+    const contentResponseA1 = await requestJson(
+      "GET",
+      `/api/v1/tenders/${tenderA1Id}/documents/${parsedDocumentA1?.id}/content`,
+      ownerA,
+      orgA,
+    );
+    expect(contentResponseA1.status).toBe(200);
+    expect(contentResponseA1.body.extraction.status).toBe("succeeded");
+    expect(contentResponseA1.body.content.map((content: { pageNumber: number }) => content.pageNumber)).toEqual([1, 2]);
+
+    const mismatchedContentRead = await requestJson(
+      "GET",
+      `/api/v1/tenders/${tenderA2Id}/documents/${parsedDocumentA1?.id}/content`,
+      ownerA,
+      orgA,
+    );
+    expect(mismatchedContentRead.status).toBe(404);
+
+    const ownerBReadsContentA = await requestJson(
+      "GET",
+      `/api/v1/tenders/${tenderA1Id}/documents/${parsedDocumentA1?.id}/content`,
+      ownerB,
+      orgB,
+    );
+    expect(ownerBReadsContentA.status).toBe(404);
 
     const listA1 = await requestJson("GET", `/api/v1/tenders/${tenderA1Id}/sources`, contributorA, orgA);
     expect(listA1.status).toBe(200);
@@ -1114,6 +1177,11 @@ describeDb("Tender integration", () => {
     });
     expect(failedDocumentA2?.status).toBe("FAILED");
     expect(failedDocumentA2?.failureReason).toContain("upload");
+    const failedExtractionA2 = await db.query.tenderDocumentExtractions.findFirst({
+      where: eq(tenderDocumentExtractions.tenderDocumentId, failedDocumentA2?.id ?? ""),
+    });
+    expect(failedExtractionA2?.status).toBe("failed");
+    expect(failedExtractionA2?.failureReason).toContain("storage");
 
     const sourceB = await requestJson("POST", `/api/v1/tenders/${tenderBId}/sources`, ownerB, orgB, {
       sourceType: "DOCUMENT",
@@ -1864,4 +1932,69 @@ function extractCompletionContext(content: string): {
     targetRisk?: string;
     targetStatus?: string;
   };
+}
+
+function buildPdf(pageTexts: string[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const parts: string[] = [];
+  const offsets: number[] = [0];
+  let currentLength = 0;
+
+  const push = (body: string, objectNumber: number) => {
+    const object = `${objectNumber} 0 obj\n${body}\nendobj\n`;
+    offsets[objectNumber] = currentLength;
+    parts.push(object);
+    currentLength += encoder.encode(object).length;
+  };
+
+  parts.push("%PDF-1.4\n");
+  currentLength += encoder.encode(parts[0]).length;
+
+  push("<< /Type /Catalog /Pages 2 0 R >>", 1);
+
+  const pageNumbers = pageTexts.map((_, index) => 5 + index * 2);
+  push(`<< /Type /Pages /Kids [${pageNumbers.map((page) => `${page} 0 R`).join(" ")}] /Count ${pageTexts.length} >>`, 2);
+  push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", 3);
+
+  pageTexts.forEach((text, index) => {
+    const contentNumber = 4 + index * 2;
+    const pageNumber = 5 + index * 2;
+    const stream = makeTextStream(text);
+    const contentBody = `<< /Length ${encoder.encode(stream).length} >>\nstream\n${stream}\nendstream`;
+
+    push(contentBody, contentNumber);
+    push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentNumber} 0 R >>`,
+      pageNumber,
+    );
+  });
+
+  const body = parts.join("");
+  const size = 4 + pageTexts.length * 2;
+  const xrefOffset = encoder.encode(body).length;
+  const xrefLines = [
+    "xref",
+    `0 ${size}`,
+    "0000000000 65535 f ",
+    ...Array.from({ length: size - 1 }, (_, index) => {
+      const objectNumber = index + 1;
+      const offset = offsets[objectNumber] ?? 0;
+      return `${String(offset).padStart(10, "0")} 00000 n `;
+    }),
+    "trailer",
+    `<< /Size ${size} /Root 1 0 R >>`,
+    "startxref",
+    String(xrefOffset),
+    "%%EOF",
+  ];
+
+  return encoder.encode(`${body}${xrefLines.join("\n")}\n`);
+}
+
+function makeTextStream(text: string): string {
+  return `BT /F1 24 Tf 72 720 Td (${escapePdfString(text)}) Tj ET`;
+}
+
+function escapePdfString(text: string): string {
+  return text.replace(/[\\()]/g, "\\$&");
 }
