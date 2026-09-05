@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Bookmark, Building2, CalendarClock, Database, FileText, MapPin, Sparkles, UploadCloud } from "lucide-react";
+import { Bookmark, Building2, CalendarClock, Database, Eye, FileText, MapPin, Sparkles, UploadCloud, X } from "lucide-react";
 
 import { Button } from "@rfp-os/ui";
 
@@ -56,6 +56,7 @@ import {
   useSubmitReview,
   useTenderAnswers,
   useTenderBrief,
+  useTenderDocumentContent,
   useTenderQuestions,
   useTenderRequirements,
   useTenderReviews,
@@ -89,6 +90,8 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
   const parseSourceMutation = useParseTenderSource(tenderId);
   const saveTenderMutation = useSaveTender();
   const unsaveTenderMutation = useUnsaveTender();
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const documentContentQuery = useTenderDocumentContent(tenderId, selectedDocumentId);
 
   const overview = overviewQuery.data;
   const tender = overview?.tender;
@@ -98,6 +101,9 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
   const timeline = overview?.timeline ?? [];
   const counts = overview?.counts;
   const savePending = saveTenderMutation.isPending || unsaveTenderMutation.isPending;
+  const selectedDocument = selectedDocumentId
+    ? documents.find((document) => document.id === selectedDocumentId) ?? null
+    : null;
 
   function toggleSaved() {
     if (!tender || savePending) return;
@@ -212,11 +218,19 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
                       source={sources.find((source) => source.id === document.tenderSourceId) ?? null}
                       isParsing={parseSourceMutation.isPending && parseSourceMutation.variables === document.tenderSourceId}
                       disabled={parseSourceMutation.isPending}
+                      onViewContent={() => setSelectedDocumentId(document.id)}
                       onParse={() => {
                         if (document.tenderSourceId) parseSourceMutation.mutate(document.tenderSourceId);
                       }}
                     />
                   ))}
+                  {selectedDocument ? (
+                    <OperationalDocumentContentPanel
+                      document={selectedDocument}
+                      query={documentContentQuery}
+                      onClose={() => setSelectedDocumentId(null)}
+                    />
+                  ) : null}
                 </>
               ) : (
                 <TendyyEmptyState title="No sources or documents" description="This tender has no persisted source uploads or linked tender documents yet." actionHref="/tenders/import" actionLabel="Import documents" />
@@ -302,15 +316,23 @@ function OperationalDocumentCard({
   source,
   isParsing,
   disabled,
+  onViewContent,
   onParse,
 }: {
   document: TenderDocument;
   source: TenderSource | null;
   isParsing: boolean;
   disabled: boolean;
+  onViewContent: () => void;
   onParse: () => void;
 }) {
   const canParse = Boolean(document.tenderSourceId) && document.status !== "PROCESSING" && document.status !== "PROCESSED";
+  const canViewContent = document.status === "PROCESSED";
+  const extractedDetail = document.pageCount
+    ? `${document.pageCount} ${document.pageCount === 1 ? "block" : "blocks"} extracted`
+    : document.extractionStatus === "succeeded"
+      ? "Content extracted"
+      : null;
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-white p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -325,13 +347,79 @@ function OperationalDocumentCard({
           <p className="mt-1 text-[11px] text-[var(--muted)]">
             {[document.tenderSourceId ? `Source ${document.tenderSourceId}` : "No linked source", source ? `Source ${source.parseStatus}` : null, document.processedAt ? `Processed ${formatTenderDate(document.processedAt)}` : null].filter(Boolean).join(" | ")}
           </p>
+          {extractedDetail ? <p className="mt-1 text-[11px] font-semibold text-[var(--primary)]">{extractedDetail}</p> : null}
           {document.failureReason ? <p className="mt-2 rounded-[var(--radius-sm)] bg-rose-50 px-3 py-2 text-[12px] leading-5 text-rose-800">{document.failureReason}</p> : null}
         </div>
-        {canParse ? (
-          <Button type="button" variant="secondary" disabled={disabled} onClick={onParse}>
-            {isParsing ? "Processing..." : document.status === "FAILED" ? "Retry" : "Parse"}
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {canViewContent ? (
+            <Button type="button" variant="secondary" onClick={onViewContent}>
+              <Eye className="h-4 w-4" />
+              View extracted content
+            </Button>
+          ) : null}
+          {canParse ? (
+            <Button type="button" variant="secondary" disabled={disabled} onClick={onParse}>
+              {isParsing ? "Processing..." : document.status === "FAILED" ? "Retry" : "Parse"}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OperationalDocumentContentPanel({
+  document,
+  query,
+  onClose,
+}: {
+  document: TenderDocument;
+  query: ReturnType<typeof useTenderDocumentContent>;
+  onClose: () => void;
+}) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-blue-200 bg-blue-50/60 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">Extracted content</p>
+          <h3 className="mt-1 text-[15px] font-semibold text-[var(--text)]">{document.name}</h3>
+          <p className="mt-1 text-[12px] text-[var(--muted)]">
+            {[document.processedAt ? `Processed ${formatTenderDate(document.processedAt)}` : null, document.pageCount ? `${document.pageCount} blocks` : null].filter(Boolean).join(" | ")}
+          </p>
+        </div>
+        <Button type="button" variant="secondary" onClick={onClose}>
+          <X className="h-4 w-4" />
+          Close
+        </Button>
+      </div>
+
+      <div className="mt-4">
+        {document.status === "UPLOADED" ? (
+          <TendyyEmptyState title="Content not processed" description="Content is not available until this document is processed." />
+        ) : document.status === "PROCESSING" ? (
+          <TendyyEmptyState title="Processing document" description="Document processing is in progress." />
+        ) : document.status === "FAILED" ? (
+          <TendyyErrorState title="Content extraction failed" message={document.failureReason ?? "Document parser failed."} />
+        ) : query.isLoading ? (
+          <TendyySkeletonRows count={4} />
+        ) : query.error ? (
+          <TendyyErrorState title="Unable to load extracted content" message={errorText(query.error)} onRetry={() => void query.refetch()} />
+        ) : query.data?.content.length ? (
+          <div className="max-h-[520px] space-y-3 overflow-auto rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-white p-3">
+            {query.data.content.map((content) => (
+              <article key={content.id} className="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--neutral-soft)] p-3">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+                  <span>{content.pageNumber ? `Page ${content.pageNumber}` : `Block ${content.sequence}`}</span>
+                  <span>{content.kind}</span>
+                  {content.section ? <span className="normal-case tracking-normal">{content.section}</span> : null}
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[var(--text)]">{content.text}</p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <TendyyEmptyState title="No extracted content" description="No persisted content rows were returned for this processed document." />
+        )}
       </div>
     </div>
   );

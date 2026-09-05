@@ -77,11 +77,58 @@ export interface TenderDocument {
   status: "UPLOADED" | "PROCESSING" | "PROCESSED" | "FAILED";
   failureReason: string | null;
   processedAt: string | null;
+  pageCount: number | null;
+  contentBlocks: number;
+  extractionStatus: "pending" | "succeeded" | "failed" | null;
+  extractionId: string | null;
   metadata: Record<string, unknown>;
   uploadedBy: string | null;
   createdAt: string;
   updatedAt: string;
   uploadedAt: string;
+}
+
+export interface TenderDocumentExtractionSummary {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  tenderId: string;
+  tenderDocumentId: string;
+  extractor: string;
+  status: "pending" | "succeeded" | "failed";
+  pageCount: number | null;
+  characterCount: number;
+  tableCount: number;
+  failureReason: string | null;
+  metadata: Record<string, unknown>;
+  startedAt: string;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TenderDocumentContent {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  tenderId: string;
+  tenderDocumentId: string;
+  extractionId: string;
+  sequence: number;
+  pageNumber: number | null;
+  section: string | null;
+  kind: "page" | "heading" | "paragraph" | "listItem" | "table";
+  text: string;
+  contentHash: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TenderDocumentContentPayload {
+  document: TenderDocument;
+  extraction: TenderDocumentExtractionSummary | null;
+  content: TenderDocumentContent[];
 }
 
 export interface TenderTimelineItem {

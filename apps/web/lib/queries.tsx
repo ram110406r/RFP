@@ -39,6 +39,7 @@ import {
   fetchTenderReviews,
   fetchTenderSources,
   fetchTenders,
+  getTenderDocumentContent,
   fetchTeams,
   fetchWorkspaces,
   fetchWorkspaceOverview,
@@ -104,6 +105,8 @@ export const tenderKeys = {
   answers: (tenderId: string) => ["tender", tenderId, "answers"] as const,
   reviews: (tenderId: string) => ["tender", tenderId, "reviews"] as const,
   sources: (tenderId: string) => ["tender", tenderId, "sources"] as const,
+  documentContent: (tenderId: string, documentId: string) =>
+    ["tender", tenderId, "documents", documentId, "content"] as const,
   answerVersions: (tenderId: string, answerId: string) => ["tender", tenderId, "answers", answerId, "versions"] as const,
   answerEvidence: (tenderId: string, answerId: string) => ["tender", tenderId, "answers", answerId, "evidence"] as const,
   requirementEvidence: (tenderId: string, requirementId: string) =>
@@ -256,6 +259,14 @@ export function useTenderSources(tenderId: string, initialData?: { items: Tender
     queryKey: tenderKeys.sources(tenderId),
     queryFn: () => fetchTenderSources(tenderId),
     initialData: initialData ?? undefined,
+  });
+}
+
+export function useTenderDocumentContent(tenderId: string, documentId: string | null | undefined) {
+  return useQuery({
+    queryKey: tenderKeys.documentContent(tenderId, documentId ?? "none"),
+    queryFn: () => getTenderDocumentContent(tenderId, documentId ?? ""),
+    enabled: Boolean(tenderId && documentId),
   });
 }
 
@@ -831,6 +842,7 @@ export function useParseTenderSource(tenderId: string) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tenderKeys.sources(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: ["tender", tenderId, "documents"] }),
         queryClient.invalidateQueries({ queryKey: ["tender", tenderId, "requirements"] }),
         queryClient.invalidateQueries({ queryKey: ["tender", tenderId, "answers"] }),
         queryClient.invalidateQueries({ queryKey: tenderKeys.workspace(tenderId) }),

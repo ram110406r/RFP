@@ -21,6 +21,7 @@ import type {
   TenderAnswerVersion,
   TenderAnalysisPayload,
   TenderBriefPayload,
+  TenderDocumentContentPayload,
   TenderListPayload,
   TenderQuestion,
   TenderSource,
@@ -632,6 +633,10 @@ export async function parseTenderSource(tenderId: string, sourceId: string, init
     ...init,
     method: "POST",
   });
+}
+
+export async function getTenderDocumentContent(tenderId: string, documentId: string, init?: ApiInit) {
+  return requestJson<TenderDocumentContentPayload>(`/tenders/${tenderId}/documents/${documentId}/content`, init);
 }
 
 export async function fetchAnswerVersions(tenderId: string, answerId: string, init?: ApiInit) {
