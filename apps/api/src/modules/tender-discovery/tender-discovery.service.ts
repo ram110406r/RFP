@@ -38,7 +38,7 @@ export class TenderDiscoveryService {
       input.state ? eq(tenderNotices.state, input.state) : undefined,
       input.location ? ilike(tenderNotices.location, `%${input.location}%`) : undefined,
       input.category ? eq(tenderNotices.category, input.category) : undefined,
-      input.procurementType ? eq(tenderNotices.procurementType, input.procurementType) : undefined,
+      input.procurementType ? ilike(tenderNotices.procurementType, `%${input.procurementType}%`) : undefined,
       input.status ? eq(tenderNotices.status, input.status) : undefined,
       input.minValue !== undefined ? gte(tenderNotices.estimatedValue, String(input.minValue)) : undefined,
       input.maxValue !== undefined ? lte(tenderNotices.estimatedValue, String(input.maxValue)) : undefined,
@@ -59,16 +59,52 @@ export class TenderDiscoveryService {
       .leftJoin(savedTenderNotices, and(eq(savedTenderNotices.noticeId, tenderNotices.id), eq(savedTenderNotices.organizationId, auth.organizationId), eq(savedTenderNotices.workspaceId, workspaceId)))
       .leftJoin(tenders, and(eq(tenders.discoveryNoticeId, tenderNotices.id), eq(tenders.organizationId, auth.organizationId), eq(tenders.workspaceId, workspaceId))).where(where);
     const rows = await base.where(where).orderBy(...this.orderBy(input.sort, searchVector, searchQuery)).limit(input.pageSize).offset((input.page - 1) * input.pageSize);
-    const [portals, states, categories] = await Promise.all([
-      this.db.select({ key: tenderPortals.key, name: tenderPortals.name, health: tenderPortals.health, enabled: tenderPortals.enabled, lastSuccessAt: tenderPortals.lastSuccessAt }).from(tenderPortals).orderBy(asc(tenderPortals.name)),
+    const [portals, states, categories, authorityTypes, procurementTypes, statuses, availability] = await Promise.all([
+      this.db.select({
+        key: tenderPortals.key,
+        name: tenderPortals.name,
+        health: tenderPortals.health,
+        enabled: tenderPortals.enabled,
+        lastSuccessAt: tenderPortals.lastSuccessAt,
+        count: sql<number>`count(distinct ${tenderNoticeSources.noticeId})`,
+      }).from(tenderPortals)
+        .leftJoin(tenderNoticeSources, eq(tenderNoticeSources.portalId, tenderPortals.id))
+        .groupBy(tenderPortals.id)
+        .orderBy(desc(tenderPortals.enabled), asc(tenderPortals.name)),
       this.db.select({ value: tenderNotices.state, count: sql<number>`count(*)` }).from(tenderNotices).where(sql`${tenderNotices.state} is not null`).groupBy(tenderNotices.state).orderBy(asc(tenderNotices.state)),
       this.db.select({ value: tenderNotices.category, count: sql<number>`count(*)` }).from(tenderNotices).where(sql`${tenderNotices.category} is not null`).groupBy(tenderNotices.category).orderBy(asc(tenderNotices.category)),
+      this.db.select({ value: tenderNotices.authorityType, count: sql<number>`count(*)` }).from(tenderNotices).where(sql`${tenderNotices.authorityType} is not null`).groupBy(tenderNotices.authorityType).orderBy(asc(tenderNotices.authorityType)),
+      this.db.select({ value: tenderNotices.procurementType, count: sql<number>`count(*)` }).from(tenderNotices).where(sql`${tenderNotices.procurementType} is not null`).groupBy(tenderNotices.procurementType).orderBy(asc(tenderNotices.procurementType)),
+      this.db.select({ value: tenderNotices.status, count: sql<number>`count(*)` }).from(tenderNotices).groupBy(tenderNotices.status).orderBy(asc(tenderNotices.status)),
+      this.db.select({
+        buyer: sql<number>`count(${tenderNotices.buyerName})`,
+        location: sql<number>`count(${tenderNotices.location})`,
+        state: sql<number>`count(${tenderNotices.state})`,
+        estimatedValue: sql<number>`count(${tenderNotices.estimatedValue})`,
+        publishedAt: sql<number>`count(${tenderNotices.publishedAt})`,
+        deadlineAt: sql<number>`count(${tenderNotices.deadlineAt})`,
+      }).from(tenderNotices),
     ]);
     const enabled = portals.filter((portal) => portal.enabled);
     return {
       items: rows.map((row) => serializeNotice(row.notice, { saved: Boolean(row.savedNoticeId), applicationTenderId: row.applicationTenderId, portalKey: row.portalKey, portalName: row.portalName })),
       total: Number(count?.value ?? 0), page: input.page, pageSize: input.pageSize,
-      facets: { portals, states: states.filter((row) => row.value), categories: categories.filter((row) => row.value) },
+      facets: {
+        portals: portals.map((portal) => ({ ...portal, count: Number(portal.count) })),
+        states: states.filter((row) => row.value).map((row) => ({ ...row, count: Number(row.count) })),
+        categories: categories.filter((row) => row.value).map((row) => ({ ...row, count: Number(row.count) })),
+        authorityTypes: authorityTypes.filter((row) => row.value).map((row) => ({ ...row, count: Number(row.count) })),
+        procurementTypes: procurementTypes.filter((row) => row.value).map((row) => ({ ...row, count: Number(row.count) })),
+        statuses: statuses.map((row) => ({ ...row, count: Number(row.count) })),
+        availability: {
+          buyer: Number(availability[0]?.buyer ?? 0),
+          location: Number(availability[0]?.location ?? 0),
+          state: Number(availability[0]?.state ?? 0),
+          estimatedValue: Number(availability[0]?.estimatedValue ?? 0),
+          publishedAt: Number(availability[0]?.publishedAt ?? 0),
+          deadlineAt: Number(availability[0]?.deadlineAt ?? 0),
+        },
+      },
       coverage: { registeredSources: portals.length, enabledSources: enabled.length, healthySources: enabled.filter((portal) => portal.health === "HEALTHY").length, degradedSources: enabled.filter((portal) => portal.health === "DEGRADED").length, lastRefreshedAt: enabled.map((portal) => portal.lastSuccessAt).filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0]?.toISOString() ?? null },
     };
   }

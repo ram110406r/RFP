@@ -79,9 +79,13 @@ export interface TenderDiscoveryPayload {
   page: number;
   pageSize: number;
   facets: {
-    portals: Array<{ key: string; name: string; health: "PENDING" | "HEALTHY" | "DEGRADED" | "DISABLED"; enabled: boolean; lastSuccessAt: string | null }>;
+    portals: Array<{ key: string; name: string; health: "PENDING" | "HEALTHY" | "DEGRADED" | "DISABLED"; enabled: boolean; lastSuccessAt: string | null; count: number }>;
     states: Array<{ value: string | null; count: number }>;
     categories: Array<{ value: string | null; count: number }>;
+    authorityTypes: Array<{ value: string | null; count: number }>;
+    procurementTypes: Array<{ value: string | null; count: number }>;
+    statuses: Array<{ value: "ACTIVE" | "CLOSED" | "CANCELLED" | "AWARDED" | "EXPIRED" | "UNKNOWN"; count: number }>;
+    availability: { buyer: number; location: number; state: number; estimatedValue: number; publishedAt: number; deadlineAt: number };
   };
   coverage: { registeredSources: number; enabledSources: number; healthySources: number; degradedSources: number; lastRefreshedAt: string | null };
 }

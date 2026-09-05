@@ -74,6 +74,8 @@ function TenderDiscoveryPage() {
   const activeFilters = useMemo(() => filterChips(params), [params]);
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / (query.data?.pageSize ?? 20)));
   const coverage = query.data?.coverage;
+  const selectedPortal = query.data?.facets.portals.find((portal) => portal.key === params.get("portal"));
+  const selectedPortalUnavailable = Boolean(selectedPortal && (!selectedPortal.enabled || selectedPortal.count === 0));
 
   function setFilter(key: FilterKey, value: string | null) {
     replaceParams(router, params, { [key]: value || null, page: null, notice: null });
@@ -113,8 +115,8 @@ function TenderDiscoveryPage() {
               <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm text-[var(--text)] outline-none placeholder:text-[var(--muted-subtle)]" placeholder="Tender title, buyer, reference or keyword" />
               {search ? <button type="button" onClick={() => setSearch("")} aria-label="Clear keyword search"><X className="h-4 w-4 text-[var(--muted)]" /></button> : null}
             </label>
-            <SelectControl icon={<MapPin className="h-4 w-4" />} value={params.get("state") ?? ""} onChange={(value) => setFilter("state", value)} ariaLabel="Filter by state">
-              <option value="">All India</option>
+            <SelectControl icon={<MapPin className="h-4 w-4" />} value={params.get("state") ?? ""} onChange={(value) => setFilter("state", value)} ariaLabel="Filter by state" disabled={query.isSuccess && !(query.data?.facets.availability.state ?? 0)}>
+              <option value="">{query.isSuccess && !(query.data?.facets.availability.state ?? 0) ? "State data unavailable" : "All India"}</option>
               {(query.data?.facets.states ?? []).map((state) => state.value ? <option key={state.value} value={state.value}>{state.value} ({state.count})</option> : null)}
             </SelectControl>
             <Button type="button" variant="secondary" size="lg" onClick={() => setFiltersOpen((value) => !value)} aria-expanded={filtersOpen}>
@@ -122,7 +124,7 @@ function TenderDiscoveryPage() {
               {activeFilters.length ? <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[10px] text-white">{activeFilters.length}</span> : null}
             </Button>
           </div>
-          {filtersOpen ? <AdvancedFilters params={params} portals={query.data?.facets.portals ?? []} categories={query.data?.facets.categories ?? []} onSet={setFilter} onClose={() => setFiltersOpen(false)} /> : null}
+          {filtersOpen ? <AdvancedFilters params={params} facets={query.data?.facets} onSet={setFilter} onClose={() => setFiltersOpen(false)} /> : null}
           {activeFilters.length ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] pt-3">
               {activeFilters.map((filter) => <button type="button" key={filter.key} onClick={() => setFilter(filter.key, null)} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700">{filter.label}<X className="h-3 w-3" /></button>)}
@@ -152,6 +154,7 @@ function TenderDiscoveryPage() {
             </div>
           </div>
           {coverage && coverage.degradedSources > 0 ? <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">{coverage.degradedSources} enabled source{coverage.degradedSources === 1 ? " is" : "s are"} temporarily degraded. Existing notices remain searchable.</div> : null}
+          {selectedPortalUnavailable ? <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900"><span>{selectedPortal?.name} is registered but does not have a connected notice feed yet.</span><button type="button" onClick={() => setFilter("portal", null)} className="shrink-0 font-semibold text-amber-950 underline underline-offset-2">Search reporting portals</button></div> : null}
           {query.isError ? <div className="p-4"><TendyyErrorState message="Tender discovery could not be loaded. Check the API and selected workspace, then retry." onRetry={() => void query.refetch()} /></div> : null}
 
           <div className={`grid min-w-0 ${selected ? "xl:grid-cols-[minmax(0,1fr)_390px]" : ""}`}>
@@ -160,7 +163,7 @@ function TenderDiscoveryPage() {
                 <div className={resultView === "grid" ? "grid gap-3 md:grid-cols-2" : "space-y-2"}>
                   {items.map((item) => <TenderResult key={item.id} item={item} selected={item.id === selectedId} grid={resultView === "grid"} saving={(save.variables ?? unsave.variables) === item.id} onSelect={() => replaceParams(router, params, { notice: item.id })} onSave={() => toggleSave(item)} />)}
                 </div>
-              ) : <TendyyEmptyState title={coverage?.enabledSources ? "No matching tenders" : "Tender sources are not connected yet"} description={coverage?.enabledSources ? "Try removing filters or broadening your keywords." : `${coverage?.registeredSources ?? 0} official portals are registered. Enable a verified connector to begin receiving live notices.`} actionLabel={activeFilters.length ? "Clear filters" : undefined} onAction={clearAll} />}
+              ) : <TendyyEmptyState title={selectedPortalUnavailable ? "This portal is not connected yet" : coverage?.enabledSources ? "No matching tenders" : "Tender sources are not connected yet"} description={selectedPortalUnavailable ? "Choose a reporting portal to search persisted official notices." : coverage?.enabledSources ? "No indexed notice matches every active filter. Remove a filter or broaden your search." : `${coverage?.registeredSources ?? 0} official portals are registered. Enable a verified connector to begin receiving live notices.`} actionLabel={activeFilters.length ? "Clear filters" : undefined} onAction={clearAll} />}
               <Pagination page={page} totalPages={totalPages} total={query.data?.total ?? 0} onPage={(next) => replaceParams(router, params, { page: next === 1 ? null : String(next), notice: null })} />
             </div>
             {selected ? <DetailRail notice={selected} loading={detailQuery.isLoading} busy={(save.variables ?? unsave.variables ?? startApplication.variables) === selected.id} error={mutationError(save.error ?? unsave.error ?? startApplication.error)} onClose={() => replaceParams(router, params, { notice: null })} onSave={() => toggleSave(selected)} onStart={() => startApplication.mutate(selected.id, { onSuccess: (result) => router.push(`/tenders/${result.tenderId}`) })} /> : null}
@@ -205,26 +208,31 @@ function DetailRail({ notice, loading, busy, error, onClose, onSave, onStart }: 
   </aside></>;
 }
 
-function AdvancedFilters({ params, portals, categories, onSet, onClose }: { params: URLSearchParams; portals: Array<{ key: string; name: string; health: string }>; categories: Array<{ value: string | null; count: number }>; onSet: (key: FilterKey, value: string | null) => void; onClose: () => void }) {
+function AdvancedFilters({ params, facets, onSet, onClose }: { params: URLSearchParams; facets?: import("../../lib/models").TenderDiscoveryPayload["facets"]; onSet: (key: FilterKey, value: string | null) => void; onClose: () => void }) {
+  const portals = facets?.portals ?? [];
+  const categories = facets?.categories ?? [];
+  const availability = facets?.availability;
+  const reportingPortals = portals.filter((portal) => portal.enabled && portal.count > 0);
+  const pendingPortals = portals.filter((portal) => !portal.enabled || portal.count === 0);
   return <div className="mt-3 grid gap-3 border-t border-[var(--border-subtle)] pt-3 sm:grid-cols-2 lg:grid-cols-4">
-    <FilterField label="Portal"><select value={params.get("portal") ?? ""} onChange={(e) => onSet("portal", e.target.value)} className="filter-input"><option value="">All official portals</option>{portals.map((portal) => <option key={portal.key} value={portal.key}>{portal.name} - {portal.health.toLowerCase()}</option>)}</select></FilterField>
+    <FilterField label="Portal"><select value={params.get("portal") ?? ""} onChange={(e) => onSet("portal", e.target.value)} className="filter-input"><option value="">All reporting portals</option><optgroup label="Connected">{reportingPortals.map((portal) => <option key={portal.key} value={portal.key}>{portal.name} ({formatNumber(portal.count)})</option>)}</optgroup>{pendingPortals.length ? <optgroup label="Not connected yet">{pendingPortals.map((portal) => <option key={portal.key} value={portal.key} disabled>{portal.name} - unavailable</option>)}</optgroup> : null}</select></FilterField>
     <FilterField label="Category"><select value={params.get("category") ?? ""} onChange={(e) => onSet("category", e.target.value)} className="filter-input"><option value="">All categories</option>{categories.map((category) => category.value ? <option key={category.value} value={category.value}>{category.value} ({category.count})</option> : null)}</select></FilterField>
-    <FilterField label="Status"><select value={params.get("status") ?? ""} onChange={(e) => onSet("status", e.target.value)} className="filter-input"><option value="">All statuses</option>{["ACTIVE", "CLOSED", "CANCELLED", "AWARDED", "EXPIRED", "UNKNOWN"].map((status) => <option key={status}>{status}</option>)}</select></FilterField>
+    <FilterField label="Status"><select value={params.get("status") ?? ""} onChange={(e) => onSet("status", e.target.value)} className="filter-input"><option value="">All statuses</option>{(facets?.statuses ?? []).map((status) => <option key={status.value} value={status.value}>{status.value} ({formatNumber(status.count)})</option>)}</select></FilterField>
     <FilterField label="Buyer"><input key={params.get("buyer")} defaultValue={params.get("buyer") ?? ""} onBlur={(e) => onSet("buyer", e.target.value.trim())} className="filter-input" placeholder="Ministry, PSU or authority" /></FilterField>
-    <FilterField label="Authority type"><input key={params.get("authorityType")} defaultValue={params.get("authorityType") ?? ""} onBlur={(e) => onSet("authorityType", e.target.value.trim())} className="filter-input" placeholder="Central, state, PSU..." /></FilterField>
-    <FilterField label="Location"><input key={params.get("location")} defaultValue={params.get("location") ?? ""} onBlur={(e) => onSet("location", e.target.value.trim())} className="filter-input" placeholder="City or district" /></FilterField>
-    <FilterField label="Procurement type"><input key={params.get("procurementType")} defaultValue={params.get("procurementType") ?? ""} onBlur={(e) => onSet("procurementType", e.target.value.trim())} className="filter-input" placeholder="Goods, services, works..." /></FilterField>
+    <FilterField label="Authority type"><select value={params.get("authorityType") ?? ""} onChange={(e) => onSet("authorityType", e.target.value)} className="filter-input"><option value="">All authorities</option>{(facets?.authorityTypes ?? []).map((item) => item.value ? <option key={item.value} value={item.value}>{item.value} ({formatNumber(item.count)})</option> : null)}</select></FilterField>
+    <FilterField label="Location"><input key={params.get("location")} defaultValue={params.get("location") ?? ""} onBlur={(e) => onSet("location", e.target.value.trim())} disabled={Boolean(availability && !availability.location)} className="filter-input disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]" placeholder={availability && !availability.location ? "Unavailable from current sources" : "City or district"} /></FilterField>
+    <FilterField label="Procurement type"><select value={params.get("procurementType") ?? ""} onChange={(e) => onSet("procurementType", e.target.value)} className="filter-input"><option value="">All procurement types</option>{(facets?.procurementTypes ?? []).map((item) => item.value ? <option key={item.value} value={item.value}>{item.value} ({formatNumber(item.count)})</option> : null)}</select></FilterField>
     <FilterField label="Published from"><input type="date" value={params.get("publishedFrom") ?? ""} onChange={(e) => onSet("publishedFrom", e.target.value)} className="filter-input" /></FilterField>
     <FilterField label="Published to"><input type="date" value={params.get("publishedTo") ?? ""} onChange={(e) => onSet("publishedTo", e.target.value)} className="filter-input" /></FilterField>
     <FilterField label="Deadline from"><input type="date" value={params.get("deadlineFrom") ?? ""} onChange={(e) => onSet("deadlineFrom", e.target.value)} className="filter-input" /></FilterField>
     <FilterField label="Deadline to"><input type="date" value={params.get("deadlineTo") ?? ""} onChange={(e) => onSet("deadlineTo", e.target.value)} className="filter-input" /></FilterField>
-    <FilterField label="Minimum value"><input type="number" min="0" value={params.get("minValue") ?? ""} onChange={(e) => onSet("minValue", e.target.value)} className="filter-input" placeholder="0" /></FilterField>
-    <FilterField label="Maximum value"><input type="number" min="0" value={params.get("maxValue") ?? ""} onChange={(e) => onSet("maxValue", e.target.value)} className="filter-input" placeholder="No limit" /></FilterField>
+    <FilterField label="Minimum value"><input type="number" min="0" value={params.get("minValue") ?? ""} onChange={(e) => onSet("minValue", e.target.value)} disabled={Boolean(availability && !availability.estimatedValue)} className="filter-input disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]" placeholder={availability && !availability.estimatedValue ? "Unavailable" : "0"} /></FilterField>
+    <FilterField label="Maximum value"><input type="number" min="0" value={params.get("maxValue") ?? ""} onChange={(e) => onSet("maxValue", e.target.value)} disabled={Boolean(availability && !availability.estimatedValue)} className="filter-input disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]" placeholder={availability && !availability.estimatedValue ? "Unavailable" : "No limit"} /></FilterField>
     <div className="flex items-end justify-end"><Button type="button" variant="secondary" onClick={onClose}>Done <ChevronDown className="h-4 w-4" /></Button></div>
   </div>;
 }
 
-function SelectControl({ icon, value, onChange, children, ariaLabel }: { icon: ReactNode; value: string; onChange: (value: string) => void; children: ReactNode; ariaLabel: string }) { return <label className="flex h-11 items-center gap-2 rounded-[8px] border border-[var(--border)] bg-white px-3 text-[var(--muted)]">{icon}<select value={value} onChange={(event) => onChange(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--text-soft)] outline-none" aria-label={ariaLabel}>{children}</select></label>; }
+function SelectControl({ icon, value, onChange, children, ariaLabel, disabled = false }: { icon: ReactNode; value: string; onChange: (value: string) => void; children: ReactNode; ariaLabel: string; disabled?: boolean }) { return <label className={`flex h-11 items-center gap-2 rounded-[8px] border border-[var(--border)] px-3 text-[var(--muted)] ${disabled ? "bg-[var(--surface-muted)]" : "bg-white"}`}>{icon}<select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--text-soft)] outline-none disabled:cursor-not-allowed" aria-label={ariaLabel}>{children}</select></label>; }
 function FilterField({ label, children }: { label: string; children: ReactNode }) { return <label className="text-[11px] font-semibold text-[var(--text-soft)]">{label}{children}</label>; }
 function MetaTag({ children }: { children: ReactNode }) { return <span className="inline-flex h-5 items-center rounded-[5px] bg-[var(--surface-muted)] px-2 text-[10px] font-medium text-[var(--muted)]">{children}</span>; }
 function PortalMark({ name }: { name: string }) { const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase(); return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[var(--primary-soft)] text-[11px] font-bold text-[var(--primary)]">{initials || "IN"}</span>; }
