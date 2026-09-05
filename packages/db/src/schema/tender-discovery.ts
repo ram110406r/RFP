@@ -69,6 +69,7 @@ export const tenderPortals = pgTable(
     officialUrl: text("official_url").notNull(),
     connectorType: tenderConnectorTypeEnum("connector_type").notNull(),
     scheduleMinutes: integer("schedule_minutes").notNull().default(60),
+    syncCursor: text("sync_cursor"),
     enabled: boolean("enabled").notNull().default(false),
     health: tenderPortalHealthEnum("health").notNull().default("PENDING"),
     lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
@@ -88,7 +89,9 @@ export const tenderSyncRuns = pgTable(
   "tender_sync_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    portalId: uuid("portal_id").notNull().references(() => tenderPortals.id, { onDelete: "cascade" }),
+    portalId: uuid("portal_id")
+      .notNull()
+      .references(() => tenderPortals.id, { onDelete: "cascade" }),
     status: tenderSyncStatusEnum("status").notNull().default("RUNNING"),
     cursor: text("cursor"),
     windowStartedAt: timestamp("window_started_at", { withTimezone: true }),
@@ -108,7 +111,9 @@ export const tenderSourceRecords = pgTable(
   "tender_source_records",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    portalId: uuid("portal_id").notNull().references(() => tenderPortals.id, { onDelete: "cascade" }),
+    portalId: uuid("portal_id")
+      .notNull()
+      .references(() => tenderPortals.id, { onDelete: "cascade" }),
     syncRunId: uuid("sync_run_id").references(() => tenderSyncRuns.id, { onDelete: "set null" }),
     sourceNoticeKey: text("source_notice_key").notNull(),
     payloadHash: text("payload_hash").notNull(),
@@ -119,7 +124,11 @@ export const tenderSourceRecords = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("tender_source_records_version_uq").on(t.portalId, t.sourceNoticeKey, t.payloadHash),
+    uniqueIndex("tender_source_records_version_uq").on(
+      t.portalId,
+      t.sourceNoticeKey,
+      t.payloadHash,
+    ),
     index("tender_source_records_portal_notice_idx").on(t.portalId, t.sourceNoticeKey),
   ],
 );
@@ -170,9 +179,15 @@ export const tenderNotices = pgTable(
 export const tenderNoticeSources = pgTable(
   "tender_notice_sources",
   {
-    noticeId: uuid("notice_id").notNull().references(() => tenderNotices.id, { onDelete: "cascade" }),
-    portalId: uuid("portal_id").notNull().references(() => tenderPortals.id, { onDelete: "cascade" }),
-    sourceRecordId: uuid("source_record_id").notNull().references(() => tenderSourceRecords.id, { onDelete: "restrict" }),
+    noticeId: uuid("notice_id")
+      .notNull()
+      .references(() => tenderNotices.id, { onDelete: "cascade" }),
+    portalId: uuid("portal_id")
+      .notNull()
+      .references(() => tenderPortals.id, { onDelete: "cascade" }),
+    sourceRecordId: uuid("source_record_id")
+      .notNull()
+      .references(() => tenderSourceRecords.id, { onDelete: "restrict" }),
     sourceNoticeKey: text("source_notice_key").notNull(),
     sourceUrl: text("source_url").notNull(),
     isPrimary: boolean("is_primary").notNull().default(false),
@@ -189,8 +204,12 @@ export const tenderNoticeDocuments = pgTable(
   "tender_notice_documents",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    noticeId: uuid("notice_id").notNull().references(() => tenderNotices.id, { onDelete: "cascade" }),
-    portalId: uuid("portal_id").notNull().references(() => tenderPortals.id, { onDelete: "cascade" }),
+    noticeId: uuid("notice_id")
+      .notNull()
+      .references(() => tenderNotices.id, { onDelete: "cascade" }),
+    portalId: uuid("portal_id")
+      .notNull()
+      .references(() => tenderPortals.id, { onDelete: "cascade" }),
     sourceDocumentKey: text("source_document_key").notNull(),
     name: text("name").notNull(),
     url: text("url").notNull(),
@@ -209,10 +228,18 @@ export const tenderNoticeDocuments = pgTable(
 export const savedTenderNotices = pgTable(
   "saved_tender_notices",
   {
-    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-    noticeId: uuid("notice_id").notNull().references(() => tenderNotices.id, { onDelete: "cascade" }),
-    savedBy: uuid("saved_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    noticeId: uuid("notice_id")
+      .notNull()
+      .references(() => tenderNotices.id, { onDelete: "cascade" }),
+    savedBy: uuid("saved_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

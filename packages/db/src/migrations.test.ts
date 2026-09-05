@@ -78,4 +78,16 @@ describe("migration history", () => {
     expect(sql).toContain('CREATE INDEX "tender_notices_search_idx"');
     expect(sql).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
   });
+
+  test("0026 enables only the verified official discovery connectors", () => {
+    const sql = readFileSync(
+      join(MIGRATIONS_DIR, "0026_enable_official_tender_connectors.sql"),
+      "utf8",
+    );
+    expect(sql).toContain('ADD COLUMN "sync_cursor"');
+    expect(sql).toContain("\"key\" = 'gem'");
+    expect(sql).toContain("\"key\" = 'cppp'");
+    expect(sql).toContain('"builtInConnector":"GEM"');
+    expect(sql).toContain('"builtInConnector":"CPPP_LATEST"');
+  });
 });

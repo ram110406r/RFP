@@ -183,6 +183,13 @@
       "when": 1788745600000,
       "tag": "0025_india_tender_discovery",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788822000000,
+      "tag": "0026_enable_official_tender_connectors",
+      "breakpoints": true
     }
   ]
 }
