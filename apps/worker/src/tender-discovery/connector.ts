@@ -85,6 +85,7 @@ class JsonFeedConnector implements TenderConnector {
 
 const GEM_LIST_URL = "https://bidplus.gem.gov.in/all-bids";
 const GEM_DATA_URL = "https://bidplus.gem.gov.in/all-bids-data";
+const CPPP_ENTRY_URL = "https://eprocure.gov.in/eprocure/app?service=restart";
 
 export class GemConnector implements TenderConnector {
   private csrfName: string | null = null;
@@ -234,10 +235,9 @@ export function parseCpppLatestHtml(html: string): ConnectorNotice[] {
     const title = link.text().replace(/\s+/g, " ").trim().replace(/^\d+\.\s*/, "");
     const reference = cells.eq(1).text().replace(/\s+/g, " ").trim();
     if (!href || !title || !reference) return [];
-    const sourceUrl = new URL(href, "https://eprocure.gov.in").toString();
     const deadlineAt = parseIndianPortalDate(cells.eq(2).text().replace(/\s+/g, " ").trim());
     const opensAt = parseIndianPortalDate(cells.eq(3).text().replace(/\s+/g, " ").trim());
-    const raw = { title, referenceNumber: reference, deadlineAt, opensAt, sourceUrl };
+    const raw = { title, referenceNumber: reference, deadlineAt, opensAt };
     return [
       {
         sourceNoticeKey: reference,
@@ -248,17 +248,21 @@ export function parseCpppLatestHtml(html: string): ConnectorNotice[] {
         deadlineAt,
         opensAt,
         status: "ACTIVE" as const,
-        sourceUrl,
+        sourceUrl: CPPP_ENTRY_URL,
         sourceUpdatedAt: new Date().toISOString(),
         documents: [
           {
             key: `${reference}:official`,
-            name: "Official CPPP tender page",
-            url: sourceUrl,
+            name: "Open CPPP and search by reference",
+            url: CPPP_ENTRY_URL,
             access: "EXTERNAL" as const,
           },
         ],
-        metadata: { source: "CPPP", coverageMode: "LATEST_PUBLIC_WINDOW" },
+        metadata: {
+          source: "CPPP",
+          coverageMode: "LATEST_PUBLIC_WINDOW",
+          navigation: "SEARCH_BY_REFERENCE",
+        },
         raw,
       },
     ];

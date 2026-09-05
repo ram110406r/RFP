@@ -190,6 +190,13 @@
       "when": 1788822000000,
       "tag": "0026_enable_official_tender_connectors",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788829200000,
+      "tag": "0027_repair_cppp_session_links",
+      "breakpoints": true
     }
   ]
 }

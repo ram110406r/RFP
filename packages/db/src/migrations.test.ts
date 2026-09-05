@@ -90,4 +90,11 @@ describe("migration history", () => {
     expect(sql).toContain('"builtInConnector":"GEM"');
     expect(sql).toContain('"builtInConnector":"CPPP_LATEST"');
   });
+
+  test("0027 replaces expiring CPPP session links with durable navigation", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0027_repair_cppp_session_links.sql"), "utf8");
+    expect(sql).toContain("https://eprocure.gov.in/eprocure/app?service=restart");
+    expect(sql).toContain("SEARCH_BY_REFERENCE");
+    expect(sql).toContain("Open CPPP and search by reference");
+  });
 });

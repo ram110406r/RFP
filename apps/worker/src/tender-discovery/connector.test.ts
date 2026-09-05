@@ -98,6 +98,7 @@ describe("official tender feed normalization", () => {
     expect(items.map((item) => item.sourceNoticeKey)).toEqual(["CPPP/10", "CPPP/11"]);
     expect(items[0]?.title).toBe("Supply & installation");
     expect(items[0]?.deadlineAt).toBe("2026-09-26T09:30:00.000Z");
-    expect(items[0]?.sourceUrl).toBe("https://eprocure.gov.in/eprocure/app?x=1&y=2");
+    expect(items[0]?.sourceUrl).toBe("https://eprocure.gov.in/eprocure/app?service=restart");
+    expect(items[0]?.documents?.[0]?.name).toBe("Open CPPP and search by reference");
   });
 });
