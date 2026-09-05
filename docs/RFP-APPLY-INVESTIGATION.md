@@ -136,13 +136,12 @@ that state.
 
 ## Cutoff Inventory
 
-### Delete after deployment verification
+### Removed after deployment verification
 
-- `apps/legacy-web`
-- `apps/legacy-api`
-- Legacy Docker/deployment entries and package metadata
-- Legacy-only environment and port documentation
-- Historical documentation that presents the legacy stack as active
+- Previous prototype frontend and API applications
+- Prototype Docker/deployment entries and package metadata
+- Prototype-only environment and port documentation
+- Historical documentation that presented the old stack as active
 
 ### Retire after migration and data verification
 
@@ -200,8 +199,8 @@ Every future Apply endpoint must:
 - The broad Bun/Nest controller test suite still has an existing decorator
   loading error and should be isolated or corrected before relying on it as an
   end-to-end gate.
-- Legacy applications remain in the workspace and therefore still participate
-  in the root typecheck graph.
+- Removed prototype applications no longer participate in the root typecheck
+  graph.
 - Worker and database extraction code still directly references legacy RFP
   document tables, blocking safe schema deletion.
 

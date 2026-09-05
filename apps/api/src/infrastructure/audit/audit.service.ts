@@ -31,8 +31,8 @@ export interface AuditEntry {
 }
 
 /**
- * Writes to the existing `audit_logs` table — the one apps/legacy-api already
- * uses. This is a Nest-side entry point onto that table, not a second audit
+ * Writes to the existing `audit_logs` table used by earlier API surfaces.
+ * This is a Nest-side entry point onto that table, not a second audit
  * system.
  *
  * Every method takes an optional transaction handle, because an audit row must

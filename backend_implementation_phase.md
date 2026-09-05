@@ -1240,9 +1240,9 @@ already delivered ahead of this phase and is not repeated in the slices above.
 - **Requirement extraction is deterministic** (structure + modal verbs),
   behind an interface Phase 8 can swap for a model-backed implementation.
 - **Enums are extended additively.** `requirement_status` and
-  `requirement_category` have 35 references across legacy-api and legacy-web,
-  which are what the deployed demo runs on; renaming them is deferred to the
-  legacy-to-apps/web migration.
+  `requirement_category` were shared with the removed prototype stack. Renaming
+  them remains deferred until existing persisted data and UI vocabulary are
+  migrated together.
 
 ## Objective
 

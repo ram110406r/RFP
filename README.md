@@ -16,8 +16,6 @@ apps/
   worker      Bun + BullMQ — background/async job processing
   mcp         Model Context Protocol server — exposes RFP OS to MCP clients
   extension   Plasmo — browser extension
-  legacy-web  Previous TanStack Start frontend, retained for rollback only.
-  legacy-api  Previous Bun + Elysia API, retained for rollback only.
 
 packages/
   ui              Shared React component library (consumed by apps/web)
@@ -47,10 +45,8 @@ packages/
   every organization-owned resource
 - **MCP**: separate server app (`apps/mcp`), not embedded in the API
 
-`apps/legacy-web` and `apps/legacy-api` are the previous prototype
-implementation, retained temporarily for rollback and migration verification.
-The active target architecture is `apps/web` + `apps/api`; legacy applications
-should not receive new feature work.
+The active target architecture is `apps/web` + `apps/api`; obsolete prototype
+applications have been removed from the workspace.
 
 ## Getting started
 
@@ -74,8 +70,7 @@ bun run db:migrate        # apply Drizzle migrations (packages/db)
 ```
 
 Each app also has its own `.env.example` where its configuration differs
-from the shared root `.env.example` (currently `apps/legacy-web` and
-`apps/legacy-api`, which predate the shared env).
+from the shared root `.env.example`.
 
 ## Status
 

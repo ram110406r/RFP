@@ -1,9 +1,9 @@
-# Legacy Removal
+# Removed Prototype Applications
 
-## Pending Removal
+## Removed
 
-- `apps/legacy-web` remains available for rollback only.
-- `apps/legacy-api` remains available for rollback only.
+- The previous TanStack Start frontend has been removed.
+- The previous Bun + Elysia API has been removed.
 
 ## What remains
 
@@ -12,15 +12,15 @@
 - Shared packages used by the active stack
 - The cleanup and audit documentation in `docs/`
 
-## Why anything remains
+## Why Shared Code Remains
 
-- The active NestJS stack no longer registers the legacy `rfp` or document controllers.
-- The legacy code is transitional and duplicated the current product surface.
+- The active NestJS stack no longer registers the old `rfp` or document controllers.
+- The removed code duplicated the current product surface.
 - Shared schema and package references remain only where they support the active stack or historical migration context.
 
-## Removal Gate
+## Completed Gate
 
 - Confirm no deployment references either legacy service.
 - Export and verify legacy database rows before removing their tables.
-- Remove the two legacy apps, workspace metadata, Dockerfiles, and lockfile entries.
+- Removed the two legacy apps, workspace metadata, Dockerfiles, and lockfile entries.
 - Remove stale references in docs, comments, and historical notes.

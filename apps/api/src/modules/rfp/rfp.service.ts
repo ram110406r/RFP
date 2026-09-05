@@ -330,7 +330,7 @@ function serialize(rfp: RfpRow, clientName?: string) {
     description: rfp.description,
     opportunity: rfp.opportunity,
     status: rfp.lifecycleStatus,
-    /** The prototype's display status, still written by apps/legacy-api. */
+    /** The prototype's deprecated display status, retained for persisted data. */
     legacyStatus: rfp.status,
     deadline: rfp.deadline,
     estimatedValue: Number(rfp.estimatedValue),

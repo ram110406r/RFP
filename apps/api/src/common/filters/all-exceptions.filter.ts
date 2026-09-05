@@ -23,7 +23,7 @@ interface StructuredErrorBody {
  * `{ error: { code, message, requestId, details? } }`, so API consumers
  * never have to branch on exception type. Unexpected (non-HttpException)
  * errors are logged with their full stack but never leak internals to the
- * client — mirrors the same contract apps/legacy-api already uses.
+ * client — mirrors the same contract established by the earlier API surface.
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {

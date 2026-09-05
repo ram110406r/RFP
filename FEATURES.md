@@ -63,21 +63,20 @@ This is the structural fact that explains most of the repository.
 
 | System | What it is | Status |
 | --- | --- | --- |
-| `apps/legacy-web` | Previous TanStack frontend retained for rollback only. | Pending removal |
-| `apps/legacy-api` | Previous Elysia API retained for rollback only. | Pending removal |
+| Previous TanStack frontend | Removed prototype frontend. | Removed |
+| Previous Elysia API | Removed prototype backend. | Removed |
 | `apps/api` | Active NestJS backend with auth, permissions, audit, lifecycle, tender, knowledge, and workspace APIs. | Live |
 | `apps/web` | Active Next.js frontend for the current product surface. | Live |
 
-The `legacy-*` pair is the previous prototype retained temporarily for rollback
-and data migration checks. It is no longer registered by the active NestJS API
-and should not receive new feature work.
+The previous prototype web/API pair has been removed after deployment
+verification. New feature work belongs in the active Next.js and NestJS apps.
 
 `apps/api` is the active backend. It provides genuine multi-tenant isolation,
 role-based permissions, an audit trail, lifecycle control, and the canonical
 tender APIs used by the current UI.
 
-The active UI calls the NestJS API through `/api/v1`; the legacy applications
-remain only until deployment usage and legacy database rows have been verified.
+The active UI calls the NestJS API through `/api/v1`; the previous prototype
+applications have been removed after deployment usage was verified.
 
 ---
 
@@ -279,7 +278,7 @@ sources, "`, `"Per our most recent internal review, "` — to the previous answe
 and adds a flat `0.04` to the confidence. There is no model call and no
 reasoning. It is a convincing demo of a feature that does not exist.
 
-Source: `apps/legacy-api/src/modules/requirements.ts`
+Source: removed prototype requirements module.
 
 ### Confidence meter — Simulated
 A 0–1 score shown against each answer.
@@ -481,7 +480,7 @@ simulated, changing them currently has no downstream effect.
 
 Two entirely different stories depending on which backend you mean.
 
-### Demo auth (legacy-api) — Simulated
+### Demo auth (removed prototype API) — Simulated
 A dev-login endpoint takes an email and returns a token.
 
 **What that means:** the token *is* the user id, handed out for an email with no

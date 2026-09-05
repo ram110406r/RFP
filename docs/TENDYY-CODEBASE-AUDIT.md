@@ -6,7 +6,7 @@ The repository already contains a substantial product core: a Next.js frontend i
 
 The main issue is not absence of code. It is duplication and boundary drift:
 
-- There are two product stacks in the repo: the current `apps/web` + `apps/api` stack, and the legacy `apps/legacy-web` + `apps/legacy-api` stack.
+- The current product stack is `apps/web` + `apps/api`; the previous prototype web/API stack has been removed.
 - The database contains both `tender_*` tables and `rfp_*` tables, which overlap conceptually.
 - Identity is split across Firebase client auth, Better Auth on the backend, and a persisted `users` table.
 - The frontend is mostly API-backed, but some screens still use demo/fallback data or local-only state.
@@ -35,10 +35,10 @@ Bottom line:
 - `packages/ui`: shared UI primitives.
 - `packages/observability`: logger helpers.
 
-### Legacy stack
+### Removed Prototype Stack
 
-- `apps/legacy-web`: older TanStack Start/Vite frontend.
-- `apps/legacy-api`: older Elysia backend.
+- Previous TanStack Start/Vite frontend: removed.
+- Previous Elysia backend: removed.
 
 ### Repo configuration
 
@@ -52,7 +52,7 @@ Bottom line:
 |---|---|---|---|---|---|---|
 | Current web app | `apps/web` | Active product UI | Functional | End users | `apps/api`, Firebase, shared packages | Keep, modify |
 | Current API | `apps/api` | Canonical backend | Functional to mostly functional | `apps/web`, worker | DB, auth, jobs, storage, AI | Keep, modify |
-| Database package | `packages/db` | Schema, migrations, seed | Functional | API, worker, legacy apps | Postgres/Drizzle | Keep, modify |
+| Database package | `packages/db` | Schema, migrations, seed | Functional | API, worker, MCP | Postgres/Drizzle | Keep, modify |
 | Worker | `apps/worker` | Document parsing and extraction | Functional | API/job pipeline | Redis, storage, DB, jobs | Keep, modify |
 | Jobs package | `packages/jobs` | Queue contracts | Functional | API, worker | BullMQ | Keep |
 | Storage package | `packages/storage` | S3-compatible file access | Functional | API, worker | AWS SDK/S3 | Keep |
@@ -62,8 +62,8 @@ Bottom line:
 | Validation package | `packages/validation` | Zod/validation helpers | Functional | API, web | Zod | Keep |
 | UI package | `packages/ui` | Shared UI primitives | Functional | Web apps | React | Keep |
 | Observability package | `packages/observability` | Logging helpers | Functional | API, worker | Pino | Keep |
-| Legacy web app | `apps/legacy-web` | Old frontend stack | Legacy | Mostly self-contained | Old API, TanStack Start | Modify or retire |
-| Legacy API | `apps/legacy-api` | Old backend stack | Legacy | Mostly self-contained | Elysia, old DB schema | Modify or retire |
+| Previous web app | Removed | Old frontend stack | Retired | None | Old API, TanStack Start | Removed |
+| Previous API | Removed | Old backend stack | Retired | None | Elysia, old DB schema | Removed |
 | Root scripts/config | `package.json`, `turbo.json` | Workspace orchestration | Functional | Entire repo | Bun/Turbo | Keep |
 
 ## 4. Frontend Audit
@@ -101,7 +101,7 @@ Bottom line:
 | Policies | Functional | ABAC-style policy engine and rules |
 | Dashboard | Functional | Aggregates tender, knowledge, and evidence data |
 | Tenders | Functional to mostly functional | Large domain surface: search, detail, questions, requirements, answers, reviews, sources, validation, submit, export |
-| RFP | Functional but legacy-aligned | Older response-centric domain still in use by legacy stack and schema |
+| RFP | Functional but legacy-aligned | Older response-centric domain still present in schema and services |
 | Knowledge | Functional to partial | Real CRUD/summary, but product semantics still evolving |
 | Documents | Functional | Document upload, listing, versioning, download, deletion |
 | Activities | Functional | Shared activity feed |
@@ -260,7 +260,7 @@ Bottom line:
 
 ### Legacy API surface
 
-`apps/legacy-api` exposes overlapping modules for RFPs, requirements, reviews, assignments, knowledge, notifications, activities, analytics, submissions, and settings. This is a full legacy backend surface, not just a thin adapter. It should be treated as deprecated unless a specific route is still required by the old frontend.
+The removed prototype API exposed overlapping modules for RFPs, requirements, reviews, assignments, knowledge, notifications, activities, analytics, submissions, and settings. That historical duplication is now retired; the active NestJS API is the production backend surface.
 
 ## 8. Authentication Audit
 
@@ -358,7 +358,7 @@ Treat `tenders` as the current canonical discovery entity. Do not create a separ
 
 ### Conflicts
 
-- The database and legacy apps still contain a separate `rfp` family of tables and routes.
+- The database still contains a separate `rfp` family of tables and routes.
 - `tenders/new` is semantically an RFP intake/create flow, which is confusing relative to the `tenders` route name.
 
 ### Recommendation
@@ -535,22 +535,22 @@ Keep pipeline as a derived operational view unless a separate stage model become
 
 ## 19. Legacy Code Audit
 
-### Clear legacy stack
+### Removed Prototype Stack
 
-- `apps/legacy-web` is a complete older frontend application.
-- `apps/legacy-api` is a complete older backend application.
-- Both are rich enough to be useful as references, but they duplicate the active stack.
+- The previous frontend application has been removed.
+- The previous backend application has been removed.
+- Historical behavior should be recovered from git history when needed, not from duplicate live code.
 
 ### Other legacy signals
 
-- `packages/db` retains `rfp_*` tables and older lifecycle concepts that are still used by the legacy stack.
+- `packages/db` retains `rfp_*` tables and older lifecycle concepts for compatibility and migration planning.
 - Some comments in schema files explicitly describe deprecated values or prototype-era columns.
 
 ### Recommendation
 
-- Do not delete legacy code during backend baseline work.
-- Mark it as legacy and stop extending it.
-- Remove only after the new canonical path fully replaces it.
+- Keep compatibility schema until migration planning is explicit.
+- Stop extending older RFP concepts except where active product routes still require them.
+- Remove remaining compatibility tables only after exported data and active usage are verified.
 
 ## 20. Security Audit
 
@@ -628,7 +628,7 @@ Notes:
 | Active web app | Functional | Yes | Yes | No | It is the current product UI |
 | Active API | Functional | Yes | Yes | No | Canonical backend surface |
 | Database schema | Rich but duplicated | Yes | Yes | No | Needs canonicalization, not deletion |
-| Legacy web/api | Legacy duplicate stack | Limited | Yes | Eventually | Duplicates the active stack |
+| Removed prototype web/API | Duplicate stack | No | No | Complete | Deleted after active stack verification |
 | Tender domain | Mostly functional | Yes | Yes | No | Core workflow already exists |
 | RFP legacy domain | Functional but duplicate | Short-term | Yes | Not yet | Needed for compatibility, but not canonical |
 | Knowledge Brain | Partial | Yes | Yes | No | Useful domain, but demo/fallbacks remain |
@@ -681,7 +681,7 @@ Scoring:
 
 ## 26. Recommended Cleanup Order
 
-1. Freeze the legacy stack and stop extending it.
+1. Keep removed prototype stack out of the workspace.
 2. Decide the canonical identity and tenancy model.
 3. Resolve tender vs RFP domain ownership.
 4. Remove demo/fallback content from production paths.
@@ -719,11 +719,11 @@ The repository is not missing a backend. It is missing a clean canonical boundar
 
 CURRENT STATE
 
-TENDYY already has a real active frontend, a substantial Nest backend, a working database schema, workers, auth, storage, and permission infrastructure. It also still carries a legacy frontend/backend pair and duplicate domain models.
+TENDYY already has a real active frontend, a substantial Nest backend, a working database schema, workers, auth, storage, and permission infrastructure. The duplicate prototype frontend/backend pair has been removed; duplicate domain concepts remain in the older `rfp_*` model.
 
 REMOVE
 
-Remove only from the architecture plan for now: do not keep extending the legacy stack, do not keep adding new parallel models for the same business concept, and do not let demo/fallback content masquerade as product behavior.
+Remove from the architecture plan: do not reintroduce the duplicate prototype stack, do not keep adding new parallel models for the same business concept, and do not let demo/fallback content masquerade as product behavior.
 
 MODIFY
 

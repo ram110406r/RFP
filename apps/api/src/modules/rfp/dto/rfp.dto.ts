@@ -36,7 +36,7 @@ export const createRfpSchema = z
      * Required, unlike the phase brief's "optional", because `rfps.client_id`
      * is an existing NOT NULL column with a foreign key — an RFP in this
      * schema is always from a client. Relaxing that column would break
-     * apps/legacy-api, which inner-joins customers on every read.
+     * older API reads that inner-joined customers on every request.
      */
     clientId: z.string().uuid(),
     projectId: z.string().uuid().optional(),
