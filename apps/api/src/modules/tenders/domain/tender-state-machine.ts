@@ -30,6 +30,7 @@ const RULES: readonly TenderTransitionRule[] = [
   { from: "IN_PROGRESS", to: "REVIEW", description: "Send the tender to review.", permission: "tender:update" },
   { from: "REVIEW", to: "IN_PROGRESS", description: "Return the tender to active work.", permission: "tender:update" },
   { from: "REVIEW", to: "APPROVED", description: "Approve the tender response.", permission: "tender:approve" },
+  { from: "APPROVED", to: "REVIEW", description: "Reopen an approved response after its package becomes stale.", permission: "tender:update" },
   { from: "APPROVED", to: "SUBMITTED", description: "Submit the response.", permission: "tender:submit" },
   { from: "SUBMITTED", to: "CLOSED", description: "Close the submitted tender.", permission: "tender:update" },
   { from: "DRAFT", to: "CANCELLED", description: "Cancel the tender.", permission: "tender:delete" },

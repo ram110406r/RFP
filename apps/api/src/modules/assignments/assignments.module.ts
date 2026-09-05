@@ -9,5 +9,6 @@ import { AssignmentsService } from "./assignments.service";
   imports: [ActivityModule, AuditModule],
   controllers: [AssignmentsController],
   providers: [AssignmentsService],
+  exports: [AssignmentsService],
 })
 export class AssignmentsModule {}
