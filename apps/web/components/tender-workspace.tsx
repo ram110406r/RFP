@@ -328,10 +328,14 @@ function OperationalDocumentCard({
 }) {
   const canParse = Boolean(document.tenderSourceId) && document.status !== "PROCESSING" && document.status !== "PROCESSED";
   const canViewContent = document.status === "PROCESSED";
-  const extractedDetail = document.pageCount
-    ? `${document.pageCount} ${document.pageCount === 1 ? "block" : "blocks"} extracted`
-    : document.extractionStatus === "succeeded"
-      ? "Content extracted"
+  const extractedDetail =
+    document.extractionStatus === "succeeded"
+      ? [
+          document.pageCount ? `${document.pageCount} ${document.pageCount === 1 ? "page" : "pages"}` : null,
+          document.contentBlocks ? `${document.contentBlocks} ${document.contentBlocks === 1 ? "block" : "blocks"}` : null,
+        ]
+          .filter(Boolean)
+          .join(" | ") || "Content extracted"
       : null;
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-white p-3">
@@ -384,7 +388,13 @@ function OperationalDocumentContentPanel({
           <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">Extracted content</p>
           <h3 className="mt-1 text-[15px] font-semibold text-[var(--text)]">{document.name}</h3>
           <p className="mt-1 text-[12px] text-[var(--muted)]">
-            {[document.processedAt ? `Processed ${formatTenderDate(document.processedAt)}` : null, document.pageCount ? `${document.pageCount} blocks` : null].filter(Boolean).join(" | ")}
+            {[
+              document.processedAt ? `Processed ${formatTenderDate(document.processedAt)}` : null,
+              document.pageCount ? `${document.pageCount} ${document.pageCount === 1 ? "page" : "pages"}` : null,
+              document.contentBlocks ? `${document.contentBlocks} ${document.contentBlocks === 1 ? "block" : "blocks"}` : null,
+            ]
+              .filter(Boolean)
+              .join(" | ")}
           </p>
         </div>
         <Button type="button" variant="secondary" onClick={onClose}>

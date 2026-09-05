@@ -1,4 +1,5 @@
 import type { DocumentJobName, DocumentJobPayload } from "./document-jobs";
+import type { TenderIngestionJobName, TenderIngestionJobPayload } from "./tender-ingestion-jobs";
 
 /**
  * Queue names. One queue per domain rather than one per job type: the four
@@ -9,6 +10,7 @@ export const QUEUES = {
   /** Scaffold/health queue from Phase 1. Not a domain queue. */
   PLATFORM: "platform",
   DOCUMENTS: "documents",
+  TENDER_INGESTION: "tender-ingestion",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -19,6 +21,7 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
  */
 export interface QueueJobMap {
   [QUEUES.DOCUMENTS]: { name: DocumentJobName; payload: DocumentJobPayload };
+  [QUEUES.TENDER_INGESTION]: { name: TenderIngestionJobName; payload: TenderIngestionJobPayload };
 }
 
 export type QueueWithJobs = keyof QueueJobMap;

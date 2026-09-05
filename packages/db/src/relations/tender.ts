@@ -4,6 +4,7 @@ import { files } from "../schema/files";
 import { users } from "../schema/identity";
 import { organizations } from "../schema/organization";
 import { workspaces } from "../schema/foundation";
+import { tenderNotices } from "../schema/tender-discovery";
 import {
   tenderAnswerEvidence,
   tenderAnswerReviews,
@@ -29,6 +30,10 @@ export const tendersRelations = relations(tenders, ({ one, many }) => ({
   workspace: one(workspaces, {
     fields: [tenders.workspaceId],
     references: [workspaces.id],
+  }),
+  discoveryNotice: one(tenderNotices, {
+    fields: [tenders.discoveryNoticeId],
+    references: [tenderNotices.id],
   }),
   owner: one(users, { fields: [tenders.ownerId], references: [users.id] }),
   createdByUser: one(users, { fields: [tenders.createdBy], references: [users.id] }),

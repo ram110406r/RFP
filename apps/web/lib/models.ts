@@ -38,6 +38,59 @@ export interface TenderSummary {
   updatedAt: string;
 }
 
+export interface TenderNoticeSummary {
+  id: string;
+  canonicalKey: string;
+  title: string;
+  referenceNumber: string | null;
+  description: string;
+  buyerName: string | null;
+  authorityType: string | null;
+  location: string | null;
+  state: string | null;
+  category: string | null;
+  procurementType: string | null;
+  publishedAt: string | null;
+  bidStartsAt: string | null;
+  deadlineAt: string | null;
+  opensAt: string | null;
+  estimatedValue: number | null;
+  currency: string;
+  emdAmount: number | null;
+  documentFee: number | null;
+  status: "ACTIVE" | "CLOSED" | "CANCELLED" | "AWARDED" | "EXPIRED" | "UNKNOWN";
+  sourceUrl: string;
+  sourceUpdatedAt: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  staleAt: string | null;
+  metadata: Record<string, unknown>;
+  saved: boolean;
+  applicationTenderId: string | null;
+  portalKey: string | null;
+  portalName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TenderDiscoveryPayload {
+  items: TenderNoticeSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  facets: {
+    portals: Array<{ key: string; name: string; health: "PENDING" | "HEALTHY" | "DEGRADED" | "DISABLED"; enabled: boolean; lastSuccessAt: string | null }>;
+    states: Array<{ value: string | null; count: number }>;
+    categories: Array<{ value: string | null; count: number }>;
+  };
+  coverage: { registeredSources: number; enabledSources: number; healthySources: number; degradedSources: number; lastRefreshedAt: string | null };
+}
+
+export interface TenderNoticeDetail extends TenderNoticeSummary {
+  sources: Array<{ noticeId: string; portalId: string; sourceNoticeKey: string; sourceUrl: string; isPrimary: boolean; lastSeenAt: string; portal: { key: string; name: string; category: string; state: string | null; officialUrl: string; health: string; lastSuccessAt: string | null } }>;
+  documents: Array<{ id: string; name: string; url: string; mimeType: string | null; sizeBytes: number | null; access: "DIRECT" | "EXTERNAL" | "AUTHENTICATED"; metadata: Record<string, unknown> }>;
+}
+
 export interface TenderSource {
   id: string;
   organizationId: string;

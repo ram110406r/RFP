@@ -22,6 +22,8 @@ import type {
   TenderAnalysisPayload,
   TenderBriefPayload,
   TenderDocumentContentPayload,
+  TenderDiscoveryPayload,
+  TenderNoticeDetail,
   TenderListPayload,
   TenderQuestion,
   TenderSource,
@@ -35,6 +37,30 @@ import type {
   TeamMemberSummary,
   WorkspaceMemberSummary,
 } from "./models";
+
+export interface TenderDiscoveryParams {
+  workspaceId?: string;
+  q?: string;
+  portal?: string;
+  authorityType?: string;
+  buyer?: string;
+  state?: string;
+  location?: string;
+  category?: string;
+  procurementType?: string;
+  status?: string;
+  minValue?: number;
+  maxValue?: number;
+  publishedFrom?: string;
+  publishedTo?: string;
+  deadlineFrom?: string;
+  deadlineTo?: string;
+  saved?: boolean;
+  applied?: boolean;
+  sort?: string;
+  page?: number;
+  pageSize?: number;
+}
 
 const VERSION_PREFIX = "/api/v1";
 
@@ -457,6 +483,32 @@ export async function fetchTenders(
 export async function fetchWorkspaces(params: { status?: "active" | "archived" | "all" } = {}, init?: ApiInit) {
   const suffix = params.status ? `?status=${params.status}` : "";
   return requestJson<{ items: WorkspaceSummary[] }>(`/workspaces${suffix}`, init);
+}
+
+export async function fetchTenderDiscovery(params: TenderDiscoveryParams = {}, init?: ApiInit) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  }
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 20));
+  return requestJson<TenderDiscoveryPayload>(`/tender-discovery?${query.toString()}`, init);
+}
+
+export async function fetchTenderNotice(noticeId: string, workspaceId: string, init?: ApiInit) {
+  return requestJson<TenderNoticeDetail>(`/tender-discovery/${noticeId}?workspaceId=${encodeURIComponent(workspaceId)}`, init);
+}
+
+export function saveTenderNotice(noticeId: string, workspaceId: string, init?: ApiInit) {
+  return requestJson<{ noticeId: string; workspaceId: string; saved: boolean }>(`/tender-discovery/${noticeId}/save`, { ...init, method: "POST", body: JSON.stringify({ workspaceId }) });
+}
+
+export function unsaveTenderNotice(noticeId: string, workspaceId: string, init?: ApiInit) {
+  return requestJson<{ noticeId: string; workspaceId: string; saved: boolean }>(`/tender-discovery/${noticeId}/save`, { ...init, method: "DELETE", body: JSON.stringify({ workspaceId }) });
+}
+
+export function startTenderApplication(noticeId: string, workspaceId: string, init?: ApiInit) {
+  return requestJson<{ tenderId: string; created: boolean }>(`/tender-discovery/${noticeId}/start-application`, { ...init, method: "POST", body: JSON.stringify({ workspaceId }) });
 }
 
 export async function fetchActivities(

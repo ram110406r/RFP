@@ -182,6 +182,41 @@ textarea {
   background: var(--bg-subtle);
 }
 
+.filter-input {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: white;
+  padding: 0 10px;
+  color: var(--text-soft);
+  font-size: 12px;
+  outline: none;
+}
+
+.filter-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(21, 94, 239, 0.08);
+}
+
+.page-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: white;
+  color: var(--text-soft);
+}
+
+.page-button:disabled {
+  opacity: 0.4;
+}
+
 .lede {
   margin-top: 18px;
   max-width: 62ch;

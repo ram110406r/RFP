@@ -19,6 +19,7 @@ import { files } from "./files";
 import { users } from "./identity";
 import { organizations } from "./organization";
 import { workspaces } from "./foundation";
+import { tenderNoticeDocuments, tenderNotices } from "./tender-discovery";
 
 export const tenderTypeEnum = pgEnum("tender_type", ["DOCUMENT", "ONLINE"]);
 
@@ -169,6 +170,7 @@ export const tenders = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
+    discoveryNoticeId: uuid("discovery_notice_id").references(() => tenderNotices.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     title: text("title").notNull(),
     referenceNumber: text("reference_number"),
@@ -204,7 +206,8 @@ export const tenders = pgTable(
     index("tenders_estimated_value_idx").on(t.estimatedValue),
     index("tenders_owner_idx").on(t.ownerId),
     index("tenders_due_idx").on(t.dueAt),
-    uniqueIndex("tenders_org_reference_uq").on(t.organizationId, t.referenceNumber),
+    uniqueIndex("tenders_workspace_reference_uq").on(t.workspaceId, t.referenceNumber),
+    uniqueIndex("tenders_workspace_discovery_notice_uq").on(t.workspaceId, t.discoveryNoticeId),
   ],
 );
 
@@ -641,6 +644,7 @@ export const tenderSources = pgTable(
     tenderId: uuid("tender_id")
       .notNull()
       .references(() => tenders.id, { onDelete: "cascade" }),
+    discoveryNoticeDocumentId: uuid("discovery_notice_document_id").references(() => tenderNoticeDocuments.id, { onDelete: "set null" }),
     sourceType: tenderSourceKindEnum("source_type").notNull().default("DOCUMENT"),
     name: text("name").notNull(),
     externalReference: text("external_reference"),
@@ -664,5 +668,6 @@ export const tenderSources = pgTable(
     index("tender_sources_status_idx").on(t.status),
     index("tender_sources_checksum_idx").on(t.checksumSha256),
     uniqueIndex("tender_sources_tender_checksum_uq").on(t.tenderId, t.checksumSha256),
+    uniqueIndex("tender_sources_tender_discovery_document_uq").on(t.tenderId, t.discoveryNoticeDocumentId),
   ],
 );

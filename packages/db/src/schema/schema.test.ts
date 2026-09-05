@@ -40,6 +40,13 @@ describe("schema barrel", () => {
     "files",
     "documentVersions",
     // tender
+    "tenderPortals",
+    "tenderSyncRuns",
+    "tenderSourceRecords",
+    "tenderNotices",
+    "tenderNoticeSources",
+    "tenderNoticeDocuments",
+    "savedTenderNotices",
     "tenders",
     "tenderStatusHistory",
     "tenderQuestions",
@@ -55,6 +62,7 @@ describe("schema barrel", () => {
     "tenderSources",
     "tenderValidationRuns",
     "savedTenders",
+    "savedTenderNotices",
     // knowledge
     "knowledgeSources",
     "knowledgeClaims",

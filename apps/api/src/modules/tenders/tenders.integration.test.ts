@@ -1084,6 +1084,7 @@ describeDb("Tender integration", () => {
     expect(extractionA1?.status).toBe("succeeded");
     expect(extractionA1?.pageCount).toBe(2);
     expect(extractionA1?.characterCount).toBeGreaterThan(0);
+    expect((extractionA1?.metadata as { contentBlocks?: number } | undefined)?.contentBlocks).toBe(2);
 
     const contentA1 = await db
       .select()

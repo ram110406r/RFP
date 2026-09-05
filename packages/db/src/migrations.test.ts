@@ -69,4 +69,13 @@ describe("migration history", () => {
     expect(repairIndex).toBeGreaterThanOrEqual(0);
     expect(fkIndex).toBeGreaterThan(repairIndex);
   });
+
+  test("0025 creates the shared tender catalog and workspace conversion constraints", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0025_india_tender_discovery.sql"), "utf8");
+    expect(sql).toContain('CREATE TABLE "tender_notices"');
+    expect(sql).toContain('CREATE TABLE "saved_tender_notices"');
+    expect(sql).toContain('CREATE UNIQUE INDEX "tenders_workspace_discovery_notice_uq"');
+    expect(sql).toContain('CREATE INDEX "tender_notices_search_idx"');
+    expect(sql).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+  });
 });

@@ -2588,7 +2588,7 @@ export class TendersService {
         tenderDocumentId: tenderDocument.id,
         extractor: parsed.extractor,
         status: "succeeded",
-        pageCount: rows.length,
+        pageCount: extractionPageCount(parsed),
         characterCount: rows.reduce((sum, row) => sum + row.text.length, 0),
         tableCount: parsed.tables.length,
         failureReason: null,
@@ -2596,6 +2596,7 @@ export class TendersService {
           source: "tender.parseSource",
           mimeType: file.mimeType,
           filename: file.filename,
+          contentBlocks: rows.length,
         },
         completedAt: new Date(),
       })
@@ -2604,7 +2605,7 @@ export class TendersService {
         set: {
           extractor: parsed.extractor,
           status: "succeeded",
-          pageCount: rows.length,
+          pageCount: extractionPageCount(parsed),
           characterCount: rows.reduce((sum, row) => sum + row.text.length, 0),
           tableCount: parsed.tables.length,
           failureReason: null,
@@ -2612,6 +2613,7 @@ export class TendersService {
             source: "tender.parseSource",
             mimeType: file.mimeType,
             filename: file.filename,
+            contentBlocks: rows.length,
           },
           completedAt: new Date(),
           updatedAt: new Date(),
@@ -4562,7 +4564,7 @@ function serializeTenderDocument(row: TenderDocumentWithFileRow) {
     failureReason: row.document.failureReason,
     processedAt: row.document.processedAt,
     pageCount: row.extraction?.pageCount ?? null,
-    contentBlocks: row.extraction?.status === "succeeded" ? row.extraction.pageCount ?? 0 : 0,
+    contentBlocks: row.extraction?.status === "succeeded" ? extractionContentBlocks(row.extraction) : 0,
     extractionStatus: row.extraction?.status ?? null,
     extractionId: row.extraction?.id ?? null,
     metadata: row.document.metadata,
@@ -4612,6 +4614,12 @@ function serializeTenderDocumentContent(row: TenderDocumentContentRow) {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+function extractionContentBlocks(row: TenderDocumentExtractionRow) {
+  const metadata = row.metadata as Record<string, unknown> | null | undefined;
+  const contentBlocks = metadata?.contentBlocks;
+  return typeof contentBlocks === "number" && Number.isFinite(contentBlocks) ? contentBlocks : row.pageCount ?? 0;
 }
 
 function serializeTenderTimeline(row: TenderTimelineRow) {
@@ -4709,6 +4717,13 @@ function tenderContentRowsFromExtraction(parsed: ExtractionResult): TenderConten
     });
   }
   return pageRows;
+}
+
+function extractionPageCount(parsed: ExtractionResult) {
+  const explicit = (parsed as ExtractionResult & { pageCount?: unknown }).pageCount;
+  if (typeof explicit === "number" && Number.isFinite(explicit)) return explicit;
+  const pageNumbers = new Set(parsed.pages.map((page) => page.pageNumber).filter((pageNumber) => Number.isFinite(pageNumber)));
+  return pageNumbers.size || parsed.pages.length || null;
 }
 
 function normalizeExtractedText(text: string) {

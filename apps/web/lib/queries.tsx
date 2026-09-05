@@ -39,6 +39,8 @@ import {
   fetchTenderReviews,
   fetchTenderSources,
   fetchTenders,
+  fetchTenderDiscovery,
+  fetchTenderNotice,
   getTenderDocumentContent,
   fetchTeams,
   fetchWorkspaces,
@@ -64,7 +66,11 @@ import {
   runRfpApply,
   submitTender,
   unsaveTender,
+  saveTenderNotice,
+  unsaveTenderNotice,
+  startTenderApplication,
 } from "./api";
+import type { TenderDiscoveryParams } from "./api";
 import type {
   DashboardOverview,
   KnowledgeItem,
@@ -168,6 +174,12 @@ export const tenderListKeys = {
 
 export const workspaceKeys = {
   list: () => ["workspaces"] as const,
+};
+
+export const tenderDiscoveryKeys = {
+  all: ["tender-discovery"] as const,
+  list: (params?: TenderDiscoveryParams) => ["tender-discovery", "list", params ?? {}] as const,
+  detail: (noticeId: string, workspaceId?: string) => ["tender-discovery", "detail", noticeId, workspaceId ?? ""] as const,
 };
 
 export const organizationKeys = {
@@ -366,6 +378,41 @@ export function useWorkspaces(params: { status?: "active" | "archived" | "all" }
   return useQuery({
     queryKey: [...workspaceKeys.list(), params.status ?? "active"],
     queryFn: () => fetchWorkspaces(params),
+  });
+}
+
+export function useTenderDiscovery(params: TenderDiscoveryParams = {}) {
+  const selectedWorkspaceId = useSelectedWorkspaceId();
+  const effectiveParams = { ...params, workspaceId: params.workspaceId ?? selectedWorkspaceId ?? undefined };
+  return useQuery({ queryKey: tenderDiscoveryKeys.list(effectiveParams), queryFn: () => fetchTenderDiscovery(effectiveParams), enabled: Boolean(effectiveParams.workspaceId), placeholderData: keepPreviousData });
+}
+
+export function useTenderNotice(noticeId: string | null) {
+  const workspaceId = useSelectedWorkspaceId();
+  return useQuery({ queryKey: tenderDiscoveryKeys.detail(noticeId ?? "", workspaceId ?? undefined), queryFn: () => fetchTenderNotice(noticeId ?? "", workspaceId ?? ""), enabled: Boolean(noticeId && workspaceId) });
+}
+
+function useTenderNoticeSaveMutation(saved: boolean) {
+  const queryClient = useQueryClient();
+  const workspaceId = useSelectedWorkspaceId();
+  return useMutation({
+    mutationFn: (noticeId: string) => {
+      if (!workspaceId) throw new Error("Select a workspace before saving a tender.");
+      return saved ? saveTenderNotice(noticeId, workspaceId) : unsaveTenderNotice(noticeId, workspaceId);
+    },
+    onSuccess: async (result) => { await Promise.all([queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.all }), queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.detail(result.noticeId, workspaceId ?? undefined) })]); },
+  });
+}
+
+export function useSaveTenderNotice() { return useTenderNoticeSaveMutation(true); }
+export function useUnsaveTenderNotice() { return useTenderNoticeSaveMutation(false); }
+
+export function useStartTenderApplication() {
+  const queryClient = useQueryClient();
+  const workspaceId = useSelectedWorkspaceId();
+  return useMutation({
+    mutationFn: (noticeId: string) => { if (!workspaceId) throw new Error("Select a workspace before starting an application."); return startTenderApplication(noticeId, workspaceId); },
+    onSuccess: async () => { await Promise.all([queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.all }), queryClient.invalidateQueries({ queryKey: ["tenders"] }), queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] })]); },
   });
 }
 

@@ -3,6 +3,7 @@ import { createLogger } from "@rfp-os/observability";
 import { Worker } from "bullmq";
 
 import { createDocumentsWorker } from "./documents/documents.worker";
+import { createTenderDiscoveryWorker, startTenderDiscoveryScheduler } from "./tender-discovery/tender-ingestion.worker";
 import { createRedisConnection } from "./redis";
 
 const logger = createLogger("worker");
@@ -33,8 +34,10 @@ platformWorker.on("failed", (job, err) => logger.error({ jobId: job?.id, err }, 
 platformWorker.on("error", (err) => logger.error({ err }, "worker connection error"));
 
 const documentsWorker = createDocumentsWorker(connection);
+const tenderDiscoveryWorker = createTenderDiscoveryWorker(connection);
+const tenderDiscoveryScheduler = startTenderDiscoveryScheduler(connection);
 
-const workers = [platformWorker, documentsWorker];
+const workers = [platformWorker, documentsWorker, tenderDiscoveryWorker];
 
 /**
  * Graceful shutdown.
@@ -51,6 +54,7 @@ const workers = [platformWorker, documentsWorker];
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "shutting down, waiting for in-flight jobs");
   await Promise.allSettled(workers.map((w) => w.close()));
+  await tenderDiscoveryScheduler.stop();
   await connection.quit();
   process.exit(0);
 }

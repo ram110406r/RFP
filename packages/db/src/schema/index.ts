@@ -16,6 +16,7 @@ export * from "./membership";
 export * from "./foundation";
 export * from "./files";
 export * from "./knowledge";
+export * from "./tender-discovery";
 export * from "./tender";
 export * from "./rfp";
 export * from "./rfp-lifecycle";

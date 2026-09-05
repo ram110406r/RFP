@@ -29,6 +29,7 @@ import { PoliciesModule } from "./modules/policies";
 import { KnowledgeModule } from "./modules/knowledge";
 import { DashboardModule } from "./modules/dashboard";
 import { TendersModule } from "./modules/tenders";
+import { TenderDiscoveryModule } from "./modules/tender-discovery/tender-discovery.module";
 import { RolesModule } from "./modules/roles";
 import { TeamsModule } from "./modules/teams";
 import { WorkspacesModule } from "./modules/workspaces";
@@ -70,6 +71,7 @@ import { RfpApplyModule } from "./modules/rfp-apply/rfp-apply.module";
     ActivitiesModule,
     AuditsModule,
     TendersModule,
+    TenderDiscoveryModule,
     RfpApplyModule,
   ],
   providers: [

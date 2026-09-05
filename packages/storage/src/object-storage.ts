@@ -58,6 +58,12 @@ export interface PresignGetInput {
   downloadFilename?: string | undefined;
 }
 
+export interface PutObjectInput {
+  objectKey: string;
+  mimeType: string;
+  bytes: Uint8Array;
+}
+
 export class ObjectStorage {
   private readonly client: S3Client;
   private readonly presignClient: S3Client;
@@ -174,6 +180,15 @@ export class ObjectStorage {
       if (isNotFound(error)) return null;
       throw error;
     }
+  }
+
+  async putObject(input: PutObjectInput): Promise<void> {
+    await this.client.send(new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: input.objectKey,
+      ContentType: input.mimeType,
+      Body: input.bytes,
+    }));
   }
 
   /**

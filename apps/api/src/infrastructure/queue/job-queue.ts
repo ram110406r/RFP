@@ -5,6 +5,9 @@ import {
   type DocumentJobPayload,
   documentJobId,
   QUEUES,
+  tenderNoticeDocumentImportJobId,
+  TENDER_INGESTION_JOBS,
+  type TenderNoticeDocumentImportJobPayload,
 } from "@rfp-os/jobs";
 import { Queue } from "bullmq";
 import type IORedis from "ioredis";
@@ -30,6 +33,10 @@ export abstract class JobQueue {
     payload: DocumentJobPayload,
   ): Promise<EnqueueResult>;
 
+  async enqueueTenderNoticeDocument(_payload: TenderNoticeDocumentImportJobPayload): Promise<EnqueueResult> {
+    throw new Error("Tender discovery ingestion is not configured.");
+  }
+
   /** Releases transport resources. No-op for implementations that hold none. */
   abstract close(): Promise<void>;
 }
@@ -50,6 +57,7 @@ export interface EnqueueResult {
 @Injectable()
 export class BullMqJobQueue extends JobQueue {
   private readonly documents: Queue;
+  private readonly tenderIngestion: Queue;
 
   constructor(
     connection: IORedis,
@@ -57,6 +65,14 @@ export class BullMqJobQueue extends JobQueue {
   ) {
     super();
     this.documents = new Queue(QUEUES.DOCUMENTS, { connection });
+    this.tenderIngestion = new Queue(QUEUES.TENDER_INGESTION, { connection });
+  }
+
+  override async enqueueTenderNoticeDocument(payload: TenderNoticeDocumentImportJobPayload): Promise<EnqueueResult> {
+    const jobId = tenderNoticeDocumentImportJobId(payload.tenderId, payload.noticeDocumentId);
+    const existing = await this.tenderIngestion.getJob(jobId);
+    await this.tenderIngestion.add(TENDER_INGESTION_JOBS.IMPORT_DOCUMENT, payload, { ...DEFAULT_JOB_OPTIONS, jobId });
+    return { enqueued: !existing, jobId };
   }
 
   async enqueueDocumentJob(
@@ -89,6 +105,7 @@ export class BullMqJobQueue extends JobQueue {
 
   async close(): Promise<void> {
     await this.documents.close();
+    await this.tenderIngestion.close();
   }
 }
 
@@ -116,6 +133,12 @@ export class NoopJobQueue extends JobQueue {
         `The document will stay in its current status until it is reprocessed.`,
       "JobQueue",
     );
+    return { enqueued: false, jobId };
+  }
+
+  override async enqueueTenderNoticeDocument(payload: TenderNoticeDocumentImportJobPayload): Promise<EnqueueResult> {
+    const jobId = tenderNoticeDocumentImportJobId(payload.tenderId, payload.noticeDocumentId);
+    this.logger.warn(`REDIS_URL is not configured; dropping tender document import job jobId=${jobId}.`, "JobQueue");
     return { enqueued: false, jobId };
   }
 
