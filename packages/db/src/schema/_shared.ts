@@ -17,8 +17,8 @@ export const timestamps = {
  * — the same taxonomy classifies a question and the knowledge that answers it,
  * which is what makes category-based retrieval possible.
  *
- * Values intentionally mirror the frontend's TypeScript unions exactly (see
- * apps/legacy-web src/types), not the uppercase names in the implementation
+ * Values intentionally mirror the product TypeScript unions exactly, not the
+ * uppercase names in the implementation
  * plan: StatusBadge, filters, and saved views are keyed off these literal
  * strings. Reconciling the two vocabularies is Phase 7 work, done as an
  * explicit value-mapping migration.

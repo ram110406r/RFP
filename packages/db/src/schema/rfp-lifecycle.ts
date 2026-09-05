@@ -20,10 +20,8 @@ import { rfps } from "./rfp";
  * Deliberately a NEW enum on a NEW column (`rfps.lifecycle_status`) rather
  * than an expansion of `rfp_status`. That existing enum carries the
  * prototype's eight display states ("draft", "in_progress", "needs_attention",
- * ...) and is keyed off by apps/legacy-web's filters, badges and saved views
- * and by apps/legacy-api's queries. Widening it in place would either break
- * those consumers or force the state machine to treat display states as
- * lifecycle states.
+ * ...). Widening it in place would force the state machine to treat display
+ * states as lifecycle states.
  *
  * `status` therefore stays the prototype's presentation field, and
  * `lifecycle_status` is the one the state machine owns and Phase 6+ reads.

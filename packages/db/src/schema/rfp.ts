@@ -71,8 +71,7 @@ export const documentTypeEnum = pgEnum("document_type", [
  * drift on the next `db:generate`.
  *
  * `ready` is the prototype's terminal value and is deprecated in favour of
- * `parsed` — apps/legacy-web still renders it, so it stays until that app is
- * retired. New code must write `parsed`.
+ * `parsed`. New code must write `parsed`.
  */
 export const documentStatusEnum = pgEnum("document_status", [
   "uploaded",
@@ -182,7 +181,7 @@ export const rfpCollaborators = pgTable(
  *
  * `storageKey` is the prototype's inline key and is superseded by `fileId`,
  * which points at the `files` row registered at upload. New code writes
- * `fileId`; the old column stays only while apps/legacy-api reads it.
+ * `fileId`; the old column stays for existing persisted rows.
  */
 export const rfpDocuments = pgTable(
   "rfp_documents",

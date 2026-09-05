@@ -12,8 +12,8 @@
 -- disappears on rollback. rfp_documents.status is the only column of this
 -- type, so the swap touches one table.
 --
--- 'ready' is deliberately retained: apps/legacy-web still renders it. New code
--- writes 'parsed'; 'ready' is dropped when that app is retired.
+-- 'ready' is deliberately retained for existing persisted rows. New code
+-- writes 'parsed'.
 CREATE TYPE "public"."document_status_new" AS ENUM('uploaded', 'queued', 'processing', 'parsed', 'ready', 'failed', 'archived');--> statement-breakpoint
 ALTER TABLE "rfp_documents" ALTER COLUMN "status" DROP DEFAULT;--> statement-breakpoint
 ALTER TABLE "rfp_documents" ALTER COLUMN "status" TYPE "public"."document_status_new" USING "status"::text::"public"."document_status_new";--> statement-breakpoint

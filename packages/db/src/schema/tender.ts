@@ -123,6 +123,20 @@ export const tenderDocumentStatusEnum = pgEnum("tender_document_status", [
   "FAILED",
 ]);
 
+export const tenderDocumentExtractionStatusEnum = pgEnum("tender_document_extraction_status", [
+  "pending",
+  "succeeded",
+  "failed",
+]);
+
+export const tenderDocumentContentKindEnum = pgEnum("tender_document_content_kind", [
+  "page",
+  "heading",
+  "paragraph",
+  "listItem",
+  "table",
+]);
+
 export const tenderSourceKindEnum = pgEnum("tender_source_kind", [
   "DOCUMENT",
   "URL",
@@ -536,6 +550,81 @@ export const tenderDocuments = pgTable(
       t.documentId,
       t.documentRole,
     ),
+  ],
+);
+
+export const tenderDocumentExtractions = pgTable(
+  "tender_document_extractions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    tenderId: uuid("tender_id")
+      .notNull()
+      .references(() => tenders.id, { onDelete: "cascade" }),
+    tenderDocumentId: uuid("tender_document_id")
+      .notNull()
+      .references(() => tenderDocuments.id, { onDelete: "cascade" }),
+    extractor: text("extractor").notNull().default(""),
+    status: tenderDocumentExtractionStatusEnum("status").notNull().default("pending"),
+    pageCount: integer("page_count"),
+    characterCount: integer("character_count").notNull().default(0),
+    tableCount: integer("table_count").notNull().default(0),
+    failureReason: text("failure_reason"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("tender_document_extractions_document_uq").on(t.tenderDocumentId),
+    index("tender_document_extractions_org_idx").on(t.organizationId),
+    index("tender_document_extractions_workspace_idx").on(t.workspaceId),
+    index("tender_document_extractions_tender_idx").on(t.tenderId),
+    index("tender_document_extractions_org_status_idx").on(t.organizationId, t.status),
+  ],
+);
+
+export const tenderDocumentContent = pgTable(
+  "tender_document_content",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    tenderId: uuid("tender_id")
+      .notNull()
+      .references(() => tenders.id, { onDelete: "cascade" }),
+    tenderDocumentId: uuid("tender_document_id")
+      .notNull()
+      .references(() => tenderDocuments.id, { onDelete: "cascade" }),
+    extractionId: uuid("extraction_id")
+      .notNull()
+      .references(() => tenderDocumentExtractions.id, { onDelete: "cascade" }),
+    sequence: integer("sequence").notNull(),
+    pageNumber: integer("page_number"),
+    section: text("section"),
+    kind: tenderDocumentContentKindEnum("kind").notNull().default("page"),
+    text: text("text").notNull().default(""),
+    contentHash: text("content_hash").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("tender_document_content_extraction_sequence_uq").on(t.extractionId, t.sequence),
+    uniqueIndex("tender_document_content_extraction_hash_uq").on(t.extractionId, t.contentHash),
+    index("tender_document_content_org_idx").on(t.organizationId),
+    index("tender_document_content_tender_document_idx").on(t.tenderDocumentId),
+    index("tender_document_content_document_sequence_idx").on(t.tenderDocumentId, t.sequence),
+    index("tender_document_content_hash_idx").on(t.contentHash),
   ],
 );
 

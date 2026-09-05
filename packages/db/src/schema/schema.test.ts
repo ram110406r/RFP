@@ -9,7 +9,7 @@ function tableNamed(name: string): Record<string, unknown> {
 
 /**
  * Guards the domain split in this folder: the barrel is what every consumer
- * (apps/api, apps/legacy-api, drizzle.config.ts) resolves, so a domain file
+ * (apps/api, apps/worker, drizzle.config.ts) resolves, so a domain file
  * dropped from index.ts would silently remove tables from the schema —
  * and, worse, make drizzle-kit generate a migration that DROPs them.
  */
@@ -50,6 +50,8 @@ describe("schema barrel", () => {
     "tenderAnswerEvidence",
     "tenderAnswerReviews",
     "tenderDocuments",
+    "tenderDocumentExtractions",
+    "tenderDocumentContent",
     "tenderSources",
     "tenderValidationRuns",
     "savedTenders",

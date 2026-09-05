@@ -20,8 +20,8 @@ import { roles } from "./organization";
  * The seven platform roles from the implementation plan.
  *
  * Distinct from the pre-existing `member_role` enum on `users`, which carries
- * the prototype's five display tiers ("Admin", "Proposal Manager", ...) and is
- * still read by apps/legacy-web. That column stays put; this enum is the one
+ * the prototype's five display tiers ("Admin", "Proposal Manager", ...).
+ * That column stays put; this enum is the one
  * authorization actually decides on. Reconciling the prototype's vocabulary is
  * a frontend migration, not a reason to hold up the permission model.
  */

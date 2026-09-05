@@ -48,8 +48,8 @@ export const users = pgTable(
      * this phase exists to close.
      *
      * Authorization never reads this column — it reads `organization_members`.
-     * It remains only as the default tenant to activate at login, and because
-     * apps/legacy-api still resolves its dev session through it.
+     * It remains only as the default tenant to activate at login and for
+     * compatibility with seeded development sessions.
      */
     organizationId: uuid("organization_id").references(() => organizations.id, {
       onDelete: "cascade",

@@ -13,7 +13,7 @@ function readJournal(): Journal {
 }
 
 /**
- * This history was inherited from apps/legacy-api and is already applied to
+ * This history was inherited from the earlier API and is already applied to
  * live databases. Drizzle decides what to run by hashing each .sql file and
  * comparing against drizzle.__drizzle_migrations, so a renamed, reordered, or
  * edited-in-place migration would not error — it would silently re-run
@@ -41,7 +41,7 @@ describe("migration history", () => {
   });
 
   test("the inherited baseline is intact", () => {
-    // These three came from apps/legacy-api and are applied in existing
+    // These three came from the earlier API and are applied in existing
     // databases. Their names must never change.
     const tags = readJournal().entries.map((e) => e.tag);
     expect(tags.slice(0, 3)).toEqual([

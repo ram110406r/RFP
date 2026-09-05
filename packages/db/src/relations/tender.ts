@@ -9,6 +9,8 @@ import {
   tenderAnswerReviews,
   tenderAnswerVersions,
   tenderAnswers,
+  tenderDocumentContent,
+  tenderDocumentExtractions,
   tenderDocuments,
   savedTenders,
   tenderSources,
@@ -105,6 +107,27 @@ export const tenderDocumentsRelations = relations(tenderDocuments, ({ one }) => 
   tender: one(tenders, { fields: [tenderDocuments.tenderId], references: [tenders.id] }),
   source: one(tenderSources, { fields: [tenderDocuments.tenderSourceId], references: [tenderSources.id] }),
   document: one(files, { fields: [tenderDocuments.documentId], references: [files.id] }),
+}));
+
+export const tenderDocumentExtractionsRelations = relations(tenderDocumentExtractions, ({ one, many }) => ({
+  tender: one(tenders, { fields: [tenderDocumentExtractions.tenderId], references: [tenders.id] }),
+  tenderDocument: one(tenderDocuments, {
+    fields: [tenderDocumentExtractions.tenderDocumentId],
+    references: [tenderDocuments.id],
+  }),
+  content: many(tenderDocumentContent),
+}));
+
+export const tenderDocumentContentRelations = relations(tenderDocumentContent, ({ one }) => ({
+  tender: one(tenders, { fields: [tenderDocumentContent.tenderId], references: [tenders.id] }),
+  tenderDocument: one(tenderDocuments, {
+    fields: [tenderDocumentContent.tenderDocumentId],
+    references: [tenderDocuments.id],
+  }),
+  extraction: one(tenderDocumentExtractions, {
+    fields: [tenderDocumentContent.extractionId],
+    references: [tenderDocumentExtractions.id],
+  }),
 }));
 
 export const tenderSourcesRelations = relations(tenderSources, ({ one }) => ({
