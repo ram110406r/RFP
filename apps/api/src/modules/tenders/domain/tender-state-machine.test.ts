@@ -10,6 +10,7 @@ describe("Tender lifecycle", () => {
     expect(canTransitionTender("READY", "IN_PROGRESS")).toBe(true);
     expect(canTransitionTender("IN_PROGRESS", "REVIEW")).toBe(true);
     expect(canTransitionTender("REVIEW", "APPROVED")).toBe(true);
+    expect(canTransitionTender("APPROVED", "REVIEW")).toBe(true);
     expect(canTransitionTender("APPROVED", "SUBMITTED")).toBe(true);
     expect(canTransitionTender("SUBMITTED", "CLOSED")).toBe(true);
   });
@@ -23,6 +24,7 @@ describe("Tender lifecycle", () => {
   test("exposes the required permission per transition", () => {
     expect(permissionForTenderTransition("DRAFT", "INTAKE")).toBe("tender:update");
     expect(permissionForTenderTransition("REVIEW", "APPROVED")).toBe("tender:approve");
+    expect(permissionForTenderTransition("APPROVED", "REVIEW")).toBe("tender:update");
     expect(permissionForTenderTransition("APPROVED", "SUBMITTED")).toBe("tender:submit");
   });
 

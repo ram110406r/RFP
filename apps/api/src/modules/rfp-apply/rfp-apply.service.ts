@@ -1,21 +1,34 @@
-import { HttpException, Injectable } from "@nestjs/common";
+import { HttpException, Injectable, Optional } from "@nestjs/common";
 import type { AuthContext } from "@rfp-os/types";
 
 import { TendersService } from "../tenders/tenders.service";
 import type { RunRfpApplyInput } from "./dto/rfp-apply.dto";
+import { ApplyAutomationService } from "./apply-automation.service";
 
 type WorkspaceOverview = Awaited<ReturnType<TendersService["getWorkspaceOverview"]>>;
 
 @Injectable()
 export class RfpApplyService {
-  constructor(private readonly tenders: TendersService) {}
+  constructor(private readonly tenders: TendersService, @Optional() private readonly automation?: ApplyAutomationService) {}
 
   async getProgress(auth: AuthContext, tenderId: string) {
     const overview = await this.tenders.getWorkspaceOverview(auth, tenderId);
-    return this.toProgress(overview);
+    const base = this.toProgress(overview);
+    if (!this.automation) return base;
+    const [runs, packages, milestones, submissions] = await Promise.all([
+      this.automation.listRuns(auth, tenderId),
+      this.automation.listPackages(auth, tenderId),
+      this.automation.listMilestones(auth, tenderId),
+      this.automation.listSubmissions(auth, tenderId),
+    ]);
+    return { ...base, latestRun: runs.items[0] ?? null, latestPackage: packages.items[0] ?? null, milestones: milestones.items, submissions: submissions.items };
   }
 
   async run(auth: AuthContext, tenderId: string, input: RunRfpApplyInput) {
+    if (input.phase === "FULL" && this.automation) {
+      const run = await this.automation.createRun(auth, tenderId, { includePackage: false, requirementIds: input.requirementIds });
+      return { phase: input.phase, result: run, generated: run.items ?? [], progress: await this.getProgress(auth, tenderId), nextAction: "REVIEW_THEN_BUILD_AND_APPROVE_PACKAGE" };
+    }
     const generated: Array<{ requirementId: string; result?: unknown; error?: string }> = [];
     let result: unknown = null;
 
