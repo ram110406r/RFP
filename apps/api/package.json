@@ -20,6 +20,7 @@
     "@rfp-os/ai": "workspace:*",
     "@rfp-os/authorization": "workspace:*",
     "@rfp-os/db": "workspace:*",
+    "@rfp-os/document-processing": "workspace:*",
     "@rfp-os/jobs": "workspace:*",
     "@rfp-os/observability": "workspace:*",
     "@rfp-os/storage": "workspace:*",
