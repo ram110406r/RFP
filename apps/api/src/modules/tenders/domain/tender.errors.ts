@@ -145,6 +145,17 @@ export class TenderSourceStorageNotConfiguredError extends ServiceUnavailableExc
   }
 }
 
+export class TenderAiUnavailableError extends ServiceUnavailableException {
+  constructor(configurationMissing = false) {
+    super({
+      code: configurationMissing ? "TENDER_AI_NOT_CONFIGURED" : "TENDER_AI_UNAVAILABLE",
+      message: configurationMissing
+        ? "Tender analysis is not configured for this environment."
+        : "Tender analysis is temporarily unavailable. Please retry shortly.",
+    });
+  }
+}
+
 export class TenderAnswerFinalizationNotAllowedError extends ConflictException {
   constructor() {
     super({

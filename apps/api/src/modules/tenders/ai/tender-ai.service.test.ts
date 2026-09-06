@@ -3,6 +3,7 @@ import { ModelRouter } from "@rfp-os/ai";
 
 import { TenderAiService } from "./tender-ai.service";
 import { buildPromptRequest } from "./tender-ai.prompts";
+import { TenderAiUnavailableError } from "../domain/tender.errors";
 
 describe("Tender AI prompts", () => {
   test("wraps the prompt name and JSON context in a stable request shape", () => {
@@ -37,6 +38,51 @@ describe("Tender AI prompts", () => {
 });
 
 describe("TenderAiService", () => {
+  test("returns a service-unavailable error when the provider is not configured", async () => {
+    const router = {
+      complete: async () => {
+        throw new Error("GROQ_API_KEY is required to call the real GroqCloud provider.");
+      },
+    } as unknown as Pick<ModelRouter, "complete">;
+
+    const service = new TenderAiService(router as ModelRouter);
+    const request = service.getTenderBrief({
+      tender: { id: "t-1", name: "Tender", title: "Tender", tenderType: "DOCUMENT" },
+      requirements: [],
+      questions: [],
+      documents: [],
+      dates: [],
+      evidence: [],
+      missingInformation: [],
+    });
+
+    await expect(request).rejects.toBeInstanceOf(TenderAiUnavailableError);
+    await request.catch((error: TenderAiUnavailableError) => {
+      expect(error.getStatus()).toBe(503);
+      expect(error.getResponse()).toMatchObject({ code: "TENDER_AI_NOT_CONFIGURED" });
+    });
+  });
+
+  test("returns a service-unavailable error for invalid provider output", async () => {
+    const router = {
+      complete: async () => ({ content: "not-json", model: "test-model" }),
+    } as unknown as Pick<ModelRouter, "complete">;
+
+    const service = new TenderAiService(router as ModelRouter);
+    const request = service.generateClarifications({
+      tender: { id: "t-1", name: "Tender", title: "Tender", tenderType: "DOCUMENT" },
+      requirement: null,
+      evidence: [],
+      missingInformation: [],
+    });
+
+    await request.catch((error: TenderAiUnavailableError) => {
+      expect(error).toBeInstanceOf(TenderAiUnavailableError);
+      expect(error.getStatus()).toBe(503);
+      expect(error.getResponse()).toMatchObject({ code: "TENDER_AI_UNAVAILABLE" });
+    });
+  });
+
   test("parses clarifications and strips unrecognized model fields", async () => {
     const router = {
       complete: async () => ({

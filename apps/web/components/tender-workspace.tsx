@@ -60,7 +60,6 @@ import {
   useTenderQuestions,
   useTenderRequirements,
   useTenderReviews,
-  useTenderSources,
   useParseTenderSource,
   useTenderWorkspace,
   useUnsaveTender,
@@ -87,7 +86,6 @@ type RequirementsIndexClientProps = {
 export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorkspaceClientProps) {
   const overviewQuery = useTenderWorkspace(tenderId, initialOverview ?? null);
   const requirementsQuery = useTenderRequirements(tenderId, initialOverview?.requirements ? { items: initialOverview.requirements } : null);
-  const sourcesQuery = useTenderSources(tenderId);
   const parseSourceMutation = useParseTenderSource(tenderId);
   const saveTenderMutation = useSaveTender();
   const unsaveTenderMutation = useUnsaveTender();
@@ -97,7 +95,7 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
   const overview = overviewQuery.data;
   const tender = overview?.tender;
   const requirements = requirementsQuery.data?.items ?? overview?.requirements ?? [];
-  const sources = sourcesQuery.data?.items ?? overview?.sources ?? [];
+  const sources = overview?.sources ?? [];
   const documents = overview?.documents ?? [];
   const timeline = overview?.timeline ?? [];
   const counts = overview?.counts;
@@ -202,7 +200,6 @@ export function TenderWorkspaceClient({ tenderId, initialOverview }: TenderWorks
               actionLabel="Import documents"
             />
             <div className="mt-5 space-y-3">
-              {sourcesQuery.error ? <TendyyErrorState title="Unable to load tender sources" message={errorText(sourcesQuery.error)} onRetry={() => void sourcesQuery.refetch()} /> : null}
               {sources.length > 0 || documents.length > 0 ? (
                 <>
                   {sources.map((source) => (
@@ -603,7 +600,6 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
   const requirementsQuery = useTenderRequirements(tenderId);
   const answersQuery = useTenderAnswers(tenderId);
   const reviewsQuery = useTenderReviews(tenderId);
-  const sourcesQuery = useTenderSources(tenderId);
   const generateAnswer = useGenerateAnswer(tenderId);
   const regenerateAnswer = useRegenerateAnswer(tenderId);
   const improveAnswer = useImproveAnswer(tenderId);
@@ -650,7 +646,7 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
   const availableEvidence = evidenceQuery.data?.candidates ?? [];
   const answerVersions = answerVersionsQuery.data?.items ?? [];
   const answerEvidence = answerEvidenceQuery.data?.items ?? [];
-  const sources = sourcesQuery.data?.items ?? [];
+  const sources = overviewQuery.data?.sources ?? [];
   const tender = overviewQuery.data?.tender;
   const brief = briefQuery.data?.brief;
 
@@ -820,9 +816,7 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
           <div className="space-y-6">
             <RfpCard>
               <RfpSectionHeader eyebrow="Sources" title="Tender source parse state" />
-              {sourcesQuery.error ? (
-                <ErrorBanner error={sourcesQuery.error} />
-              ) : sources.length > 0 ? (
+              {sources.length > 0 ? (
                 <div className="space-y-3">
                   {sources.map((source) => (
                     <SourceCard

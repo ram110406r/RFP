@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ModelRouter } from "@rfp-os/ai";
 import type {
   AnswerAnalysisResult,
@@ -11,6 +11,7 @@ import type {
 import { z } from "zod";
 
 import { buildPromptRequest } from "./tender-ai.prompts";
+import { TenderAiUnavailableError } from "../domain/tender.errors";
 
 export type TenderAiAnswerContext = {
   tender: {
@@ -217,19 +218,23 @@ const clarificationSchema = z
 
 @Injectable()
 export class TenderAiService {
+  private readonly logger = new Logger(TenderAiService.name);
+
   constructor(private readonly router: ModelRouter) {}
 
   async improveAnswer(
     context: TenderAiAnalysisContext,
     transformation: string,
   ): Promise<AnswerImprovementResult> {
-    const response = await this.router.complete(
-      buildPromptRequest("AnswerImprovementPrompt", {
-        ...context,
-        transformation,
-      }),
-    );
-    return improvementSchema.parse(parseJson(response.content));
+    return this.runProviderCall("improve answer", async () => {
+      const response = await this.router.complete(
+        buildPromptRequest("AnswerImprovementPrompt", {
+          ...context,
+          transformation,
+        }),
+      );
+      return improvementSchema.parse(parseJson(response.content));
+    });
   }
 
   async analyzeAnswer(context: TenderAiAnalysisContext): Promise<AnswerAnalysisResult> {
@@ -238,25 +243,46 @@ export class TenderAiService {
       return normalizeAnswerAnalysis(analysisSchema.parse(parseJson(response.content)));
     } catch (error) {
       if (process.env.NODE_ENV === "production") {
-        throw error;
+        this.throwUnavailable("analyze answer", error);
       }
       return deriveAnswerAnalysisFallback(context, error instanceof Error ? error.message : String(error));
     }
   }
 
   async getTenderBrief(context: TenderAiBriefContext): Promise<TenderBriefResult> {
-    const response = await this.router.complete(buildPromptRequest("TenderBriefPrompt", context));
-    return briefSchema.parse(parseJson(response.content));
+    return this.runProviderCall("generate tender brief", async () => {
+      const response = await this.router.complete(buildPromptRequest("TenderBriefPrompt", context));
+      return briefSchema.parse(parseJson(response.content));
+    });
   }
 
   async analyzeRequirement(context: TenderAiRequirementAnalysisContext): Promise<RequirementAnalysisResult> {
-    const response = await this.router.complete(buildPromptRequest("RequirementAnalysisPrompt", context));
-    return requirementAnalysisSchema.parse(parseJson(response.content));
+    return this.runProviderCall("analyze requirement", async () => {
+      const response = await this.router.complete(buildPromptRequest("RequirementAnalysisPrompt", context));
+      return requirementAnalysisSchema.parse(parseJson(response.content));
+    });
   }
 
   async generateClarifications(context: TenderAiClarificationContext): Promise<ClarificationResult> {
-    const response = await this.router.complete(buildPromptRequest("ClarificationPrompt", context));
-    return clarificationSchema.parse(parseJson(response.content));
+    return this.runProviderCall("generate clarifications", async () => {
+      const response = await this.router.complete(buildPromptRequest("ClarificationPrompt", context));
+      return clarificationSchema.parse(parseJson(response.content));
+    });
+  }
+
+  private async runProviderCall<T>(operation: string, call: () => Promise<T>): Promise<T> {
+    try {
+      return await call();
+    } catch (error) {
+      this.throwUnavailable(operation, error);
+    }
+  }
+
+  private throwUnavailable(operation: string, error: unknown): never {
+    if (error instanceof TenderAiUnavailableError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.error(`Unable to ${operation}: ${message}`, error instanceof Error ? error.stack : undefined);
+    throw new TenderAiUnavailableError(message.includes("GROQ_API_KEY"));
   }
 }
 
