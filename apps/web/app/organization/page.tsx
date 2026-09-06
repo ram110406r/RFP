@@ -6,6 +6,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Building2, ChevronRight, FileText, LayoutGrid, ShieldCheck, Users } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
+import { TendyyResponsiveNav } from "../../components/tendyy-ui";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { RfpEmptyState, RfpStatusBadge } from "../../components/rfp-foundation";
 import { Button } from "@rfp-os/ui";
@@ -273,24 +274,7 @@ export default function OrganizationPage() {
           ) : null}
         </header>
 
-        <nav className="flex gap-2 overflow-x-auto border-b border-slate-200 pb-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              aria-selected={activeTab === tab.id}
-              className={[
-                "whitespace-nowrap border-b-2 px-1 pb-2 text-[13px] font-semibold transition",
-                activeTab === tab.id
-                  ? "border-[#155EEF] text-[#155EEF]"
-                  : "border-transparent text-slate-700 hover:text-slate-950",
-              ].join(" ")}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+        <TendyyResponsiveNav label="Organization section" value={activeTab} items={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} onChange={(value) => setActiveTab(value as (typeof tabs)[number]["id"])} />
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-5">
@@ -339,8 +323,8 @@ export default function OrganizationPage() {
                 <EmptyNotice title="Member roster unavailable" description="You do not have permission to list organization members, or the service is temporarily unavailable." />
               ) : members.length > 0 ? (
                 <div className="mt-4 overflow-hidden rounded-[10px] border border-slate-200">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-[980px] w-full border-separate border-spacing-0 text-left">
+                  <div className="hidden xl:block">
+                    <table className="w-full table-fixed border-separate border-spacing-0 text-left">
                       <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                         <tr>
                           <Th>Member</Th>
@@ -409,6 +393,7 @@ export default function OrganizationPage() {
                       </tbody>
                     </table>
                   </div>
+                  <div className="grid gap-2 p-3 xl:hidden">{members.map((member) => <article key={member.userId} className="min-w-0 border border-slate-200 bg-white p-3"><div className="flex min-w-0 items-start gap-3"><Avatar name={member.name} /><div className="min-w-0 flex-1"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="tendyy-wrap-anywhere font-semibold text-slate-950">{member.name}</p><p className="tendyy-wrap-anywhere text-xs text-slate-500">{member.email}</p></div><RfpStatusBadge tone={member.status === "active" ? "success" : "warning"}>{formatStatus(member.status)}</RfpStatusBadge></div><p className="mt-2 text-xs text-slate-600">{member.team || "Unassigned"} · {member.jobTitle || "Member"}</p><p className="mt-1 text-xs text-slate-500">Joined {relativeTime(member.joinedAt)}</p></div></div><div className="mt-3 flex min-w-0 flex-wrap gap-2"><select value={member.role} aria-label={`Change ${member.name}'s role`} disabled={!canUpdateMembers} onChange={(event) => updateMemberMutation.mutate({ userId: member.userId, body: { role: event.target.value as "OWNER" | "ADMIN" | "RFP_MANAGER" | "CONTRIBUTOR" | "REVIEWER" | "SME" | "VIEWER" } })} className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700">{(["OWNER", "ADMIN", "RFP_MANAGER", "CONTRIBUTOR", "REVIEWER", "SME", "VIEWER"] as const).map((role) => <option key={role} value={role}>{formatRole(role)}</option>)}</select>{canUpdateMembers ? <button type="button" onClick={() => updateMemberMutation.mutate({ userId: member.userId, body: { status: member.status === "suspended" ? "active" : "suspended" } })} className="h-9 rounded-md border border-slate-200 px-3 text-xs font-semibold text-slate-700">{member.status === "suspended" ? "Reactivate" : "Suspend"}</button> : null}{canRemoveMembers ? <button type="button" onClick={() => { if (window.confirm(`Remove ${member.email} from this company?`)) removeMemberMutation.mutate(member.userId); }} className="h-9 rounded-md border border-rose-200 px-3 text-xs font-semibold text-rose-700">Remove</button> : null}</div></article>)}</div>
                 </div>
               ) : (
                 <div className="mt-4">
@@ -478,8 +463,8 @@ export default function OrganizationPage() {
                 <EmptyNotice title="Team data unavailable" description="You do not have permission to list teams, or the service is temporarily unavailable." />
               ) : teamRows.length > 0 ? (
                 <div className="mt-4 overflow-hidden rounded-[10px] border border-slate-200">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-[820px] w-full border-separate border-spacing-0 text-left">
+                  <div className="hidden xl:block">
+                    <table className="w-full table-fixed border-separate border-spacing-0 text-left">
                       <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                         <tr>
                           <Th>Team</Th>
@@ -520,6 +505,7 @@ export default function OrganizationPage() {
                       </tbody>
                     </table>
                   </div>
+                  <div className="grid gap-2 p-3 xl:hidden">{teamRows.map(({ team, memberCount, members: teamMembers, loading, error }) => <article key={team.id} className="min-w-0 border border-slate-200 bg-white p-3"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0 flex-1"><p className="tendyy-wrap-anywhere font-semibold text-slate-950">{team.name}</p><p className="tendyy-wrap-anywhere mt-1 text-xs text-slate-500">{team.description || "No description"}</p></div><RfpStatusBadge tone={team.status === "active" ? "success" : "neutral"}>{formatStatus(team.status)}</RfpStatusBadge></div><div className="mt-3 grid grid-cols-2 gap-3 text-xs"><span><b className="block text-[10px] uppercase text-slate-400">Workspace</b>{workspaceLabel(team.workspaceId, workspaces)}</span><span><b className="block text-[10px] uppercase text-slate-400">Members</b>{loading ? "Loading..." : error ? "Unavailable" : formatCount(memberCount ?? 0)}</span><span><b className="block text-[10px] uppercase text-slate-400">Updated</b>{relativeTime(team.updatedAt)}</span></div><div className="mt-3 flex flex-wrap gap-3">{canManageTeamMembers ? <button type="button" onClick={() => setTeamPeopleId(team.id)} className="text-xs font-semibold text-[#155EEF]">Manage members ({teamMembers.length})</button> : null}{canArchiveTeam ? <button type="button" onClick={() => { if (window.confirm(`Archive ${team.name}?`)) archiveTeamMutation.mutate(team.id); }} className="text-xs font-semibold text-rose-700">Archive</button> : null}</div></article>)}</div>
                 </div>
               ) : (
                 <div className="mt-4">
@@ -587,8 +573,8 @@ export default function OrganizationPage() {
                 <EmptyNotice title="Workspace data unavailable" description="You do not have permission to list workspaces, or the service is temporarily unavailable." />
               ) : workspaceRows.length > 0 ? (
                 <div className="mt-4 overflow-hidden rounded-[10px] border border-slate-200">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-[760px] w-full border-separate border-spacing-0 text-left">
+                  <div className="hidden xl:block">
+                    <table className="w-full table-fixed border-separate border-spacing-0 text-left">
                       <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                         <tr>
                           <Th>Workspace</Th>
@@ -627,6 +613,7 @@ export default function OrganizationPage() {
                       </tbody>
                     </table>
                   </div>
+                  <div className="grid gap-2 p-3 xl:hidden">{workspaceRows.map(({ workspace, memberCount, members: workspaceMembers, loading, error }) => <article key={workspace.id} className="min-w-0 border border-slate-200 bg-white p-3"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0 flex-1"><p className="tendyy-wrap-anywhere font-semibold text-slate-950">{workspace.name}</p><p className="tendyy-wrap-anywhere mt-1 text-xs text-slate-500">{workspace.description || "No description"}</p></div><RfpStatusBadge tone={workspace.status === "active" ? "success" : "neutral"}>{formatStatus(workspace.status)}</RfpStatusBadge></div><div className="mt-3 grid grid-cols-2 gap-3 text-xs"><span><b className="block text-[10px] uppercase text-slate-400">Slug</b><span className="tendyy-wrap-anywhere">{workspace.slug}</span></span><span><b className="block text-[10px] uppercase text-slate-400">Members</b>{loading ? "Loading..." : error ? "Unavailable" : formatCount(memberCount ?? 0)}</span></div><div className="mt-3 flex flex-wrap gap-3">{canManageWorkspaceMembers ? <button type="button" onClick={() => setWorkspacePeopleId(workspace.id)} className="text-xs font-semibold text-[#155EEF]">Manage members ({workspaceMembers.length})</button> : null}{canArchiveWorkspace && workspace.status === "active" ? <button type="button" onClick={() => { if (window.confirm(`Archive ${workspace.name}?`)) archiveWorkspaceMutation.mutate(workspace.id); }} className="text-xs font-semibold text-rose-700">Archive</button> : null}</div></article>)}</div>
                 </div>
               ) : (
                 <div className="mt-4">
@@ -856,7 +843,7 @@ function WorkspacePeopleDialog({
   const assignedMemberIds = new Set(workspaceMembers.filter((member) => member.status === "active").map((member) => member.organizationMemberId));
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true">
-      <section className="w-full max-w-2xl rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl">
+      <section className="max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-2xl overflow-y-auto overflow-x-hidden rounded-[12px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-5">
         <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#155EEF]">Workspace access</p><h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{workspace.name} people</h2><p className="mt-2 text-sm text-slate-600">Adding access does not change company membership. Removing the final workspace leaves the member in an access-required state.</p></div><button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100">Close</button></div>
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           <div><p className="text-sm font-semibold text-slate-900">Current access</p><div className="mt-2 space-y-2">{workspaceMembers.filter((member) => member.status === "active").map((member) => <div key={member.organizationMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="truncate text-xs text-slate-500">{member.email}</p></div><button type="button" disabled={removing} onClick={() => onRemove(workspace.id, member.organizationMemberId)} className="text-xs font-semibold text-rose-700 disabled:opacity-60">Remove</button></div>)}{workspaceMembers.filter((member) => member.status === "active").length === 0 ? <p className="text-sm text-slate-500">No active workspace members.</p> : null}</div></div>
@@ -891,7 +878,7 @@ function TeamPeopleDialog({
   const eligibleMembers = workspaceMembers.filter((member) => member.status === "active" && !assignedMemberIds.has(member.organizationMemberId));
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true">
-      <section className="w-full max-w-2xl rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl">
+      <section className="max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-2xl overflow-y-auto overflow-x-hidden rounded-[12px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-5">
         <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#155EEF]">Team membership</p><h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{team.name} members</h2><p className="mt-2 text-sm text-slate-600">Only people with active access to this team&apos;s workspace can be added.</p></div><button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100">Close</button></div>
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           <div><p className="text-sm font-semibold text-slate-900">Current team</p><div className="mt-2 space-y-2">{teamMembers.map((member) => <div key={member.organizationMemberId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{member.name}</p><p className="truncate text-xs text-slate-500">{member.email}</p></div><button type="button" disabled={removing} onClick={() => onRemove(team.id, member.organizationMemberId)} className="text-xs font-semibold text-rose-700 disabled:opacity-60">Remove</button></div>)}{teamMembers.length === 0 ? <p className="text-sm text-slate-500">No team members yet.</p> : null}</div></div>
@@ -919,13 +906,13 @@ function WorkspaceDialog({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true">
-      <form className="w-full max-w-lg rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl" onSubmit={(event) => { event.preventDefault(); onCreate({ name, slug, description: description || undefined }); }}>
+      <form className="max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-lg overflow-y-auto overflow-x-hidden rounded-[12px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-5" onSubmit={(event) => { event.preventDefault(); onCreate({ name, slug, description: description || undefined }); }}>
         <h2 className="text-xl font-semibold tracking-tight text-slate-950">Create workspace</h2>
         <p className="mt-2 text-sm text-slate-600">The creator is added automatically. Invite or add other company members after creation.</p>
         <label className="mt-4 block text-sm font-medium text-slate-700">Name<input required value={name} onChange={(event) => { setName(event.target.value); if (!slug) setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")); }} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
         <label className="mt-3 block text-sm font-medium text-slate-700">Slug<input required pattern="[a-z0-9-]+" value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase())} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
         <label className="mt-3 block text-sm font-medium text-slate-700">Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} className="mt-1.5 min-h-20 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
-        <div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" disabled={pending}>{pending ? "Creating..." : "Create workspace"}</Button></div>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" disabled={pending}>{pending ? "Creating..." : "Create workspace"}</Button></div>
       </form>
     </div>
   );
@@ -950,13 +937,13 @@ function TeamDialog({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true">
-      <form className="w-full max-w-lg rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl" onSubmit={(event) => { event.preventDefault(); onCreate({ name, workspaceId, description: description || undefined }); }}>
+      <form className="max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-lg overflow-y-auto overflow-x-hidden rounded-[12px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-5" onSubmit={(event) => { event.preventDefault(); onCreate({ name, workspaceId, description: description || undefined }); }}>
         <h2 className="text-xl font-semibold tracking-tight text-slate-950">Create workspace team</h2>
         <p className="mt-2 text-sm text-slate-600">Teams always belong to one workspace. Only its active members can be added.</p>
         <label className="mt-4 block text-sm font-medium text-slate-700">Name<input required value={name} onChange={(event) => setName(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
         <label className="mt-3 block text-sm font-medium text-slate-700">Workspace<select required value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5"><option value="">Select workspace</option>{workspaces.filter((workspace) => workspace.status === "active").map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}</select></label>
         <label className="mt-3 block text-sm font-medium text-slate-700">Description<textarea value={description} onChange={(event) => setDescription(event.target.value)} className="mt-1.5 min-h-20 w-full rounded-lg border border-slate-200 px-3 py-2.5" /></label>
-        <div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" disabled={pending}>{pending ? "Creating..." : "Create team"}</Button></div>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" disabled={pending}>{pending ? "Creating..." : "Create team"}</Button></div>
       </form>
     </div>
   );
@@ -992,7 +979,7 @@ function InviteMemberDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-labelledby="invite-member-title">
-      <section className="w-full max-w-lg rounded-[12px] border border-slate-200 bg-white p-5 shadow-2xl">
+      <section className="max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-lg overflow-y-auto overflow-x-hidden rounded-[12px] border border-slate-200 bg-white p-4 shadow-2xl sm:p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#155EEF]">Workspace access</p>
@@ -1006,7 +993,7 @@ function InviteMemberDialog({
           <div className="mt-5 rounded-[10px] border border-emerald-200 bg-emerald-50 p-4">
             <p className="text-sm font-semibold text-emerald-900">Invitation ready</p>
             <p className="mt-1 text-sm text-emerald-800">Share this link only with the invited employee.</p>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex min-w-0 flex-col gap-2 sm:flex-row">
               <input readOnly value={invitationLink} className="min-w-0 flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs text-slate-700" />
               <Button type="button" variant="primary" onClick={() => void navigator.clipboard?.writeText(invitationLink)}>Copy link</Button>
             </div>

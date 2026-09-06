@@ -31,6 +31,9 @@ apps/extension/build/
 
 # NestJS
 apps/api/dist/
+apps/web/.auth/
+apps/web/test-results/*.png
+apps/web/test-results/*/
 
 # Wrangler / Cloudflare
 .wrangler/

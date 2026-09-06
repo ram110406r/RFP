@@ -63,20 +63,56 @@ body {
   min-height: 100%;
 }
 
-html {
-  overflow-x: hidden;
-}
-
 body {
   margin: 0;
-  min-width: 320px;
-  overflow-x: hidden;
+  min-width: 0;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
   line-height: 1.45;
   background: var(--bg-deep);
   color: var(--text);
   text-rendering: geometricPrecision;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+pre,
+code {
+  overflow-wrap: normal;
+}
+
+pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.tendyy-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.tendyy-page {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 a {

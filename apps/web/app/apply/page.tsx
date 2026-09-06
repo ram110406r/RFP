@@ -26,6 +26,7 @@ import {
 import { AppShell } from "../../components/app-shell";
 import { RfpEmptyState, RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import { TendyyResponsiveDataView, TendyyResponsiveNav } from "../../components/tendyy-ui";
 import type { DashboardTenderCard, TenderAutomationRun, TenderSubmissionPackage } from "../../lib/models";
 import { useDashboardSummary } from "../../lib/queries";
 import { fetchTenderAutomationRuns, fetchTenderPackages } from "../../lib/api";
@@ -150,9 +151,9 @@ function ApplyInbox() {
           </div>
         </section>
 
-        <div className="flex items-end justify-between gap-4 border-b border-[#E4E7EC] overflow-x-auto">
-          <div className="flex min-w-max items-center gap-5">{tabs.map((item) => <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`relative whitespace-nowrap pb-3 text-sm font-semibold ${tab === item.key ? "text-[#155EEF] after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-[#155EEF]" : "text-[#667085] hover:text-[#344054]"}`}>{item.label}</button>)}</div>
-          <button type="button" onClick={() => void summaryQuery.refetch()} className="mb-2 hidden shrink-0 items-center gap-1 text-xs font-semibold text-[#155EEF] sm:flex"><RefreshCw className="h-3.5 w-3.5" />Refresh</button>
+        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0 flex-1"><TendyyResponsiveNav label="Application view" value={tab} items={tabs.map((item) => ({ value: item.key, label: item.label }))} onChange={(value) => setTab(value as ApplicationTab)} /></div>
+          <button type="button" onClick={() => void summaryQuery.refetch()} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#155EEF]"><RefreshCw className="h-3.5 w-3.5" />Refresh</button>
         </div>
 
         <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.8fr)_minmax(300px,0.8fr)]">
@@ -176,8 +177,17 @@ function FilterSelect({ label, value, options, onChange, icon }: { label: string
 }
 
 function ApplicationTable({ rows, sourceRows, automation, packages }: { rows: DashboardTenderCard[]; sourceRows: DashboardTenderCard[]; automation: Array<TenderAutomationRun | null>; packages: Array<TenderSubmissionPackage | null> }) {
-  return <div className="overflow-x-auto"><table className="min-w-[850px] w-full border-collapse text-left"><thead className="border-y border-[#F2F4F7] bg-[#FCFCFD] text-[10px] font-semibold uppercase tracking-[0.08em] text-[#667085]"><tr><th className="px-4 py-3">Application</th><th className="px-3 py-3">Tender / Authority</th><th className="px-3 py-3">Deadline</th><th className="px-3 py-3">Progress</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Risks</th><th className="px-3 py-3">Last activity</th><th className="px-3 py-3" /></tr></thead><tbody className="divide-y divide-[#F2F4F7]">{rows.map((row) => { const index = sourceRows.findIndex((item) => item.tender.id === row.tender.id); return <ApplicationRow key={row.tender.id} row={row} automation={automation[index] ?? null} submissionPackage={packages[index] ?? null} />; })}</tbody></table></div>;
+  const resolved = rows.map((row) => { const index = sourceRows.findIndex((item) => item.tender.id === row.tender.id); return { row, automation: automation[index] ?? null, submissionPackage: packages[index] ?? null }; });
+  return <TendyyResponsiveDataView desktop={<table className="w-full table-fixed border-collapse text-left"><thead className="border-y border-[#F2F4F7] bg-[#FCFCFD] text-[10px] font-semibold uppercase tracking-[0.08em] text-[#667085]"><tr><th className="w-[25%] px-4 py-3">Application</th><th className="px-3 py-3">Tender / Authority</th><th className="px-3 py-3">Deadline</th><th className="px-3 py-3">Progress</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Risks</th><th className="px-3 py-3">Last activity</th><th className="w-24 px-3 py-3" /></tr></thead><tbody className="divide-y divide-[#F2F4F7]">{resolved.map((item) => <ApplicationRow key={item.row.tender.id} {...item} />)}</tbody></table>} mobile={<div className="space-y-3 p-3 sm:p-4">{resolved.map((item) => <ApplicationCard key={item.row.tender.id} {...item} />)}</div>} />;
 }
+
+function ApplicationCard({ row, automation, submissionPackage }: { row: DashboardTenderCard; automation: TenderAutomationRun | null; submissionPackage: TenderSubmissionPackage | null }) {
+  const tender = row.tender;
+  const readiness = Math.max(0, Math.min(100, row.readiness ?? 0));
+  return <article className="min-w-0 border border-[#E4E7EC] bg-white p-4"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0 flex-1"><Link href={`/apply/${tender.id}`} className="tendyy-wrap-anywhere block text-sm font-semibold leading-5 text-[#101828]">{tender.title}</Link><p className="tendyy-wrap-anywhere mt-1 text-[11px] text-[#667085]">ID: {tender.referenceNumber ?? tender.id}</p></div><RfpStatusBadge tone={statusTone(tender.status)}>{applicationStatus(tender.status)}</RfpStatusBadge></div><p className="tendyy-wrap-anywhere mt-3 text-xs text-[#344054]">{tender.name}</p><div className="mt-3 grid grid-cols-2 gap-3 text-[11px]"><CardDetail label="Deadline" value={`${formatDate(tender.dueAt)} · ${daysLeftLabel(tender.dueAt)}`} /><CardDetail label="Progress" value={row.readiness === null ? "Not calculated" : `${row.readiness}%`} /><CardDetail label="Reviews" value={`${row.pendingReviews} pending`} /><CardDetail label="Risks" value={`${row.blockingIssueCount} blocking`} /><CardDetail label="Preparation" value={submissionPackage ? `Package v${submissionPackage.version} ${formatStatus(submissionPackage.status)}` : automation ? formatStatus(automation.status) : "Not prepared"} /><CardDetail label="Updated" value={relativeTime(tender.updatedAt)} /></div><div className="mt-3 h-1.5 rounded-full bg-[#E4E7EC]"><div className="h-1.5 rounded-full bg-[#155EEF]" style={{ width: `${readiness}%` }} /></div><Link href={`/apply/${tender.id}`} className="mt-4 inline-flex h-9 items-center rounded-[8px] border border-[#155EEF] px-3 text-xs font-semibold text-[#155EEF]">Continue application</Link></article>;
+}
+
+function CardDetail({ label, value }: { label: string; value: string }) { return <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#98A2B3]">{label}</p><p className="tendyy-wrap-anywhere mt-1 font-medium text-[#344054]">{value}</p></div>; }
 
 function ApplicationRow({ row, automation, submissionPackage }: { row: DashboardTenderCard; automation: TenderAutomationRun | null; submissionPackage: TenderSubmissionPackage | null }) {
   const tender = row.tender;
