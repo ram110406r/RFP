@@ -11,7 +11,6 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
-  FileCheck2,
   FilePlus2,
   FileText,
   Filter,
@@ -31,6 +30,7 @@ import { useActivities, useDashboardSummary, useKnowledgeItem, useKnowledgeList,
 import type { ActivityItem, DashboardOverview, KnowledgeItem } from "../lib/models";
 import { useFirebaseSession } from "./firebase-auth-gate";
 import { RfpEmptyState, RfpErrorState } from "./rfp-foundation";
+import { TendyyResponsiveDataView } from "./tendyy-ui";
 
 type KnowledgeTab =
   | "all"
@@ -304,7 +304,7 @@ function KnowledgeBrowser() {
         </div>
       </section>
 
-      <section className="grid gap-3 rounded-[10px] border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(16,24,40,0.04)] lg:grid-cols-[minmax(0,1fr)_160px]">
+      <section className="grid min-w-0 gap-3 rounded-[10px] border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(16,24,40,0.04)] lg:grid-cols-[minmax(0,1fr)_auto]">
         <label className="flex h-12 items-center gap-3 rounded-[8px] border border-[#D0D5DD] px-4 text-[#667085] focus-within:border-[#155EEF]">
           <Search className="h-4 w-4 shrink-0" />
           <input
@@ -323,7 +323,7 @@ function KnowledgeBrowser() {
           </span>
         </label>
 
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <SelectChip
             label="Type"
             value={activeTab}
@@ -388,8 +388,8 @@ function KnowledgeBrowser() {
         />
       </section>
 
-      <section className="overflow-x-auto border-b border-[#E4E7EC]">
-        <div className="flex min-w-max items-center gap-5">
+      <section className="hidden border-b border-[#E4E7EC] xl:block">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
           {KNOWLEDGE_TABS.map((tab) => (
             <button
               key={tab.key}
@@ -411,7 +411,7 @@ function KnowledgeBrowser() {
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.75fr)_minmax(300px,0.82fr)]">
         <main className="min-w-0 space-y-5">
           <Panel title="RECENT KNOWLEDGE" actionHref="/knowledge" actionLabel="View All Knowledge">
-            <div className="hidden lg:block">
+            <div className="hidden xl:block">
               <KnowledgeTable
                 items={visibleKnowledge}
                 loading={listQuery.isLoading}
@@ -421,7 +421,7 @@ function KnowledgeBrowser() {
               />
             </div>
 
-            <div className="grid gap-3 lg:hidden">
+            <div className="grid gap-3 xl:hidden">
               {listQuery.isLoading ? <KnowledgeMobileSkeleton /> : null}
               {!listQuery.isLoading && visibleKnowledge.length > 0 ? (
                 visibleKnowledge.map((item) => <KnowledgeMobileCard key={item.id} item={item} />)
@@ -458,8 +458,7 @@ function KnowledgeBrowser() {
           </Panel>
 
           <Panel title="RECENTLY USED IN APPLICATIONS" actionHref="/apply" actionLabel="View All">
-            <div className="overflow-x-auto">
-              <table className="min-w-[760px] w-full border-collapse text-left">
+            <TendyyResponsiveDataView desktop={<table className="w-full table-fixed border-collapse text-left">
                 <thead className="border-b border-[#F2F4F7] bg-[#FCFCFD] text-[10px] font-semibold uppercase tracking-[0.08em] text-[#667085]">
                   <tr>
                     <th className="px-4 py-3">Knowledge</th>
@@ -496,8 +495,7 @@ function KnowledgeBrowser() {
                     </tr>
                   )}
                 </tbody>
-              </table>
-            </div>
+              </table>} mobile={<div className="space-y-2">{usageRows.length ? usageRows.map((row) => <Link key={row.title} href={`/knowledge/${row.id ?? row.title}`} className="block min-w-0 border border-[#E4E7EC] bg-white p-3"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><span className="tendyy-wrap-anywhere min-w-0 flex-1 text-sm font-semibold text-[#101828]">{row.title}</span><Pill tone={row.impact === "High" ? "success" : row.impact === "Medium" ? "warning" : "neutral"}>{row.impact}</Pill></div><div className="mt-3 grid grid-cols-2 gap-3 text-xs text-[#667085]"><span><b className="block text-[10px] uppercase">Type</b>{row.type}</span><span><b className="block text-[10px] uppercase">Used in</b>{row.usedIn}</span><span><b className="block text-[10px] uppercase">Last used</b>{row.lastUsed}</span></div></Link>) : <p className="py-4 text-sm text-[#667085]">No usage data available yet.</p>}</div>} />
           </Panel>
         </main>
 
@@ -909,8 +907,8 @@ function KnowledgeTable({
   if (items.length === 0) return <RfpEmptyState title="No knowledge in this category." description="Upload your first document or create reusable knowledge for your RFP responses." actionLabel="+ Add Knowledge" actionHref="/tenders/import" />;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-[980px] w-full border-collapse text-left">
+    <div className="min-w-0 max-w-full overflow-hidden">
+      <table className="w-full table-fixed border-collapse text-left">
         <thead className="border-b border-[#F2F4F7] bg-[#FCFCFD] text-[10px] font-semibold uppercase tracking-[0.08em] text-[#667085]">
           <tr>
             <th className="px-4 py-3">Knowledge</th>

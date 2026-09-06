@@ -418,7 +418,7 @@ function OperationalDocumentContentPanel({
         ) : query.error ? (
           <TendyyErrorState title="Unable to load extracted content" message={errorText(query.error)} onRetry={() => void query.refetch()} />
         ) : query.data?.content.length ? (
-          <div className="max-h-[520px] space-y-3 overflow-auto rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-white p-3">
+          <div className="max-h-[520px] min-w-0 space-y-3 overflow-y-auto overflow-x-hidden rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-white p-3">
             {query.data.content.map((content) => (
               <article key={content.id} className="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--neutral-soft)] p-3">
                 <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
@@ -426,7 +426,7 @@ function OperationalDocumentContentPanel({
                   <span>{content.kind}</span>
                   {content.section ? <span className="normal-case tracking-normal">{content.section}</span> : null}
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[var(--text)]">{content.text}</p>
+                <p className="tendyy-wrap-anywhere mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[var(--text)]">{content.text}</p>
               </article>
             ))}
           </div>

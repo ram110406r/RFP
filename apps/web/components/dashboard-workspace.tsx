@@ -23,6 +23,7 @@ import {
 
 import { AppShell } from "./app-shell";
 import { RfpEmptyState, RfpStatusBadge, statusTone } from "./rfp-foundation";
+import { TendyyResponsiveDataView } from "./tendyy-ui";
 import type { DashboardOverview, DashboardTenderCard } from "../lib/models";
 import { useDashboardSummary } from "../lib/queries";
 
@@ -166,11 +167,11 @@ function PipelineSnapshot({ pipeline }: { pipeline: Array<{ id: string; label: s
   return (
     <article className="min-w-0 border border-[#E4E7EC] bg-white">
       <PanelHeader title="Pipeline snapshot" actionLabel="View pipeline" actionHref="/pipeline" />
-      <div className="scrollbar-hide overflow-x-auto px-4 pb-4 sm:px-5">
+      <div className="min-w-0 px-4 pb-4 sm:px-5">
         {pipeline.length > 0 ? (
-          <div className="grid min-w-[680px] grid-cols-6 divide-x divide-[#E4E7EC] border-t border-[#E4E7EC]">
+          <div className="grid min-w-0 grid-cols-2 gap-px border-t border-[#E4E7EC] bg-[#E4E7EC] sm:grid-cols-3 xl:grid-cols-6">
             {pipeline.map((stage) => (
-              <div key={stage.id} className="min-w-0 px-3 pt-4 first:pl-0 last:pr-0 sm:px-4">
+              <div key={stage.id} className="min-w-0 bg-white px-3 py-4 sm:px-4">
                 <p className="truncate text-xs font-medium text-[#667085]">{stage.label}</p>
                 <p className="mt-3 text-[19px] font-semibold text-[#101828]">{stage.count}</p>
                 <p className="mt-1 text-xs text-[#667085]">active items</p>
@@ -229,8 +230,7 @@ function ActiveTenders({ rows, loading }: { rows: DashboardTenderCard[]; loading
   return (
     <article className="min-w-0 border border-[#E4E7EC] bg-white">
       <PanelHeader title={`Active tenders (${rows.length})`} actionLabel="View all" actionHref="/tenders" />
-      <div className="scrollbar-hide overflow-x-auto">
-        <table className="min-w-[780px] w-full border-collapse text-left">
+      <TendyyResponsiveDataView desktop={<table className="w-full table-fixed border-collapse text-left">
           <thead className="border-y border-[#F2F4F7] bg-[#FCFCFD] text-[11px] font-semibold uppercase tracking-[0.08em] text-[#667085]">
             <tr>
               <th className="px-5 py-3">Tender</th>
@@ -255,8 +255,7 @@ function ActiveTenders({ rows, loading }: { rows: DashboardTenderCard[]; loading
               </tr>
             )}
           </tbody>
-        </table>
-      </div>
+        </table>} mobile={<div className="space-y-3 p-3 sm:p-4">{loading && rows.length === 0 ? <p className="py-6 text-sm text-[#667085]">Loading active tenders...</p> : rows.length ? rows.map((row) => <TenderCard key={row.tender.id} row={row} />) : <RfpEmptyState title="No active tenders" description="Create or import an RFP to populate this operational view." actionHref="/tenders/new" actionLabel="Create tender" />}</div>} />
     </article>
   );
 }
@@ -279,6 +278,10 @@ function TenderRow({ row }: { row: DashboardTenderCard }) {
       <td className="px-5 py-4"><ProgressCell value={row.readiness} /></td>
     </tr>
   );
+}
+
+function TenderCard({ row }: { row: DashboardTenderCard }) {
+  return <article className="min-w-0 border border-[#E4E7EC] bg-white p-4"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><Link href={`/tenders/${row.tender.id}`} className="tendyy-wrap-anywhere min-w-0 flex-1 text-sm font-semibold text-[#101828]">{row.tender.title}</Link><RfpStatusBadge tone={statusTone(row.tender.status)}>{formatStatus(row.tender.status)}</RfpStatusBadge></div><p className="tendyy-wrap-anywhere mt-1 text-xs text-[#667085]">{row.tender.referenceNumber ?? row.tender.name}</p><div className="mt-3 grid grid-cols-2 gap-3 text-xs"><span><b className="block text-[10px] uppercase text-[#98A2B3]">Organization</b>{row.tender.name}</span><span><b className="block text-[10px] uppercase text-[#98A2B3]">Deadline</b>{formatDate(row.tender.dueAt)}</span><span><b className="block text-[10px] uppercase text-[#98A2B3]">Value</b>{getTenderValue(row.tender.metadata)}</span><span><b className="block text-[10px] uppercase text-[#98A2B3]">Progress</b>{row.readiness === null ? "Not calculated" : `${row.readiness}%`}</span></div><div className="mt-3"><ProgressCell value={row.readiness} /></div></article>;
 }
 
 function ImportantAlerts({

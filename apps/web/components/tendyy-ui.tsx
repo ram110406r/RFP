@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { ArrowRight, CircleAlert, LockKeyhole, RefreshCw } from "lucide-react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { ArrowRight, CircleAlert, LockKeyhole, RefreshCw, X } from "lucide-react";
 
 import { Button, cn } from "@rfp-os/ui";
 
@@ -117,14 +117,75 @@ export function TendyyStatusBadge({ tone = "neutral", children }: { tone?: Tendy
   return <span className={cn("inline-flex h-6 items-center rounded-full border px-2.5 text-[11px] font-semibold", toneBadgeClass(tone))}>{children}</span>;
 }
 
-export function TendyyTable({ children, minWidth = 760 }: { children: ReactNode; minWidth?: number }) {
+export function TendyyTable({ children, mobile, minWidth = 760 }: { children: ReactNode; mobile?: ReactNode; minWidth?: number }) {
+  void minWidth;
   return (
-    <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-white">
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left text-[13px]" style={{ minWidth }}>{children}</table>
-      </div>
+    <div className="min-w-0 max-w-full overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-white">
+      <div className={mobile ? "hidden xl:block" : "block"}><table className="w-full table-fixed border-collapse text-left text-[13px]">{children}</table></div>
+      {mobile ? <div className="min-w-0 xl:hidden">{mobile}</div> : null}
     </div>
   );
+}
+
+export type TendyyNavItem = { value: string; label: string };
+
+export function TendyyResponsiveNav({ items, value, onChange, label = "Section" }: { items: TendyyNavItem[]; value: string; onChange: (value: string) => void; label?: string }) {
+  return <>
+    <label className="block min-w-0 md:hidden">
+      <span className="sr-only">{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full min-w-0 rounded-[var(--radius-sm)] border border-[var(--border)] bg-white px-3 text-sm font-semibold text-[var(--text-soft)]" aria-label={label}>
+        {items.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+      </select>
+    </label>
+    <nav className="hidden min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--border)] md:flex" aria-label={label}>
+      {items.map((item) => <button type="button" key={item.value} onClick={() => onChange(item.value)} aria-current={value === item.value ? "page" : undefined} className={cn("relative pb-3 text-[13px] font-semibold", value === item.value ? "text-[var(--primary)] after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-[var(--primary)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]")}>{item.label}</button>)}
+    </nav>
+  </>;
+}
+
+export function TendyyResponsiveDataView({ desktop, mobile, className }: { desktop: ReactNode; mobile: ReactNode; className?: string }) {
+  return <div className={cn("min-w-0 max-w-full", className)}><div className="hidden min-w-0 xl:block">{desktop}</div><div className="min-w-0 xl:hidden">{mobile}</div></div>;
+}
+
+export function TendyyActionBar({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center", className)}>{children}</div>;
+}
+
+export function TendyyFormGrid({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4", className)}>{children}</div>;
+}
+
+export function TendyyMasterDetail({ master, detail, className }: { master: ReactNode; detail: ReactNode; className?: string }) {
+  return <div className={cn("grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.6fr)]", className)}><div className="min-w-0">{master}</div><div className="min-w-0">{detail}</div></div>;
+}
+
+export function TendyySheet({ open, title, onClose, children, footer, className }: { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; className?: string }) {
+  const panelRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    const root = panelRef.current?.parentElement;
+    if (root && window.getComputedStyle(root).display === "none") return;
+    const trigger = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); return; }
+      if (event.key !== "Tab" || !panelRef.current) return;
+      const elements = Array.from(panelRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      const first = elements[0]; const last = elements[elements.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", keydown);
+    return () => { document.removeEventListener("keydown", keydown); document.body.style.overflow = previousOverflow; trigger?.focus(); };
+  }, [open]);
+  if (!open) return null;
+  return <div className={cn("fixed inset-0 z-50", className)}><button type="button" className="absolute inset-0 h-full w-full bg-slate-950/30" onClick={onClose} aria-label={`Close ${title}`} /><aside ref={panelRef} role="dialog" aria-modal="true" aria-label={title} className="absolute inset-y-0 right-0 flex w-full min-w-0 max-w-[min(440px,100vw)] flex-col overflow-hidden border-l border-[var(--border)] bg-white shadow-[var(--shadow-elevated)]"><header className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--border)] p-4"><h2 className="tendyy-wrap-anywhere min-w-0 text-base font-semibold text-[var(--text)]">{title}</h2><button ref={closeRef} type="button" onClick={onClose} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted)] hover:bg-[var(--surface-muted)]" aria-label={`Close ${title}`}><X className="h-4 w-4" aria-hidden="true" /></button></header><div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4">{children}</div>{footer ? <footer className="min-w-0 border-t border-[var(--border)] p-4">{footer}</footer> : null}</aside></div>;
 }
 
 export function TendyyEmptyState({

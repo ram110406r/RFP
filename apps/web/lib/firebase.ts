@@ -2,7 +2,7 @@
 
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics";
 import { getApps, initializeApp } from "firebase/app";
-import { browserLocalPersistence, getAuth, setPersistence, type User } from "firebase/auth";
+import { browserLocalPersistence, connectAuthEmulator, getAuth, setPersistence, type Auth, type User } from "firebase/auth";
 import { doc, getFirestore, serverTimestamp, setDoc } from "firebase/firestore";
 
 type FirebaseConfig = {
@@ -56,6 +56,7 @@ function getFirebaseConfig(): FirebaseConfig {
 
 let firebaseApp = getApps()[0] ?? null;
 let firebaseAnalytics: Promise<Analytics | null> | null = null;
+let authEmulatorConnected = false;
 
 export function getFirebaseApp() {
   if (!firebaseApp) {
@@ -65,7 +66,17 @@ export function getFirebaseApp() {
 }
 
 export function getFirebaseAuth() {
-  return getAuth(getFirebaseApp());
+  const auth = getAuth(getFirebaseApp());
+  connectConfiguredAuthEmulator(auth);
+  return auth;
+}
+
+function connectConfiguredAuthEmulator(auth: Auth) {
+  if (authEmulatorConnected || typeof window === "undefined") return;
+  const host = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST?.trim();
+  if (!host) return;
+  connectAuthEmulator(auth, host.startsWith("http") ? host : `http://${host}`, { disableWarnings: true });
+  authEmulatorConnected = true;
 }
 
 export function getFirebaseDb() {
