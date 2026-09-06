@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { AppShell } from "../../components/app-shell";
+import { TendyyResponsiveDataView } from "../../components/tendyy-ui";
 import type { DashboardOverview } from "../../lib/models";
 import { useDashboardSummary } from "../../lib/queries";
 
@@ -29,15 +30,15 @@ export default function SubmissionsPage() {
         </section>
 
         <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
-          <div className="overflow-hidden rounded-[10px] border border-slate-200">
-            <div className="overflow-x-auto">
-              <table className="min-w-[860px] w-full border-separate border-spacing-0">
+          <div className="min-w-0 overflow-hidden rounded-[10px] border border-slate-200">
+            <TendyyResponsiveDataView desktop={
+              <table className="w-full table-fixed border-separate border-spacing-0">
                 <thead className="bg-slate-100/80 text-left text-[13px] uppercase tracking-[0.14em] text-slate-500">
                   <tr>
                     <Th>RFP</Th>
                     <Th>Readiness</Th>
-                    <Th>Issues</Th>
                     <Th>Status</Th>
+                    <Th>Issues</Th>
                     <Th>Action</Th>
                   </tr>
                 </thead>
@@ -61,19 +62,11 @@ export default function SubmissionsPage() {
                         </Td>
                         <Td>
                           <div className="py-4">
-                            <Link href={`/apply/${row.tender.id}`} className="inline-flex rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100">
-                              {row.ready ? "Review submission" : "Resolve blockers"}
-                            </Link>
-                          </div>
-                        </Td>
-                        <Td>
-                          <span className="text-sm text-slate-600">{row.issueCount} issue(s)</span>
-                        </Td>
-                        <Td>
-                          <div className="py-4">
                             <Badge tone={row.ready ? "success" : "warning"}>{row.ready ? "Ready" : "In progress"}</Badge>
                           </div>
                         </Td>
+                        <Td><span className="text-sm text-slate-600">{row.issueCount} issue(s)</span></Td>
+                        <Td><div className="py-4"><Link href={`/apply/${row.tender.id}`} className="inline-flex rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100">{row.ready ? "Review submission" : "Resolve blockers"}</Link></div></Td>
                       </tr>
                     ))
                   ) : (
@@ -85,7 +78,7 @@ export default function SubmissionsPage() {
                   )}
                 </tbody>
               </table>
-            </div>
+            } mobile={<div className="space-y-3 p-3">{rows.length ? rows.map((row) => <article key={row.tender.id} className="min-w-0 border border-slate-200 bg-white p-4"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0 flex-1"><p className="tendyy-wrap-anywhere font-semibold text-slate-950">{row.tender.title}</p><p className="tendyy-wrap-anywhere mt-1 text-xs text-slate-600">{row.tender.name}</p></div><Badge tone={row.ready ? "success" : "warning"}>{row.ready ? "Ready" : "In progress"}</Badge></div><div className="mt-4 flex items-center gap-3"><div className="h-2.5 min-w-0 flex-1 rounded-full bg-slate-200"><div className="h-2.5 rounded-full bg-sky-700" style={{ width: `${Math.max(8, row.readiness ?? 0)}%` }} /></div><span className="text-sm font-medium text-slate-900">{row.readiness ?? "-"}%</span></div><p className="mt-3 text-xs text-slate-600">{row.issueCount} issue(s), {row.blockingIssueCount} blocking</p><Link href={`/apply/${row.tender.id}`} className="mt-4 inline-flex h-9 items-center rounded-lg border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-800">{row.ready ? "Review submission" : "Resolve blockers"}</Link></article>) : <p className="p-5 text-sm text-slate-500">No submissions are available yet.</p>}</div>} />
           </div>
         </section>
       </div>

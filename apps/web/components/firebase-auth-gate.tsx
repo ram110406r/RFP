@@ -380,23 +380,21 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
 
   return (
     <FirebaseSessionContext.Provider value={session}>
-      <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#f3f6fb_100%)] text-slate-900">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen min-w-0 max-w-full bg-[linear-gradient(180deg,#f8fafc_0%,#f3f6fb_100%)] text-slate-900">
           {error ? (
-            <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div className="tendyy-wrap-anywhere relative z-[60] mx-3 mt-3 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:mx-4">
               {error}
             </div>
           ) : null}
           {!user.emailVerified ? (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <span>Verify {user.email ?? "your email"} before creating a company, accepting an invitation, or opening company data.</span>
+            <div className="relative z-[60] mx-3 mt-3 flex min-w-0 flex-wrap items-center justify-between gap-3 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:mx-4">
+              <span className="tendyy-wrap-anywhere min-w-0">Verify {user.email ?? "your email"} before creating a company, accepting an invitation, or opening company data.</span>
               <button type="button" disabled={verificationBusy} onClick={() => void resendVerification()} className="font-semibold text-amber-900 underline disabled:opacity-60">
                 {verificationBusy ? "Sending..." : "Resend email"}
               </button>
             </div>
           ) : null}
           <OnboardingRedirect>{children}</OnboardingRedirect>
-        </div>
       </div>
     </FirebaseSessionContext.Provider>
   );

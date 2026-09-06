@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, Building2, CalendarClock, ChevronDown,
   ExternalLink, FileText, Grid2X2, IndianRupee, List, MapPin, RefreshCw, Search,
@@ -11,7 +11,7 @@ import {
 
 import { Button } from "@rfp-os/ui";
 import { AppShell } from "../../components/app-shell";
-import { TendyyEmptyState, TendyyErrorState, TendyySkeletonRows, TendyyStatusBadge, toneFromStatus } from "../../components/tendyy-ui";
+import { TendyyActionBar, TendyyEmptyState, TendyyErrorState, TendyyResponsiveNav, TendyySheet, TendyySkeletonRows, TendyyStatusBadge, toneFromStatus } from "../../components/tendyy-ui";
 import { useSaveTenderNotice, useStartTenderApplication, useTenderDiscovery, useTenderNotice, useUnsaveTenderNotice } from "../../lib/queries";
 import type { TenderNoticeDetail, TenderNoticeSummary } from "../../lib/models";
 
@@ -103,10 +103,10 @@ function TenderDiscoveryPage() {
             <h1 className="mt-1 text-[28px] font-semibold tracking-normal text-[var(--text)]">Tender Search</h1>
             <p className="mt-1 text-[13px] text-[var(--muted)]">Search official procurement notices, save opportunities, and start response work.</p>
           </div>
-          <div className="flex gap-2">
+          <TendyyActionBar className="sm:justify-end">
             <Button asChild variant="secondary"><Link href="/tenders/import">Import tender</Link></Button>
             <Button asChild><Link href="/tenders/new">New tender <ArrowRight className="h-4 w-4" /></Link></Button>
-          </div>
+          </TendyyActionBar>
         </header>
 
         <section className="tendyy-surface p-3 sm:p-4" aria-label="Tender search controls">
@@ -125,7 +125,10 @@ function TenderDiscoveryPage() {
               {activeFilters.length ? <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[10px] text-white">{activeFilters.length}</span> : null}
             </Button>
           </div>
-          {filtersOpen ? <AdvancedFilters params={params} facets={query.data?.facets} onSet={setFilter} onClose={() => setFiltersOpen(false)} /> : null}
+          {filtersOpen ? <div className="hidden md:block"><AdvancedFilters params={params} facets={query.data?.facets} onSet={setFilter} onClose={() => setFiltersOpen(false)} /></div> : null}
+          <TendyySheet open={filtersOpen} title="Tender filters" onClose={() => setFiltersOpen(false)} className="md:hidden">
+            <AdvancedFilters params={params} facets={query.data?.facets} onSet={setFilter} onClose={() => setFiltersOpen(false)} compact />
+          </TendyySheet>
           {activeFilters.length ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] pt-3">
               {activeFilters.map((filter) => <button type="button" key={filter.key} onClick={() => setFilter(filter.key, null)} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700">{filter.label}<X className="h-3 w-3" /></button>)}
@@ -136,9 +139,7 @@ function TenderDiscoveryPage() {
 
         <section className="tendyy-surface overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-[var(--border)] px-4 pt-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="flex gap-5 overflow-x-auto">
-              {(["all", "saved", "applied"] as Tab[]).map((item) => <button key={item} type="button" onClick={() => replaceParams(router, params, { view: item === "all" ? null : item, page: null, notice: null })} className={`relative whitespace-nowrap pb-3 text-[13px] font-semibold capitalize ${tab === item ? "text-[var(--primary)] after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-[var(--primary)]" : "text-[var(--muted)]"}`}>{item === "all" ? "All tenders" : item}</button>)}
-            </div>
+            <div className="min-w-0 flex-1"><TendyyResponsiveNav label="Tender collection" value={tab} items={[{ value: "all", label: "All tenders" }, { value: "saved", label: "Saved" }, { value: "applied", label: "Applied" }]} onChange={(item) => replaceParams(router, params, { view: item === "all" ? null : item, page: null, notice: null })} /></div>
             <div className="flex flex-wrap items-center gap-3 pb-3 text-[11px] text-[var(--muted)]">
               <span className="font-semibold text-[var(--text-soft)]">{query.isLoading ? "Searching..." : `${formatNumber(query.data?.total ?? 0)} found`}</span>
               <CoverageStatus coverage={coverage} />
@@ -196,27 +197,50 @@ function TenderResult({ item, selected, grid, saving, onSelect, onSave }: { item
 
 function DetailRail({ notice, loading, busy, error, onClose, onSave, onStart }: { notice: TenderNoticeSummary | TenderNoticeDetail; loading: boolean; busy: boolean; error: string | null; onClose: () => void; onSave: () => void; onStart: () => void }) {
   const detail = "sources" in notice ? notice : null;
-  return <><button type="button" onClick={onClose} className="fixed inset-0 z-30 bg-slate-950/20 xl:hidden" aria-label="Close tender detail" /><aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-[390px] flex-col border-l border-[var(--border)] bg-white shadow-[-12px_0_32px_rgba(16,24,40,0.1)] xl:static xl:z-auto xl:max-w-none xl:border-y-0 xl:border-r-0 xl:shadow-none" aria-label="Tender details">
-    <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] p-4"><div className="min-w-0"><TendyyStatusBadge tone={toneFromStatus(notice.status)}>{notice.status}</TendyyStatusBadge><h2 className="mt-3 text-[17px] font-semibold leading-6 text-[var(--text)]">{notice.title}</h2><p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">{notice.buyerName ?? "Buyer not published"}</p></div><button type="button" onClick={onClose} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] hover:bg-[var(--surface-muted)]" aria-label="Close details"><X className="h-4 w-4" /></button></div>
-    <div className="min-h-0 flex-1 overflow-y-auto p-4">
+  const railRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!window.matchMedia("(max-width: 1279px)").matches) return;
+    const trigger = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); return; }
+      if (event.key !== "Tab" || !railRef.current) return;
+      const elements = Array.from(railRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", keydown);
+    return () => { document.removeEventListener("keydown", keydown); document.body.style.overflow = previousOverflow; trigger?.focus(); };
+  }, []);
+  return <><button type="button" onClick={onClose} className="fixed inset-0 z-30 bg-slate-950/20 xl:hidden" aria-label="Close tender detail" /><aside ref={railRef} role="dialog" aria-modal="true" className="fixed inset-y-0 right-0 z-40 flex w-full min-w-0 max-w-[min(390px,100vw)] flex-col overflow-hidden border-l border-[var(--border)] bg-white shadow-[-12px_0_32px_rgba(16,24,40,0.1)] xl:static xl:z-auto xl:max-w-none xl:border-y-0 xl:border-r-0 xl:shadow-none" aria-label="Tender details">
+    <div className="flex min-w-0 items-start justify-between gap-4 border-b border-[var(--border)] p-4"><div className="min-w-0"><TendyyStatusBadge tone={toneFromStatus(notice.status)}>{notice.status}</TendyyStatusBadge><h2 className="tendyy-wrap-anywhere mt-3 text-[17px] font-semibold leading-6 text-[var(--text)]">{notice.title}</h2><p className="tendyy-wrap-anywhere mt-1.5 text-xs leading-5 text-[var(--muted)]">{notice.buyerName ?? "Buyer not published"}</p></div><button ref={closeRef} type="button" onClick={onClose} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] hover:bg-[var(--surface-muted)]" aria-label="Close details"><X className="h-4 w-4" /></button></div>
+    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4">
       <div className="grid grid-cols-2 gap-x-4 gap-y-4 border-b border-[var(--border-subtle)] pb-4"><Detail icon={<IndianRupee />} label="Estimated value" value={formatCurrency(notice.estimatedValue, notice.currency)} /><Detail icon={<CalendarClock />} label="Deadline" value={formatDate(notice.deadlineAt)} /><Detail icon={<MapPin />} label="Location" value={notice.location ?? notice.state ?? "India"} /><Detail icon={<Building2 />} label="Authority" value={notice.authorityType ?? "Not classified"} /></div>
-      <dl className="divide-y divide-[var(--border-subtle)] py-2">{[["Reference", notice.referenceNumber], ["Published", formatDate(notice.publishedAt)], ["Category", notice.category], ["Procurement", notice.procurementType], ["Portal", notice.portalName]].map(([label, value]) => <div key={label} className="grid grid-cols-[92px_1fr] gap-3 py-2.5 text-xs"><dt className="text-[var(--muted)]">{label}</dt><dd className="font-medium text-[var(--text-soft)]">{value || "Not published"}</dd></div>)}</dl>
-      <section className="border-t border-[var(--border-subtle)] pt-4"><h3 className="text-xs font-semibold text-[var(--text)]">Overview</h3><p className="mt-2 whitespace-pre-line text-xs leading-5 text-[var(--muted)]">{notice.description || "The source has not published a description."}</p></section>
+      <dl className="divide-y divide-[var(--border-subtle)] py-2">{[["Reference", notice.referenceNumber], ["Published", formatDate(notice.publishedAt)], ["Category", notice.category], ["Procurement", notice.procurementType], ["Portal", notice.portalName]].map(([label, value]) => <div key={label} className="grid min-w-0 grid-cols-[88px_minmax(0,1fr)] gap-3 py-2.5 text-xs"><dt className="text-[var(--muted)]">{label}</dt><dd className="tendyy-wrap-anywhere min-w-0 font-medium text-[var(--text-soft)]">{value || "Not published"}</dd></div>)}</dl>
+      <section className="border-t border-[var(--border-subtle)] pt-4"><h3 className="text-xs font-semibold text-[var(--text)]">Overview</h3><p className="tendyy-wrap-anywhere mt-2 whitespace-pre-line text-xs leading-5 text-[var(--muted)]">{notice.description || "The source has not published a description."}</p></section>
       <section className="mt-5 border-t border-[var(--border-subtle)] pt-4"><div className="flex items-center justify-between"><h3 className="text-xs font-semibold text-[var(--text)]">Documents</h3><span className="text-[10px] text-[var(--muted)]">{detail?.documents.length ?? 0} linked</span></div>{loading ? <div className="mt-3"><TendyySkeletonRows count={2} /></div> : detail?.documents.length ? <div className="mt-2 divide-y divide-[var(--border-subtle)]">{detail.documents.map((document) => <a key={document.id} href={document.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 py-2.5 text-xs font-medium text-[var(--text-soft)] hover:text-[var(--primary)]"><FileText className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{document.name}</span><ExternalLink className="h-3.5 w-3.5" /></a>)}</div> : <p className="mt-2 text-xs leading-5 text-[var(--muted)]">No public document links were returned by this source.</p>}</section>
-      <a href={notice.sourceUrl} target="_blank" rel="noreferrer" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[var(--primary)]">Open official notice <ExternalLink className="h-3.5 w-3.5" /></a>
-      {error ? <p className="mt-4 border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">{error}</p> : null}
+      <a href={notice.sourceUrl} target="_blank" rel="noreferrer" className="tendyy-wrap-anywhere mt-5 inline-flex max-w-full items-center gap-2 text-xs font-semibold text-[var(--primary)]">Open official notice <ExternalLink className="h-3.5 w-3.5 shrink-0" /></a>
+      {error ? <p className="tendyy-wrap-anywhere mt-4 border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">{error}</p> : null}
     </div>
-    <div className="grid grid-cols-2 gap-2 border-t border-[var(--border)] p-4"><Button type="button" variant="secondary" onClick={onSave} disabled={busy}>{notice.saved ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}{notice.saved ? "Saved" : "Save"}</Button>{notice.applicationTenderId ? <Button asChild><Link href={`/tenders/${notice.applicationTenderId}`}>Open workspace</Link></Button> : <Button type="button" onClick={onStart} disabled={busy}>Start application</Button>}</div>
+    <div className="grid min-w-0 grid-cols-1 gap-2 border-t border-[var(--border)] p-4 min-[360px]:grid-cols-2"><Button type="button" variant="secondary" onClick={onSave} disabled={busy}>{notice.saved ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}{notice.saved ? "Saved" : "Save"}</Button>{notice.applicationTenderId ? <Button asChild><Link href={`/tenders/${notice.applicationTenderId}`}>Open workspace</Link></Button> : <Button type="button" onClick={onStart} disabled={busy}>Start application</Button>}</div>
   </aside></>;
 }
 
-function AdvancedFilters({ params, facets, onSet, onClose }: { params: URLSearchParams; facets?: import("../../lib/models").TenderDiscoveryPayload["facets"]; onSet: (key: FilterKey, value: string | null) => void; onClose: () => void }) {
+function AdvancedFilters({ params, facets, onSet, onClose, compact = false }: { params: URLSearchParams; facets?: import("../../lib/models").TenderDiscoveryPayload["facets"]; onSet: (key: FilterKey, value: string | null) => void; onClose: () => void; compact?: boolean }) {
   const portals = facets?.portals ?? [];
   const categories = facets?.categories ?? [];
   const availability = facets?.availability;
   const reportingPortals = portals.filter((portal) => portal.enabled && portal.count > 0);
   const pendingPortals = portals.filter((portal) => !portal.enabled || portal.count === 0);
-  return <div className="mt-3 grid gap-3 border-t border-[var(--border-subtle)] pt-3 sm:grid-cols-2 lg:grid-cols-4">
+  return <div className={compact ? "grid min-w-0 grid-cols-1 gap-3" : "mt-3 grid min-w-0 gap-3 border-t border-[var(--border-subtle)] pt-3 sm:grid-cols-2 lg:grid-cols-4"}>
     <FilterField label="Portal"><select value={params.get("portal") ?? ""} onChange={(e) => onSet("portal", e.target.value)} className="filter-input"><option value="">All reporting portals</option><optgroup label="Connected">{reportingPortals.map((portal) => <option key={portal.key} value={portal.key}>{portal.name} ({formatNumber(portal.count)})</option>)}</optgroup>{pendingPortals.length ? <optgroup label="Not connected yet">{pendingPortals.map((portal) => <option key={portal.key} value={portal.key} disabled>{portal.name} - unavailable</option>)}</optgroup> : null}</select></FilterField>
     <FilterField label="Category"><select value={params.get("category") ?? ""} onChange={(e) => onSet("category", e.target.value)} className="filter-input"><option value="">All categories</option>{categories.map((category) => category.value ? <option key={category.value} value={category.value}>{category.value} ({category.count})</option> : null)}</select></FilterField>
     <FilterField label="Status"><select value={params.get("status") ?? ""} onChange={(e) => onSet("status", e.target.value)} className="filter-input"><option value="">All statuses</option>{(facets?.statuses ?? []).map((status) => <option key={status.value} value={status.value}>{status.value} ({formatNumber(status.count)})</option>)}</select></FilterField>

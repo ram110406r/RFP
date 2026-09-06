@@ -6,16 +6,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { updateProfile } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import {
-  Activity,
   ArrowRight,
   Bell,
   CalendarDays,
   ChevronDown,
   CircleHelp,
-  Clock3,
   Copy,
-  Globe,
-  KeyRound,
   Laptop2,
   LogOut,
   Mail,
@@ -24,10 +20,10 @@ import {
   Phone,
   Settings,
   ShieldCheck,
-  UserCircle2,
 } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
+import { TendyyResponsiveNav } from "../../components/tendyy-ui";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { fetchOnboardingStatus } from "../../lib/api";
 import { getFirebaseAuth, getFirebaseDb } from "../../lib/firebase";
@@ -123,7 +119,7 @@ function ProfileWorkspace() {
   // Firebase UIDs are not the API's canonical database user UUIDs.
   const activitiesQuery = useActivities({ actorId: user ? "me" : undefined });
   const organization = organizationQuery.data ?? null;
-  const members = membersQuery.data?.members ?? [];
+  const members = useMemo(() => membersQuery.data?.members ?? [], [membersQuery.data?.members]);
   const activityItems = activitiesQuery.data?.items ?? [];
   const onboarding = onboardingQuery.data ?? null;
   const currentMember = members.find((member) => member.userId === user?.uid) ?? null;
@@ -235,12 +231,6 @@ function ProfileWorkspace() {
     { label: "Reporting to", value: reportingTo },
   ] as const;
 
-  const defaultActiveNotifications = buildNotificationDefaults({
-    email,
-    recentActivityCount,
-    activeMember,
-  });
-
   return (
     <div className="min-w-0 space-y-3 pb-5">
       <header className="flex flex-col gap-3 border-b border-slate-200 pb-4 xl:flex-row xl:items-start xl:justify-between">
@@ -315,27 +305,7 @@ function ProfileWorkspace() {
         </div>
       </header>
 
-      <nav className="flex gap-4 overflow-x-auto border-b border-slate-200 pb-1">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => {
-              setActiveTab(tab.id);
-              jumpTo(tab.id === "preferences" ? "preferences" : tab.id);
-            }}
-            aria-selected={activeTab === tab.id}
-            className={[
-              "relative whitespace-nowrap pb-3 text-[13px] font-semibold transition",
-              activeTab === tab.id
-                ? "text-[#155EEF] after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-[#155EEF]"
-                : "text-slate-700 hover:text-slate-950",
-            ].join(" ")}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
+      <TendyyResponsiveNav label="Profile section" value={activeTab} items={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} onChange={(value) => { const tab = value as ProfileTab; setActiveTab(tab); jumpTo(tab === "preferences" ? "preferences" : tab); }} />
 
       <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1.72fr)_minmax(0,0.82fr)]">
         <main className="min-w-0 space-y-3">
@@ -516,8 +486,9 @@ function ProfileWorkspace() {
                   <EmptyCopy title="Activity feed unavailable" description="We couldn't load your recent actions." />
                 </div>
               ) : recentActivities.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-[640px] w-full border-separate border-spacing-0 text-left">
+                <>
+                <div className="hidden xl:block">
+                  <table className="w-full table-fixed border-separate border-spacing-0 text-left">
                     <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                       <tr>
                         <Th>Action</Th>
@@ -545,6 +516,8 @@ function ProfileWorkspace() {
                     </tbody>
                   </table>
                 </div>
+                <div className="divide-y divide-slate-200 xl:hidden">{recentActivities.map((item) => <article key={item.id} className="min-w-0 p-3"><div className="flex min-w-0 items-start gap-3"><ActivityBadge label={item.kind} /><div className="min-w-0 flex-1"><p className="tendyy-wrap-anywhere text-[13px] font-medium text-slate-950">{item.summary || item.label}</p><p className="tendyy-wrap-anywhere mt-1 text-xs text-slate-600">{item.label}</p><p className="mt-2 text-xs text-slate-500">{relativeTime(item.createdAt)}</p></div></div></article>)}</div>
+                </>
               ) : (
                 <div className="p-3.5">
                   <EmptyCopy title="No recent activity" description="Your activity timeline will appear here once you start working in the workspace." />
@@ -1337,14 +1310,4 @@ function InfoList({ label, value, full = false }: { label: string; value: string
       <p className="mt-2 text-[13px] font-medium text-slate-950">{value}</p>
     </div>
   );
-}
-
-function formatStatusRows(prefs: NotificationForm) {
-  return [
-    { label: "Email notifications", value: prefs.emailNotifications },
-    { label: "In-app notifications", value: prefs.inAppNotifications },
-    { label: "Deadline alerts", value: prefs.deadlineAlerts },
-    { label: "Weekly digest", value: prefs.weeklyDigest },
-    { label: "Marketing & updates", value: prefs.marketingUpdates },
-  ] as const;
 }

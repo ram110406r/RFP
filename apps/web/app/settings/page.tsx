@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
+import { TendyyResponsiveNav } from "../../components/tendyy-ui";
 import { RfpStatusBadge } from "../../components/rfp-foundation";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { Button } from "@rfp-os/ui";
@@ -70,10 +71,7 @@ export default function SettingsPage() {
 
   const activeMembers = members.filter((member) => member.status === "active");
   const invitedMembers = invitations.filter((invitation) => invitation.status === "pending");
-  const inactiveMembers = members.filter((member) => member.status !== "active");
   const roleNames = roles.map((role) => role.name);
-  const workspaceNames = workspaces.map((workspace) => workspace.name);
-  const teamNames = teams.map((team) => team.name);
   const buildVersion = process.env.NEXT_PUBLIC_APP_COMMIT_SHA ?? "unknown";
   const buildTime = process.env.NEXT_PUBLIC_APP_BUILD_TIME ?? null;
   const pipeline = dashboard?.pipeline ?? [];
@@ -143,24 +141,7 @@ export default function SettingsPage() {
           </div>
         </header>
 
-        <nav className="flex gap-2 overflow-x-auto border-b border-slate-200 pb-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              aria-selected={activeTab === tab.id}
-              className={[
-                "whitespace-nowrap border-b-2 px-1 pb-2 text-[13px] font-semibold transition",
-                activeTab === tab.id
-                  ? "border-[#155EEF] text-[#155EEF]"
-                  : "border-transparent text-slate-700 hover:text-slate-950",
-              ].join(" ")}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+        <TendyyResponsiveNav label="Settings section" value={activeTab} items={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} onChange={(value) => setActiveTab(value as (typeof tabs)[number]["id"])} />
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="space-y-5">
@@ -262,8 +243,8 @@ export default function SettingsPage() {
                 <Metric label="Invited" value={formatCount(invitedMembers.length)} />
               </div>
               <div className="mt-4 overflow-hidden rounded-[10px] border border-slate-200">
-                <div className="overflow-x-auto">
-                  <table className="min-w-[760px] w-full border-separate border-spacing-0 text-left">
+                <div className="hidden xl:block">
+                  <table className="w-full table-fixed border-separate border-spacing-0 text-left">
                     <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                       <tr>
                         <Th>Member</Th>
@@ -294,6 +275,7 @@ export default function SettingsPage() {
                     </tbody>
                   </table>
                 </div>
+                <div className="grid gap-2 p-3 xl:hidden">{members.slice(0, 6).map((member) => <article key={member.userId} className="min-w-0 border border-slate-200 bg-white p-3"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="tendyy-wrap-anywhere font-semibold text-slate-950">{member.name}</p><p className="tendyy-wrap-anywhere mt-1 text-xs text-slate-500">{member.email}</p></div><RfpStatusBadge tone={member.status === "active" ? "success" : "warning"}>{formatStatus(member.status)}</RfpStatusBadge></div><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><RfpStatusBadge tone={member.role === "OWNER" ? "danger" : member.role === "ADMIN" ? "warning" : "neutral"}>{formatRole(member.role)}</RfpStatusBadge><span className="text-xs text-slate-500">{relativeTime(member.joinedAt)}</span></div></article>)}</div>
               </div>
             </section>
 
@@ -697,10 +679,6 @@ function Th({ children }: { children: React.ReactNode }) {
 
 function Td({ children }: { children: React.ReactNode }) {
   return <td className="border-t border-slate-200 px-4 align-top">{children}</td>;
-}
-
-function jumpTo(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function formatRole(role: string) {

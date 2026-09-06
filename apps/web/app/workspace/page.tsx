@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -10,25 +10,21 @@ import {
   Bell,
   Building2,
   CalendarDays,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleHelp,
   Copy,
-  FileText,
   Globe,
-  KeyRound,
   LayoutGrid,
   MapPin,
   MessageSquare,
   Pencil,
   ShieldCheck,
-  Sparkles,
   Users,
-  WandSparkles,
 } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
+import { TendyyResponsiveNav } from "../../components/tendyy-ui";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
 import { Button } from "@rfp-os/ui";
@@ -92,7 +88,6 @@ export default function WorkspacePage() {
 
   const workspaceName = organization?.name ?? session?.profile?.organizationName ?? "TENDYY workspace";
   const workspaceStatus = organization?.status ?? "active";
-  const initials = initialsFromName(organization?.logoInitials ?? workspaceName);
   const activeMembers: OrganizationMemberSummary[] = members.filter((member) => member.status === "active");
   const invitedMembers: OrganizationInvitationSummary[] = invitations.filter((invitation) => invitation.status === "pending");
   const ownerCount = activeMembers.filter((member) => member.role === "OWNER").length;
@@ -189,24 +184,7 @@ export default function WorkspacePage() {
           </div>
         </header>
 
-        <nav className="flex gap-4 overflow-x-auto border-b border-slate-200 pb-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              aria-selected={activeTab === tab.id}
-              className={[
-                "relative whitespace-nowrap pb-3 text-[13px] font-semibold transition",
-                activeTab === tab.id
-                  ? "text-[#155EEF] after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-[#155EEF]"
-                  : "text-slate-700 hover:text-slate-950",
-              ].join(" ")}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+        <TendyyResponsiveNav label="Workspace section" value={activeTab} items={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} onChange={(value) => setActiveTab(value as WorkspaceTab)} />
 
         {activeTab === "overview" ? (
           <OverviewPanel
@@ -353,8 +331,8 @@ function OverviewPanel({
 
           {departmentRows.length > 0 ? (
             <div className="mt-4 overflow-hidden rounded-[10px] border border-slate-200">
-              <div className="overflow-x-auto">
-                <table className="min-w-[760px] w-full border-separate border-spacing-0 text-left">
+              <div className="hidden xl:block">
+                <table className="w-full table-fixed border-separate border-spacing-0 text-left">
                   <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                     <tr>
                       <Th>Department</Th>
@@ -385,6 +363,7 @@ function OverviewPanel({
                   </tbody>
                 </table>
               </div>
+              <div className="grid gap-2 p-3 xl:hidden">{departmentRows.map((row) => <article key={row.id} className="min-w-0 border border-slate-200 bg-white p-3"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><p className="tendyy-wrap-anywhere font-semibold text-slate-950">{row.name}</p><span className="text-xs font-semibold text-[#155EEF]">{formatCount(row.members)} members</span></div><p className="tendyy-wrap-anywhere mt-2 text-xs text-slate-600">{row.description}</p><p className="mt-3 text-xs text-slate-500">Head: <span className="tendyy-wrap-anywhere font-medium text-slate-700">{row.lead}</span></p></article>)}</div>
             </div>
           ) : (
             <EmptyState title="No departments yet" description="Departments will appear here once teams are created in the workspace." />
@@ -471,8 +450,8 @@ function MembersPanel({
       <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
         <SectionHeader eyebrow="Members" title="Organization members" description="Active membership rows, roles, and team affiliations from the organization service." />
         <div className="mt-4 overflow-hidden rounded-[10px] border border-slate-200">
-          <div className="overflow-x-auto">
-            <table className="min-w-[820px] w-full border-separate border-spacing-0 text-left">
+          <div className="hidden xl:block">
+            <table className="w-full table-fixed border-separate border-spacing-0 text-left">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
                 <tr>
                   <Th>Member</Th>
@@ -510,6 +489,7 @@ function MembersPanel({
               </tbody>
             </table>
           </div>
+          <div className="grid gap-2 p-3 xl:hidden">{members.slice(0, 8).map((member) => <article key={member.userId} className="min-w-0 border border-slate-200 bg-white p-3"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="tendyy-wrap-anywhere font-semibold text-slate-950">{member.name}</p><p className="tendyy-wrap-anywhere mt-1 text-xs text-slate-500">{member.email}</p></div><RfpStatusBadge tone={member.status === "active" ? "success" : "warning"}>{formatStatus(member.status)}</RfpStatusBadge></div><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><RfpStatusBadge tone={member.role === "OWNER" ? "danger" : member.role === "ADMIN" ? "warning" : "neutral"}>{formatRole(member.role)}</RfpStatusBadge><span className="text-xs text-slate-500">Joined {formatDate(member.joinedAt)}</span></div></article>)}</div>
         </div>
       </section>
 

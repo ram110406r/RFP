@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Brain,
@@ -510,6 +510,45 @@ function MobileDrawer({
   subtitle: string;
   onClose: () => void;
 }) {
+  const drawerRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    triggerRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !drawerRef.current) return;
+      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      triggerRef.current?.focus();
+    };
+  }, [onClose, open]);
+
   return (
     <div
       className={`fixed inset-0 z-40 transition-opacity duration-300 ease-out md:hidden ${
@@ -519,7 +558,11 @@ function MobileDrawer({
       aria-hidden={!open}
     >
       <aside
-        className={`flex h-full w-[280px] flex-col border-r border-slate-200 bg-white p-3 transition-transform duration-300 ease-out ${
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Main navigation"
+        className={`flex h-full w-[min(280px,calc(100vw-24px))] min-w-0 flex-col border-r border-slate-200 bg-white p-3 transition-transform duration-300 ease-out ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
         onClick={(event) => event.stopPropagation()}
@@ -527,6 +570,7 @@ function MobileDrawer({
         <div className="flex h-12 items-center justify-between px-1">
           <BrandMark />
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
             className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
@@ -540,7 +584,7 @@ function MobileDrawer({
           <SidebarSearch />
         </div>
 
-        <div className="mt-3 flex-1 space-y-3 overflow-hidden pr-1">
+        <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
           {navGroups.map((group) => (
             <SidebarSection
               key={group.label}
@@ -621,7 +665,7 @@ export function AppShell({
     : { marginLeft: sidebarReady ? sidebarWidth : SIDEBAR_WIDTH_COLLAPSED };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-deep)] text-slate-950">
+    <div className="min-h-screen min-w-0 max-w-full bg-[var(--bg-deep)] text-slate-950">
       {!isMobile ? (
         <aside
           className={`fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white transition-[width] duration-300 ease-out md:flex ${
@@ -697,7 +741,7 @@ export function AppShell({
         onClose={() => setMobileNavOpen(false)}
       />
 
-      <div className="min-w-0 transition-[margin] duration-300 ease-out" style={contentStyle}>
+      <div className="min-w-0 max-w-full transition-[margin] duration-300 ease-out" style={contentStyle}>
         {!hideDesktopHeader || isMobile ? (
           <ShellHeader
             breadcrumbs={breadcrumbs}
@@ -708,8 +752,8 @@ export function AppShell({
           />
         ) : null}
 
-        <main className="min-w-0 px-3 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
-          <div className="mx-auto min-w-0 w-full max-w-[1480px]">{children}</div>
+        <main className="min-w-0 max-w-full px-3 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
+          <div className="mx-auto w-full min-w-0 max-w-[1480px]">{children}</div>
         </main>
       </div>
     </div>
