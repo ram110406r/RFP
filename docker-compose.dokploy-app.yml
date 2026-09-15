@@ -10,7 +10,7 @@ services:
       - rfp_os_redis_data:/data
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -21,7 +21,7 @@ services:
       - rfp_os_minio_data:/data
 
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     restart: "no"
     environment:
       STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}

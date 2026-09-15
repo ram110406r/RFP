@@ -51,7 +51,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     restart: unless-stopped
     networks: [internal]
     command: server /data --console-address ":9001"
@@ -63,7 +63,7 @@ services:
       - rfp_os_minio_data:/data
 
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     restart: "no"
     networks: [internal]
     environment:
