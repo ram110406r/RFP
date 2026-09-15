@@ -14,6 +14,7 @@ reverse proxy service is needed.
 | `postgres` | pgvector database | internal only |
 | `redis` | queue backend | internal only |
 | `minio` | S3-compatible document storage | internal only |
+| `minio-init` | one-shot, creates the storage bucket | - |
 | `migrate` | one-shot, applies migrations then exits | - |
 | `seed` | one-shot, seeds demo data then exits | - |
 
@@ -21,8 +22,13 @@ reverse proxy service is needed.
 
 Use `docker-compose.prod.yml` for a plain Docker host.
 
-Use `docker-compose.dokploy.yml` for Dokploy. In that variant, point the
-domain at the `web` service on port `3000`.
+Use `docker-compose.dokploy.yml` for Dokploy when the stack should include
+Postgres, Redis, and MinIO. In that variant, point the application domain at
+the `web` service on port `3000`.
+
+Use `docker-compose.dokploy-app.yml` only when Postgres is supplied by a
+separate Dokploy database resource. That file now still includes Redis and
+MinIO because uploads require S3-compatible object storage.
 
 ## Prerequisites
 
@@ -50,6 +56,7 @@ POSTGRES_DB=rfpos
 BETTER_AUTH_SECRET=<strong secret>
 STORAGE_ACCESS_KEY_ID=<strong storage key>
 STORAGE_SECRET_ACCESS_KEY=<strong storage secret>
+STORAGE_PUBLIC_ENDPOINT=https://storage.example.com
 
 # Firebase public config used by apps/web
 NEXT_PUBLIC_FIREBASE_API_KEY=
@@ -80,13 +87,23 @@ boots the MinIO container. If Dokploy does not have these set yet, the compose
 files fall back to local-safe defaults so the deploy can start, but you should
 override them with real secrets in production.
 
+`STORAGE_PUBLIC_ENDPOINT` must be an HTTPS URL that the user's browser can
+reach. Uploads are presigned by the API, then the browser sends the file bytes
+directly to MinIO/S3. For Dokploy with bundled MinIO, add a second domain such
+as `https://storage.example.com` and target the `minio` service on port `9000`,
+then set `STORAGE_PUBLIC_ENDPOINT` to that exact URL. Do not point it at the
+MinIO console port `9001`.
+
 ## Deploying with Dokploy
 
 1. Create a Compose application in Dokploy and point it at
    `docker-compose.dokploy.yml`.
 2. Set the environment variables from `.env.production`.
-3. Add one domain and target the `web` service on port `3000`.
-4. Deploy.
+3. Add the application domain and target the `web` service on port `3000`.
+4. Add the storage domain and target the `minio` service on port `9000`.
+5. Set `STORAGE_PUBLIC_ENDPOINT` to the storage domain, for example
+   `https://storage.example.com`.
+6. Deploy.
 
 ## Deploying with plain Docker
 

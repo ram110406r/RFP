@@ -9,6 +9,34 @@ services:
     volumes:
       - rfp_os_redis_data:/data
 
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL is required}
+    volumes:
+      - rfp_os_minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    environment:
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
+    command:
+      [
+        "sh",
+        "-c",
+        "until mc alias set local http://minio:9000 \"$${STORAGE_ACCESS_KEY_ID}\" \"$${STORAGE_SECRET_ACCESS_KEY}\"; do sleep 2; done; mc mb --ignore-existing \"local/$${STORAGE_BUCKET}\"; mc anonymous set none \"local/$${STORAGE_BUCKET}\"",
+      ]
+    depends_on:
+      minio:
+        condition: service_started
+
   migrate:
     build:
       context: .
@@ -48,17 +76,19 @@ services:
       APP_BUILD_TIME: ${APP_BUILD_TIME:-}
       BETTER_AUTH_URL: ${PUBLIC_URL:?PUBLIC_URL is required}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
-      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-}
-      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:?STORAGE_PUBLIC_ENDPOINT is required for browser uploads}
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
-      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
-      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
-      STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-false}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
+      STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
     depends_on:
       redis:
         condition: service_started
+      minio-init:
+        condition: service_completed_successfully
       seed:
         condition: service_completed_successfully
     healthcheck:
@@ -77,15 +107,17 @@ services:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       REDIS_URL: redis://redis:6379
-      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
-      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
-      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
-      STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-false}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
+      STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
     depends_on:
       redis:
         condition: service_started
+      minio-init:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
 
@@ -118,3 +150,4 @@ services:
 
 volumes:
   rfp_os_redis_data:
+  rfp_os_minio_data:

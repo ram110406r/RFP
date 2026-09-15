@@ -47,6 +47,23 @@ services:
     volumes:
       - rfp_os_prod_minio_data:/data
 
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    environment:
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
+    command:
+      [
+        "sh",
+        "-c",
+        "until mc alias set local http://minio:9000 \"$${STORAGE_ACCESS_KEY_ID}\" \"$${STORAGE_SECRET_ACCESS_KEY}\"; do sleep 2; done; mc mb --ignore-existing \"local/$${STORAGE_BUCKET}\"; mc anonymous set none \"local/$${STORAGE_BUCKET}\"",
+      ]
+    depends_on:
+      minio:
+        condition: service_started
+
   # One-shot: applies packages/db/migrations, then exits. The API waits for it
   # to succeed, so a failed migration stops the deploy instead of booting an
   # API against a half-migrated schema.
@@ -122,8 +139,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
       seed:
         condition: service_completed_successfully
     healthcheck:
@@ -160,6 +177,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       seed:
         condition: service_completed_successfully
 
