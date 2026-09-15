@@ -1,0 +1,17 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Button } from "@rfp-os/ui";
+import { AppShell } from "../../../components/app-shell";
+import { TendyyErrorState, TendyySkeletonRows } from "../../../components/tendyy-ui";
+import { useTenderMatchProfile, useUpdateTenderMatchProfile } from "../../../lib/queries";
+
+export default function TenderMatchSettingsPage() {
+  const profile = useTenderMatchProfile(); const update = useUpdateTenderMatchProfile();
+  const [form, setForm] = useState({ capabilities: "", categories: "", states: "", certifications: "", industry: "", minimumValue: "", maximumValue: "" });
+  useEffect(() => { if (!profile.data) return; setForm({ capabilities: profile.data.capabilityKeywords.join(", "), categories: profile.data.preferredCategories.join(", "), states: profile.data.preferredStates.join(", "), certifications: profile.data.certifications.join(", "), industry: profile.data.industry ?? "", minimumValue: profile.data.minimumValue?.toString() ?? "", maximumValue: profile.data.maximumValue?.toString() ?? "" }); }, [profile.data]);
+  const field = (key: keyof typeof form, label: string, placeholder: string) => <label className="text-xs font-semibold text-[var(--text-soft)]">{label}<input value={form[key]} onChange={(event) => setForm((value) => ({ ...value, [key]: event.target.value }))} className="filter-input" placeholder={placeholder} /></label>;
+  return <AppShell breadcrumbs={[{ label: "Settings", href: "/settings" }, { label: "Tender Match" }]}><main className="space-y-4 pb-8"><header><p className="text-[10px] font-semibold uppercase text-[var(--primary)]">Opportunity matching</p><h1 className="mt-1 text-[26px] font-semibold">Tender Match Profile</h1><p className="mt-1 text-[13px] text-[var(--muted)]">Configure the explainable criteria used for company-fit scores.</p></header>{profile.isLoading ? <div className="tendyy-surface p-4"><TendyySkeletonRows count={5} /></div> : profile.isError ? <TendyyErrorState message="The match profile could not be loaded." onRetry={() => void profile.refetch()} /> : <form className="tendyy-surface grid gap-4 p-4 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); update.mutate({ capabilityKeywords: list(form.capabilities), preferredCategories: list(form.categories), preferredStates: list(form.states), certifications: list(form.certifications), industry: form.industry.trim() || null, minimumValue: number(form.minimumValue), maximumValue: number(form.maximumValue) }); }}>{field("capabilities", "Products and capabilities", "cloud services, networking, cybersecurity")}{field("categories", "Preferred categories", "IT services, telecom")}{field("states", "Operating states or regions", "Karnataka, Maharashtra")}{field("certifications", "Certifications", "ISO 27001, CMMI")}{field("industry", "Industry", "Information technology")}{field("minimumValue", "Minimum tender value", "0")}{field("maximumValue", "Maximum tender value", "50000000")}<div className="md:col-span-2"><Button type="submit" disabled={update.isPending}>{update.isPending ? "Saving…" : "Save match profile"}</Button>{update.isSuccess ? <span className="ml-3 text-xs text-emerald-700">Saved</span> : null}</div></form>}</main></AppShell>;
+}
+function list(value: string) { return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))].slice(0, 50); }
+function number(value: string) { if (!value.trim()) return null; const parsed = Number(value); return Number.isFinite(parsed) && parsed >= 0 ? parsed : null; }

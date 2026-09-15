@@ -70,14 +70,22 @@ export interface TenderNoticeSummary {
   portalKey: string | null;
   portalName: string | null;
   createdAt: string;
-  updatedAt: string;
+    updatedAt: string;
+    relevanceScore: number;
+    matchScore: number;
+    matchReasons: string[];
+    matchComponents: { capabilities: number; industry: number; region: number; certifications: number; value: number };
+    quality: { score: number; missing: string[] };
+    matchedTerms?: string[];
 }
 
 export interface TenderDiscoveryPayload {
   items: TenderNoticeSummary[];
   total: number;
   page: number;
-  pageSize: number;
+    pageSize: number;
+    hasMore: boolean;
+    nextCursor: string | null;
   facets: {
     portals: Array<{ key: string; name: string; health: "PENDING" | "HEALTHY" | "DEGRADED" | "DISABLED"; enabled: boolean; lastSuccessAt: string | null; count: number }>;
     states: Array<{ value: string | null; count: number }>;
@@ -114,7 +122,14 @@ export interface TenderSourceHealth {
   currentCount: number;
   lastRunStatus: string | null;
   lastRunDiscovered: number | null;
-  openAlerts: number;
+    openAlerts: number;
+    lastRunQuality: Record<string, number>;
+    lastRunRejected: number;
+    lastRunDuplicates: number;
+    lastRunInserted: number;
+    lastRunUpdated: number;
+    lastRunStale: number;
+    readinessReason: string | null;
   isPlatformAdmin: boolean;
 }
 
@@ -126,8 +141,12 @@ export interface TenderIngestionAlert {
 
 export interface TenderNoticeDetail extends TenderNoticeSummary {
   sources: Array<{ noticeId: string; portalId: string; sourceNoticeKey: string; sourceUrl: string; isPrimary: boolean; lastSeenAt: string; portal: { key: string; name: string; category: string; state: string | null; officialUrl: string; health: string; lastSuccessAt: string | null } }>;
-  documents: Array<{ id: string; name: string; url: string; mimeType: string | null; sizeBytes: number | null; access: "DIRECT" | "EXTERNAL" | "AUTHENTICATED"; metadata: Record<string, unknown> }>;
-}
+    documents: Array<{ id: string; name: string; url: string; mimeType: string | null; sizeBytes: number | null; access: "DIRECT" | "EXTERNAL" | "AUTHENTICATED"; importStatus: "PENDING" | "IMPORTED" | "FAILED" | "NOT_APPLICABLE"; importAttempts: number; lastCheckedAt: string | null; lastError: string | null; metadata: Record<string, unknown> }>;
+  }
+
+export interface TenderSavedSearch { id: string; workspaceId: string; userId: string; name: string; query: Record<string, unknown>; cadence: "IMMEDIATE" | "DAILY"; enabled: boolean; lastEvaluatedAt: string | null; nextEvaluationAt: string | null; createdAt: string; updatedAt: string }
+export interface TenderMatchProfile { capabilityKeywords: string[]; preferredCategories: string[]; preferredStates: string[]; certifications: string[]; industry: string | null; minimumValue: number | null; maximumValue: number | null }
+export interface TenderDiscoveryAnalytics { days: number; events: Array<{ eventType: string; count: number; zeroResults: number; averageDurationMs: number | null; p95DurationMs: number | null }>; topFilters: Array<{ key: string; count: number }>; funnel: { searches: number; details: number; saves: number; applications: number; resultToDetail: number; detailToSave: number; saveToApplication: number }; sourceCoverage: { registeredSources: number; enabledSources: number; healthySources: number; staleSources: number; freshestAt: string | null } }
 
 export interface TenderSource {
   id: string;

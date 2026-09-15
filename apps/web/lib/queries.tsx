@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   analyzeRequirementAnswer,
+  cancelTenderAutomationRun,
   addTeamMember,
   addWorkspaceMember,
   archiveTeam,
@@ -45,6 +47,7 @@ import {
   fetchTenderIngestionAlerts,
   setTenderPortalEnabled,
   syncTenderPortal,
+  resolveTenderIngestionAlert,
   getTenderDocumentContent,
   fetchTeams,
   fetchWorkspaces,
@@ -73,6 +76,15 @@ import {
   saveTenderNotice,
   unsaveTenderNotice,
   startTenderApplication,
+  bulkSaveTenderNotices,
+  bulkStartTenderApplications,
+  fetchTenderComparison,
+  fetchTenderSavedSearches,
+  createTenderSavedSearch,
+  deleteTenderSavedSearch,
+  fetchTenderMatchProfile,
+  updateTenderMatchProfile,
+  fetchTenderDiscoveryAnalytics,
   fetchTenderRequirementCandidates,
   extractTenderRequirements,
   decideTenderRequirementCandidates,
@@ -205,6 +217,10 @@ export const tenderDiscoveryKeys = {
   detail: (noticeId: string, workspaceId?: string) => ["tender-discovery", "detail", noticeId, workspaceId ?? ""] as const,
   sources: () => ["tender-discovery", "sources"] as const,
   alerts: () => ["tender-discovery", "alerts"] as const,
+  savedSearches: (workspaceId: string) => ["tender-discovery", "saved-searches", workspaceId] as const,
+  comparison: (workspaceId: string, ids: string[]) => ["tender-discovery", "comparison", workspaceId, ids] as const,
+  matchProfile: () => ["tender-discovery", "match-profile"] as const,
+  analytics: (workspaceId: string, days: number) => ["tender-discovery", "analytics", workspaceId, days] as const,
 };
 
 export const organizationKeys = {
@@ -252,7 +268,19 @@ export function useRfpApplyProgress(tenderId: string) {
 }
 
 export function useTenderRequirementCandidates(tenderId: string) { return useQuery({ queryKey: tenderKeys.requirementCandidates(tenderId), queryFn: () => fetchTenderRequirementCandidates(tenderId), enabled: Boolean(tenderId) }); }
-export function useTenderAutomationRuns(tenderId: string) { return useQuery({ queryKey: tenderKeys.automationRuns(tenderId), queryFn: () => fetchTenderAutomationRuns(tenderId), enabled: Boolean(tenderId), refetchInterval: (query) => query.state.data?.items.some((item) => item.status === "RUNNING" || item.status === "QUEUED") ? 2000 : false }); }
+export function useTenderAutomationRuns(tenderId: string) {
+  const client = useQueryClient();
+  const query = useQuery({ queryKey: tenderKeys.automationRuns(tenderId), queryFn: () => fetchTenderAutomationRuns(tenderId), enabled: Boolean(tenderId), refetchInterval: (current) => current.state.data?.items.some((item) => item.status === "RUNNING" || item.status === "QUEUED") ? 2000 : false });
+  const latestId = query.data?.items[0]?.id;
+  const latestStatus = query.data?.items[0]?.status;
+  useEffect(() => {
+    if (latestId && latestStatus && !["QUEUED", "RUNNING"].includes(latestStatus)) {
+      void client.invalidateQueries({ queryKey: ["tender", tenderId], predicate: (item) => item.queryKey[2] !== "automation-runs" });
+      void client.invalidateQueries({ queryKey: ["dashboard", "summary"] });
+    }
+  }, [client, tenderId, latestId, latestStatus]);
+  return query;
+}
 export function useTenderPackages(tenderId: string) { return useQuery({ queryKey: tenderKeys.packages(tenderId), queryFn: () => fetchTenderPackages(tenderId), enabled: Boolean(tenderId) }); }
 export function useTenderMilestones(tenderId: string) { return useQuery({ queryKey: tenderKeys.milestones(tenderId), queryFn: () => fetchTenderMilestones(tenderId), enabled: Boolean(tenderId) }); }
 export function useTenderSubmissions(tenderId: string) { return useQuery({ queryKey: tenderKeys.submissions(tenderId), queryFn: () => fetchTenderSubmissions(tenderId), enabled: Boolean(tenderId) }); }
@@ -278,6 +306,7 @@ function useAutomationMutation<TInput, TResult>(tenderId: string, mutationFn: (i
 export function useExtractTenderRequirements(tenderId: string) { return useAutomationMutation<void, { created: number; reused: number }>(tenderId, () => extractTenderRequirements(tenderId)); }
 export function useDecideTenderRequirementCandidates(tenderId: string) { return useAutomationMutation<Array<{ candidateId: string; decision: "ACCEPTED" | "REJECTED" }>, unknown>(tenderId, (decisions) => decideTenderRequirementCandidates(tenderId, decisions)); }
 export function useCreateTenderAutomationRun(tenderId: string) { return useAutomationMutation<{ includePackage?: boolean }, unknown>(tenderId, (body) => createTenderAutomationRun(tenderId, body)); }
+export function useCancelTenderAutomationRun(tenderId: string) { return useAutomationMutation<string, unknown>(tenderId, (runId) => cancelTenderAutomationRun(tenderId, runId)); }
 export function useRetryTenderAutomationRun(tenderId: string) { return useAutomationMutation<string, unknown>(tenderId, (runId) => retryTenderAutomationRun(tenderId, runId)); }
 export function useCreateTenderPackage(tenderId: string) { return useAutomationMutation<void, unknown>(tenderId, () => createTenderPackage(tenderId)); }
 export function useApproveTenderPackage(tenderId: string) { return useAutomationMutation<{ packageId: string; comment?: string }, unknown>(tenderId, ({ packageId, comment }) => approveTenderPackage(tenderId, packageId, comment)); }
@@ -475,6 +504,24 @@ export function useStartTenderApplication() {
   });
 }
 
+export function useBulkSaveTenderNotices() {
+  const queryClient = useQueryClient(); const workspaceId = useSelectedWorkspaceId();
+  return useMutation({ mutationFn: ({ noticeIds, saved }: { noticeIds: string[]; saved: boolean }) => { if (!workspaceId) throw new Error("Select a workspace first."); return bulkSaveTenderNotices(workspaceId, noticeIds, saved); }, onSuccess: async () => queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.all }) });
+}
+
+export function useBulkStartTenderApplications() {
+  const queryClient = useQueryClient(); const workspaceId = useSelectedWorkspaceId();
+  return useMutation({ mutationFn: (noticeIds: string[]) => { if (!workspaceId) throw new Error("Select a workspace first."); return bulkStartTenderApplications(workspaceId, noticeIds); }, onSuccess: async () => Promise.all([queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.all }), queryClient.invalidateQueries({ queryKey: ["tenders"] })]) });
+}
+
+export function useTenderComparison(ids: string[], enabled = true) { const workspaceId = useSelectedWorkspaceId(); return useQuery({ queryKey: tenderDiscoveryKeys.comparison(workspaceId ?? "", ids), queryFn: () => fetchTenderComparison(workspaceId ?? "", ids), enabled: enabled && Boolean(workspaceId) && ids.length >= 2 }); }
+export function useTenderSavedSearches() { const workspaceId = useSelectedWorkspaceId(); return useQuery({ queryKey: tenderDiscoveryKeys.savedSearches(workspaceId ?? ""), queryFn: () => fetchTenderSavedSearches(workspaceId ?? ""), enabled: Boolean(workspaceId) }); }
+export function useCreateTenderSavedSearch() { const workspaceId = useSelectedWorkspaceId(); const client = useQueryClient(); return useMutation({ mutationFn: (input: { name: string; query: Record<string, unknown>; cadence: "IMMEDIATE" | "DAILY" }) => { if (!workspaceId) throw new Error("Select a workspace first."); return createTenderSavedSearch({ workspaceId, ...input, enabled: true }); }, onSuccess: async () => client.invalidateQueries({ queryKey: tenderDiscoveryKeys.savedSearches(workspaceId ?? "") }) }); }
+export function useDeleteTenderSavedSearch() { const workspaceId = useSelectedWorkspaceId(); const client = useQueryClient(); return useMutation({ mutationFn: (id: string) => { if (!workspaceId) throw new Error("Select a workspace first."); return deleteTenderSavedSearch(id, workspaceId); }, onSuccess: async () => client.invalidateQueries({ queryKey: tenderDiscoveryKeys.savedSearches(workspaceId ?? "") }) }); }
+export function useTenderMatchProfile() { return useQuery({ queryKey: tenderDiscoveryKeys.matchProfile(), queryFn: () => fetchTenderMatchProfile() }); }
+export function useTenderDiscoveryAnalytics(days = 30) { const workspaceId = useSelectedWorkspaceId(); return useQuery({ queryKey: tenderDiscoveryKeys.analytics(workspaceId ?? "", days), queryFn: () => fetchTenderDiscoveryAnalytics(workspaceId ?? "", days), enabled: Boolean(workspaceId) }); }
+export function useUpdateTenderMatchProfile() { const client = useQueryClient(); return useMutation({ mutationFn: (body: import("./models").TenderMatchProfile) => updateTenderMatchProfile(body), onSuccess: async () => Promise.all([client.invalidateQueries({ queryKey: tenderDiscoveryKeys.matchProfile() }), client.invalidateQueries({ queryKey: tenderDiscoveryKeys.all })]) }); }
+
 export function useTenderSourceHealth() {
   return useQuery({ queryKey: tenderDiscoveryKeys.sources(), queryFn: () => fetchTenderSourceHealth(), retry: false });
 }
@@ -490,8 +537,9 @@ export function useSetTenderPortalEnabled() {
 
 export function useSyncTenderPortal() {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: (portalKey: string) => syncTenderPortal(portalKey), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.sources() }); } });
+  return useMutation({ mutationFn: ({ portalKey, mode = "HEAD" }: { portalKey: string; mode?: "HEAD" | "BACKFILL" | "FULL_REFRESH" | "RECONCILE" }) => syncTenderPortal(portalKey, mode), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenderDiscoveryKeys.sources() }); } });
 }
+export function useResolveTenderIngestionAlert() { const client = useQueryClient(); return useMutation({ mutationFn: (alertId: string) => resolveTenderIngestionAlert(alertId), onSuccess: async () => Promise.all([client.invalidateQueries({ queryKey: tenderDiscoveryKeys.alerts() }), client.invalidateQueries({ queryKey: tenderDiscoveryKeys.sources() })]) }); }
 
 export function useOrganizationCurrent(initialData?: OrganizationSummary | null) {
   return useQuery({

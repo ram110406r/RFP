@@ -68,6 +68,7 @@ export interface TenderDiscoveryParams {
   sort?: string;
   page?: number;
   pageSize?: number;
+  cursor?: string;
 }
 
 const VERSION_PREFIX = "/api/v1";
@@ -439,6 +440,7 @@ export const extractTenderRequirements = (tenderId: string) => requestJson<{ cre
 export const decideTenderRequirementCandidates = (tenderId: string, decisions: Array<{ candidateId: string; decision: "ACCEPTED" | "REJECTED" }>) => requestJson<{ items: TenderRequirementCandidate[] }>(`/tenders/${tenderId}/requirement-candidates/decisions`, { method: "POST", body: JSON.stringify({ decisions }) });
 export const fetchTenderAutomationRuns = (tenderId: string) => requestJson<{ items: TenderAutomationRun[] }>(`/rfp-apply/${tenderId}/runs`);
 export const createTenderAutomationRun = (tenderId: string, body: { includePackage?: boolean; requirementIds?: string[] }) => requestJson<TenderAutomationRun>(`/rfp-apply/${tenderId}/runs`, { method: "POST", body: JSON.stringify(body) });
+export const cancelTenderAutomationRun = (tenderId: string, runId: string) => requestJson<TenderAutomationRun>(`/rfp-apply/${tenderId}/runs/${runId}/cancel`, { method: "POST" });
 export const retryTenderAutomationRun = (tenderId: string, runId: string) => requestJson<TenderAutomationRun>(`/rfp-apply/${tenderId}/runs/${runId}/retry`, { method: "POST" });
 export const fetchTenderPackages = (tenderId: string) => requestJson<{ items: TenderSubmissionPackage[] }>(`/tenders/${tenderId}/packages`);
 export const createTenderPackage = (tenderId: string) => requestJson<TenderSubmissionPackage>(`/tenders/${tenderId}/packages`, { method: "POST", body: JSON.stringify({}) });
@@ -546,9 +548,21 @@ export function setTenderPortalEnabled(portalKey: string, enabled: boolean, init
   return requestJson<{ portalKey: string; enabled: boolean }>(`/platform/tender-sources/${encodeURIComponent(portalKey)}/${enabled ? "enable" : "disable"}`, { ...init, method: "POST" });
 }
 
-export function syncTenderPortal(portalKey: string, init?: ApiInit) {
-  return requestJson<{ enqueued: boolean; jobId: string }>(`/platform/tender-sources/${encodeURIComponent(portalKey)}/sync`, { ...init, method: "POST" });
+export function syncTenderPortal(portalKey: string, mode: "HEAD" | "BACKFILL" | "FULL_REFRESH" | "RECONCILE" = "HEAD", init?: ApiInit) {
+  return requestJson<{ enqueued: boolean; jobId: string }>(`/platform/tender-sources/${encodeURIComponent(portalKey)}/sync`, { ...init, method: "POST", body: JSON.stringify({ mode }) });
 }
+export function resolveTenderIngestionAlert(alertId: string, init?: ApiInit) { return requestJson(`/platform/tender-sources/alerts/${alertId}/resolve`, { ...init, method: "POST" }); }
+
+export function bulkSaveTenderNotices(workspaceId: string, noticeIds: string[], saved: boolean, init?: ApiInit) { return requestJson<{ results: Array<{ noticeId: string; ok: boolean; saved?: boolean; error?: string }> }>("/tender-discovery/bulk/save", { ...init, method: saved ? "POST" : "DELETE", body: JSON.stringify({ workspaceId, noticeIds }) }); }
+export function bulkStartTenderApplications(workspaceId: string, noticeIds: string[], init?: ApiInit) { return requestJson<{ results: Array<{ noticeId: string; ok: boolean; tenderId?: string; created?: boolean; error?: string }> }>("/tender-discovery/bulk/start-applications", { ...init, method: "POST", body: JSON.stringify({ workspaceId, noticeIds }) }); }
+export function fetchTenderComparison(workspaceId: string, noticeIds: string[], init?: ApiInit) { const query = new URLSearchParams({ workspaceId, noticeIds: noticeIds.join(",") }); return requestJson<{ items: TenderNoticeDetail[] }>(`/tender-discovery/compare?${query}`, init); }
+export function fetchTenderSavedSearches(workspaceId: string, init?: ApiInit) { return requestJson<{ items: import("./models").TenderSavedSearch[] }>(`/tender-discovery/saved-searches?workspaceId=${encodeURIComponent(workspaceId)}`, init); }
+export function createTenderSavedSearch(body: { workspaceId: string; name: string; query: Record<string, unknown>; cadence: "IMMEDIATE" | "DAILY"; enabled: boolean }, init?: ApiInit) { return requestJson<import("./models").TenderSavedSearch>("/tender-discovery/saved-searches", { ...init, method: "POST", body: JSON.stringify(body) }); }
+export function deleteTenderSavedSearch(searchId: string, workspaceId: string, init?: ApiInit) { return requestJson<void>(`/tender-discovery/saved-searches/${searchId}`, { ...init, method: "DELETE", body: JSON.stringify({ workspaceId }) }); }
+export function fetchTenderMatchProfile(init?: ApiInit) { return requestJson<import("./models").TenderMatchProfile>("/tender-discovery/match-profile", init); }
+export function updateTenderMatchProfile(body: import("./models").TenderMatchProfile, init?: ApiInit) { return requestJson<import("./models").TenderMatchProfile>("/tender-discovery/match-profile", { ...init, method: "PUT", body: JSON.stringify(body) }); }
+export function tenderExportUrl(params: TenderDiscoveryParams) { const query = new URLSearchParams(); for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== null && value !== "") query.set(key, String(value)); return `${VERSION_PREFIX}/tender-discovery/export.csv?${query}`; }
+export function fetchTenderDiscoveryAnalytics(workspaceId: string, days = 30, init?: ApiInit) { return requestJson<import("./models").TenderDiscoveryAnalytics>(`/tender-discovery/analytics?workspaceId=${encodeURIComponent(workspaceId)}&days=${days}`, init); }
 
 export async function fetchActivities(
   params: { workspaceId?: string; q?: string; action?: string; entityType?: string; rfpId?: string; actorId?: string } = {},
