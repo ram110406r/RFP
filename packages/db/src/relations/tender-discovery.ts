@@ -11,6 +11,11 @@ import {
   tenderPortals,
   tenderSourceRecords,
   tenderSyncRuns,
+  tenderMatchProfiles,
+  tenderSavedSearches,
+  tenderSavedSearchMatches,
+  tenderDiscoveryEvents,
+  tenderDiscoveryDailyMetrics,
 } from "../schema/tender-discovery";
 import { tenders } from "../schema/tender";
 
@@ -56,3 +61,9 @@ export const savedTenderNoticesRelations = relations(savedTenderNotices, ({ one 
   notice: one(tenderNotices, { fields: [savedTenderNotices.noticeId], references: [tenderNotices.id] }),
   savedByUser: one(users, { fields: [savedTenderNotices.savedBy], references: [users.id] }),
 }));
+
+export const tenderMatchProfilesRelations = relations(tenderMatchProfiles, ({ one }) => ({ organization: one(organizations, { fields: [tenderMatchProfiles.organizationId], references: [organizations.id] }), updatedByUser: one(users, { fields: [tenderMatchProfiles.updatedBy], references: [users.id] }) }));
+export const tenderSavedSearchesRelations = relations(tenderSavedSearches, ({ one, many }) => ({ organization: one(organizations, { fields: [tenderSavedSearches.organizationId], references: [organizations.id] }), workspace: one(workspaces, { fields: [tenderSavedSearches.workspaceId], references: [workspaces.id] }), user: one(users, { fields: [tenderSavedSearches.userId], references: [users.id] }), matches: many(tenderSavedSearchMatches) }));
+export const tenderSavedSearchMatchesRelations = relations(tenderSavedSearchMatches, ({ one }) => ({ search: one(tenderSavedSearches, { fields: [tenderSavedSearchMatches.searchId], references: [tenderSavedSearches.id] }), notice: one(tenderNotices, { fields: [tenderSavedSearchMatches.noticeId], references: [tenderNotices.id] }) }));
+export const tenderDiscoveryEventsRelations = relations(tenderDiscoveryEvents, ({ one }) => ({ organization: one(organizations, { fields: [tenderDiscoveryEvents.organizationId], references: [organizations.id] }), workspace: one(workspaces, { fields: [tenderDiscoveryEvents.workspaceId], references: [workspaces.id] }), user: one(users, { fields: [tenderDiscoveryEvents.userId], references: [users.id] }), notice: one(tenderNotices, { fields: [tenderDiscoveryEvents.noticeId], references: [tenderNotices.id] }) }));
+export const tenderDiscoveryDailyMetricsRelations = relations(tenderDiscoveryDailyMetrics, ({ one }) => ({ organization: one(organizations, { fields: [tenderDiscoveryDailyMetrics.organizationId], references: [organizations.id] }), workspace: one(workspaces, { fields: [tenderDiscoveryDailyMetrics.workspaceId], references: [workspaces.id] }) }));

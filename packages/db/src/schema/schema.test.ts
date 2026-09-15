@@ -50,6 +50,11 @@ describe("schema barrel", () => {
     "platformAdministrators",
     "tenderPortalEvents",
     "tenderIngestionAlerts",
+    "tenderMatchProfiles",
+    "tenderSavedSearches",
+    "tenderSavedSearchMatches",
+    "tenderDiscoveryEvents",
+    "tenderDiscoveryDailyMetrics",
     "tenders",
     "tenderStatusHistory",
     "tenderQuestions",
@@ -76,6 +81,10 @@ describe("schema barrel", () => {
     "tenderSubmissions",
     "tenderSubmissionReceipts",
     "savedTenders",
+    "tenderMatchProfiles",
+    "tenderSavedSearches",
+    "tenderDiscoveryEvents",
+    "tenderDiscoveryDailyMetrics",
     "savedTenderNotices",
     // knowledge
     "knowledgeSources",
@@ -196,6 +205,11 @@ describe("multi-tenancy", () => {
     expect(table.documentPageId).toBeDefined();
     expect(table.documentTableId).toBeDefined();
     expect(table.documentBlockId).toBeDefined();
+  });
+
+  test("saved search matches are scoped through their saved search", () => {
+    expect(tableNamed("tenderSavedSearchMatches").organizationId).toBeUndefined();
+    expect(tableNamed("tenderSavedSearchMatches").searchId).toBeDefined();
   });
 
   test("workspace and team membership tables scope indirectly through their parents", () => {

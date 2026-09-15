@@ -28,6 +28,7 @@ export const notificationCategoryEnum = pgEnum("notification_category", [
   "Deadlines",
   "Knowledge",
   "Submissions",
+  "Tenders",
 ]);
 
 export const notificationSeverityEnum = pgEnum("notification_severity", [

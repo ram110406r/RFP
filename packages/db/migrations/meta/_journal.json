@@ -218,6 +218,20 @@
       "when": 1788926400000,
       "tag": "0030_tender_automation_active_run",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788930000000,
+      "tag": "0031_apply_execution_and_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788933600000,
+      "tag": "0032_tender_search_p0_p2",
+      "breakpoints": true
     }
   ]
 }
