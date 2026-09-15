@@ -9,7 +9,7 @@ const auth = { organizationId: "org-1", userId: "user-1" } as AuthContext;
 function overview(status = "DRAFT") {
   return {
     tender: { id: "tender-1", status },
-    counts: { questions: 2, requirements: 2, answers: 2, sources: 1, reviews: 2 },
+    counts: { questions: 2, requirements: 2, answers: 2, sources: 1, reviews: 2, answeredQuestions: 2, approvedAnswers: 2, documents: 1, processedDocuments: 1, pendingDocuments: 0 },
     validation: {
       tenderId: "tender-1",
       latestRun: { id: "validation-1" },
@@ -20,6 +20,20 @@ function overview(status = "DRAFT") {
 }
 
 describe("RfpApplyService", () => {
+  it("does not count pending reviews as completed approvals", async () => {
+    const data = overview();
+    data.counts.approvedAnswers = 0;
+    const service = new RfpApplyService({ getWorkspaceOverview: async () => data } as never);
+    expect((await service.getProgress(auth, "tender-1")).phases.review.status).toBe("IN_PROGRESS");
+  });
+
+  it("preserves the FULL generation limit when scheduling durable work", async () => {
+    let configuration: unknown;
+    const service = new RfpApplyService({} as never, { createRun: async (_auth: unknown, _id: string, input: unknown) => { configuration = input; return {}; } } as never);
+    service.getProgress = async () => ({} as never);
+    await service.run(auth, "tender-1", { phase: "FULL", limit: 2 });
+    expect(configuration).toEqual({ includePackage: false, requirementIds: undefined, limit: 2 });
+  });
   it("derives progress from the existing tender overview", async () => {
     const tenders = {
       getWorkspaceOverview: async () => overview(),

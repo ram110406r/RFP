@@ -6,10 +6,11 @@ import { ApplyAutomationController, TenderAutomationController } from "./apply-a
 import { ApplyAutomationService } from "./apply-automation.service";
 import { RfpApplyController } from "./rfp-apply.controller";
 import { RfpApplyService } from "./rfp-apply.service";
+import { ApplyRunnerService } from "./apply-runner.service";
 
 @Module({
   imports: [TendersModule, AssignmentsModule],
   controllers: [RfpApplyController, ApplyAutomationController, TenderAutomationController],
-  providers: [RfpApplyService, ApplyAutomationService],
+  providers: [RfpApplyService, ApplyAutomationService, ApplyRunnerService],
 })
 export class RfpApplyModule {}

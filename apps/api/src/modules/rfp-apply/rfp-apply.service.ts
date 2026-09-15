@@ -26,7 +26,7 @@ export class RfpApplyService {
 
   async run(auth: AuthContext, tenderId: string, input: RunRfpApplyInput) {
     if (input.phase === "FULL" && this.automation) {
-      const run = await this.automation.createRun(auth, tenderId, { includePackage: false, requirementIds: input.requirementIds });
+      const run = await this.automation.createRun(auth, tenderId, { includePackage: false, requirementIds: input.requirementIds, limit: input.limit });
       return { phase: input.phase, result: run, generated: run.items ?? [], progress: await this.getProgress(auth, tenderId), nextAction: "REVIEW_THEN_BUILD_AND_APPROVE_PACKAGE" };
     }
     const generated: Array<{ requirementId: string; result?: unknown; error?: string }> = [];
@@ -75,14 +75,14 @@ export class RfpApplyService {
   private toProgress(overview: WorkspaceOverview) {
     const { counts, validation, tender } = overview;
     const hasRequirements = counts.requirements > 0;
-    const answeredAllRequirements = hasRequirements && counts.answers >= counts.requirements;
-    const reviewComplete = counts.answers > 0 && counts.reviews >= counts.answers;
+    const answeredAllRequirements = counts.questions > 0 && counts.answeredQuestions === counts.questions;
+    const reviewComplete = counts.answers > 0 && counts.approvedAnswers === counts.answers;
 
     return {
       tenderId: tender.id,
       status: tender.status,
       phases: {
-        intake: { status: counts.sources > 0 ? "COMPLETE" : "PENDING", count: counts.sources },
+        intake: { status: counts.sources > 0 && counts.processedDocuments === counts.documents && counts.pendingDocuments === 0 ? "COMPLETE" : "PENDING", count: counts.sources },
         analysis: { status: hasRequirements ? "READY" : "PENDING", count: counts.requirements },
         response: { status: answeredAllRequirements ? "COMPLETE" : "IN_PROGRESS", count: counts.answers },
         review: { status: reviewComplete ? "COMPLETE" : "IN_PROGRESS", count: counts.reviews },

@@ -13,6 +13,7 @@ import {
   workspaces,
   withTransaction,
   type Database,
+  type Transaction,
 } from "@rfp-os/db";
 import {
   hasOrganizationPermission,
@@ -59,7 +60,7 @@ export class AssignmentsService {
     return this.queryAssignments(auth.organizationId, null, filters, [...auth.workspaceIds]);
   }
 
-  async create(auth: AuthContext, input: CreateAssignmentInput) {
+  async create(auth: AuthContext, input: CreateAssignmentInput, assertActive?: (tx: Transaction) => Promise<void>) {
     if (input.workspaceId) {
       await this.requireWorkspace(auth.organizationId, input.workspaceId);
     }
@@ -67,6 +68,7 @@ export class AssignmentsService {
     await this.assertAssignee(auth.organizationId, input.assigneeType, input.assigneeId, input.workspaceId);
 
     return withTransaction(async (tx) => {
+      await assertActive?.(tx);
       const [created] = await tx
         .insert(assignments)
         .values({

@@ -6,6 +6,7 @@ export const createAutomationRunSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(160).optional(),
   includePackage: z.boolean().default(false),
   requirementIds: z.array(uuid).max(500).optional(),
+  limit: z.number().int().min(1).max(500).optional(),
 }).strict();
 export type CreateAutomationRunInput = z.infer<typeof createAutomationRunSchema>;
 
