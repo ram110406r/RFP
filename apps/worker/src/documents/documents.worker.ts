@@ -12,7 +12,7 @@ import { ObjectStorage } from "@rfp-os/storage";
 import { Queue, UnrecoverableError, Worker, type Job } from "bullmq";
 import type IORedis from "ioredis";
 
-import { DocumentProcessor, isPermanent } from "./document-processor";
+import { DocumentProcessor, isOcrRequired, isPermanent } from "./document-processor";
 import { ExtractionRepository } from "./extraction.repository";
 import { RequirementExtractionProcessor } from "./requirement-extraction.processor";
 import { RequirementExtractionRepository } from "./requirement-extraction.repository";
@@ -82,6 +82,23 @@ export function createDocumentsWorker(connection: IORedis): Worker {
         }
         return result;
       } catch (error) {
+        if (name === DOCUMENT_JOBS.PARSE && isOcrRequired(error)) {
+          const jobId = documentJobId(DOCUMENT_JOBS.OCR, job.data.documentId, job.data.version);
+          const existingJob = await queue.getJob(jobId);
+          if (!existingJob) {
+            await queue.add(DOCUMENT_JOBS.OCR, job.data, { ...jobDefaults(), jobId });
+          }
+          logger.info(
+            {
+              jobId: job.id,
+              ocrJobId: jobId,
+              documentId: job.data.documentId,
+              organizationId: job.data.organizationId,
+            },
+            "document has no text layer; OCR job queued",
+          );
+          return { processed: false, status: "ocr_queued", reason: (error as Error).message };
+        }
         /*
          * A permanent failure is wrapped in UnrecoverableError, which tells
          * BullMQ to stop retrying immediately. Without it a corrupt file would

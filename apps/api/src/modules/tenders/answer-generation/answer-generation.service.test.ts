@@ -26,6 +26,7 @@ describe("AnswerGenerationService", () => {
     expect(result.evidenceIds).toEqual([]);
     expect(result.evidenceState).toBe("NO_EVIDENCE");
     expect((result.metadata as { generation?: { evidenceState?: string } }).generation?.evidenceState).toBe("NO_EVIDENCE");
+    expect((result.metadata as { generation?: { generationMode?: string } }).generation?.generationMode).toBe("blocked");
   });
 
   test("sends authoritative evidence details into the grounded prompt and metadata", async () => {
@@ -76,6 +77,32 @@ describe("AnswerGenerationService", () => {
       sourceAuthority: "APPROVED_POLICY",
       sourceVersion: "1.0",
     });
+    expect(((result.metadata as any).generation ?? {})).toMatchObject({
+      generationMode: "model",
+      fallback: false,
+    });
+  });
+
+  test("marks deterministic fallback when the model provider is unavailable", async () => {
+    const router = {
+      complete: async () => {
+        throw new Error("GROQ_API_KEY is required to call the real GroqCloud provider.");
+      },
+      embed: async () => {
+        throw new Error("unused");
+      },
+    } as unknown as ModelRouter;
+
+    const service = new AnswerGenerationService(router);
+    const result = await service.generate(buildContext([buildEvidence("evidence-a")]));
+
+    expect(result.answer).toContain("Does your platform support SCIM?");
+    expect(((result.metadata as any).generation ?? {})).toMatchObject({
+      generationMode: "deterministic_fallback",
+      fallback: true,
+      fallbackReason: "GROQ_API_KEY is required to call the real GroqCloud provider.",
+    });
+    expect(result.prompt).toContain("FALLBACK_REASON: GROQ_API_KEY is required");
   });
 
   test("rejects model evidence ids that were not selected", async () => {

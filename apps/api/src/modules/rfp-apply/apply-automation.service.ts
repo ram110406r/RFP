@@ -291,9 +291,10 @@ export class ApplyAutomationService {
   }
 
   async packageDownload(auth: AuthContext, tenderId: string, packageId: string) {
-    await this.requireTender(auth, tenderId, "tender:read");
+    const tender = await this.requireTender(auth, tenderId, "tender:read");
     const [row] = await this.db.select({ artifact: tenderSubmissionArtifacts, file: files }).from(tenderSubmissionArtifacts).innerJoin(files, eq(files.id, tenderSubmissionArtifacts.fileId)).where(and(eq(tenderSubmissionArtifacts.organizationId, auth.organizationId), eq(tenderSubmissionArtifacts.tenderId, tenderId), eq(tenderSubmissionArtifacts.packageId, packageId), eq(tenderSubmissionArtifacts.kind, "PACKAGE_ZIP"))).limit(1);
     if (!row) throw new NotFoundException({ code: "PACKAGE_NOT_FOUND", message: "Submission package was not found." });
+    await this.record(auth, tender, "TENDER_PACKAGE_DOWNLOAD_REQUESTED", "tender_submission_package", packageId, { artifactId: row.artifact.id, fileId: row.file.id });
     return { url: await this.storage.presignGet({ objectKey: row.file.objectKey, expiresInSeconds: 300, downloadFilename: row.file.filename }), expiresInSeconds: 300 };
   }
 
@@ -366,7 +367,7 @@ export class ApplyAutomationService {
       await tx.update(tenderMilestones).set({ status: "COMPLETE", completedAt: new Date(), updatedAt: new Date() }).where(and(eq(tenderMilestones.tenderId, tenderId), eq(tenderMilestones.kind, "SUBMISSION")));
       return existing;
     });
-    await this.record(auth, tender, "TENDER_SUBMISSION_RECORDED", "tender_submission", submission.id, { packageId: input.packageId, portal: input.portal, portalReference: input.portalReference });
+    await this.record(auth, tender, "TENDER_SUBMISSION_RECORDED", "tender_submission", submission.id, { packageId: input.packageId, portal: input.portal, portalReference: input.portalReference, receiptFileIds: input.receiptFileIds });
     return serializeDates(submission);
   }
 

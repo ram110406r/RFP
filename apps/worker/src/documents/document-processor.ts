@@ -7,6 +7,7 @@ import { ExtractionRepository } from "./extraction.repository";
 import { contradictsDeclaredType, SNIFF_LENGTH, sniffFormat } from "./magic-bytes";
 import { DocxDocumentParser } from "./docx-document-parser";
 import { PdfDocumentParser } from "./pdf-document-parser";
+import type { ExtractionResult } from "./extraction.repository";
 
 /**
  * Raised for a failure that retrying cannot fix — a missing object, a file
@@ -22,8 +23,48 @@ export class PermanentJobError extends Error {
   }
 }
 
+export class OcrRequiredError extends Error {
+  readonly ocrRequired = true;
+  constructor(message: string) {
+    super(message);
+    this.name = "OcrRequiredError";
+  }
+}
+
 export function isPermanent(error: unknown): boolean {
   return error instanceof PermanentJobError;
+}
+
+export function isOcrRequired(error: unknown): boolean {
+  return error instanceof OcrRequiredError;
+}
+
+export interface OcrExtractor {
+  extract(payload: DocumentJobPayload, bytes: Uint8Array): Promise<ExtractionResult>;
+}
+
+export class SidecarOcrExtractor implements OcrExtractor {
+  constructor(private readonly storage: ObjectStorage) {}
+
+  async extract(payload: DocumentJobPayload): Promise<ExtractionResult> {
+    const sidecarKey = `${payload.objectKey}.ocr.txt`;
+    const bytes = await this.storage.readObject(sidecarKey);
+    if (!bytes) {
+      throw new PermanentJobError(
+        `OCR text is missing. Upload externally generated OCR text to ${sidecarKey} before running ${DOCUMENT_JOBS.OCR}.`,
+      );
+    }
+    const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes).trim();
+    if (!text) {
+      throw new PermanentJobError("OCR text is empty; scanned documents cannot produce requirements without readable text.");
+    }
+    const pages = text
+      .split(/\f|\n-{3,}\s*page\s+\d+\s*-{3,}\n/i)
+      .map((page) => page.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .map((page, index) => ({ pageNumber: index + 1, text: page }));
+    return { extractor: "sidecar-ocr-text@1", pages, tables: [] };
+  }
 }
 
 export interface ProcessResult {
@@ -51,19 +92,21 @@ export class DocumentProcessor {
     private readonly parser: PdfDocumentParser = new PdfDocumentParser(),
     private readonly docxParser: DocxDocumentParser = new DocxDocumentParser(),
     private readonly extractions: ExtractionRepository = new ExtractionRepository(),
+    private readonly ocr: OcrExtractor = new SidecarOcrExtractor(storage),
   ) {}
 
   async process(name: DocumentJobName, payload: DocumentJobPayload): Promise<ProcessResult> {
     switch (name) {
       case DOCUMENT_JOBS.PARSE:
         return this.parse(payload);
+      case DOCUMENT_JOBS.OCR:
+        return this.ocrDocument(payload);
       /*
        * Declared in the contract because the pipeline is specified in terms of
        * them, but not yet implemented. Failing loudly beats silently
        * succeeding: a job that returns ok without doing anything would leave a
        * document marked ready with no content behind it.
        */
-      case DOCUMENT_JOBS.OCR:
       case DOCUMENT_JOBS.TABLE_EXTRACTION:
       case DOCUMENT_JOBS.NORMALIZATION:
         throw new PermanentJobError(`${name} is not implemented until Phase 6C.`);
@@ -141,6 +184,12 @@ export class DocumentProcessor {
       );
     }
 
+    if (document.type === "PDF" && !hasExtractableText(parsed)) {
+      throw new OcrRequiredError(
+        "No extractable text found. OCR is required before requirements can be extracted from this document.",
+      );
+    }
+
     /*
      * `parsed`, not `ready`. The status enum separates the two, and Phase 6C's
      * requirement extraction is what earns `ready` - claiming it here would
@@ -181,6 +230,72 @@ export class DocumentProcessor {
           ),
         );
     });
+    return { processed: true, status: "parsed" };
+  }
+
+  private async ocrDocument(payload: DocumentJobPayload): Promise<ProcessResult> {
+    const db = getDb();
+    const { organizationId, documentId } = payload;
+
+    const [document] = await db
+      .select()
+      .from(rfpDocuments)
+      .where(and(eq(rfpDocuments.organizationId, organizationId), eq(rfpDocuments.id, documentId)))
+      .limit(1);
+
+    if (!document) {
+      throw new PermanentJobError(`Document ${documentId} no longer exists in this organization.`);
+    }
+    if (document.archivedAt) {
+      throw new PermanentJobError(`Document ${documentId} was archived before OCR.`);
+    }
+    if (!this.matchesCurrentVersion(document, payload)) {
+      return { processed: false, status: document.status };
+    }
+    if (document.status === "parsed" || document.status === "ready" || document.status === "failed") {
+      return { processed: false, status: document.status };
+    }
+    if (document.type !== "PDF") {
+      throw new PermanentJobError(`OCR is only supported for PDF documents; received ${document.type}.`);
+    }
+
+    await this.setStatusIfCurrent(payload, "processing", null);
+    const bytes = await this.storage.readObject(payload.objectKey);
+    if (!bytes) {
+      throw new PermanentJobError(
+        `Object ${payload.objectKey} is missing from storage; the upload did not survive.`,
+      );
+    }
+    const parsed = await this.ocr.extract(payload, bytes);
+    if (!hasExtractableText(parsed)) {
+      throw new PermanentJobError("OCR completed but did not produce extractable text.");
+    }
+
+    await withTransaction(async (tx) => {
+      await this.extractions.saveSuccess(
+        { organizationId, documentId, version: payload.version },
+        parsed,
+        tx,
+      );
+      await tx
+        .update(rfpDocuments)
+        .set({
+          status: "parsed",
+          pageCount: parsed.pages.length,
+          failureReason: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(rfpDocuments.organizationId, organizationId),
+            eq(rfpDocuments.id, documentId),
+            eq(rfpDocuments.currentVersion, payload.version),
+            eq(rfpDocuments.fileId, payload.fileId),
+            isNull(rfpDocuments.archivedAt),
+          ),
+        );
+    });
+
     return { processed: true, status: "parsed" };
   }
 
@@ -254,6 +369,10 @@ function normalizeBlocks(
     headingPath: block.headingPath,
     sourceRef: block.sourceRef,
   }));
+}
+
+function hasExtractableText(result: { pages: Array<{ text: string }> }): boolean {
+  return result.pages.some((page) => page.text.trim().length > 0);
 }
 
 function serializeTable(cells: string[][]): string {

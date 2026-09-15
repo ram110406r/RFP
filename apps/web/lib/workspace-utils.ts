@@ -8,7 +8,7 @@ export function reviewToneFromStatus(status: string): "success" | "warning" | "d
 export function getGenerationMeta(payload: { metadata: Record<string, unknown> }) {
   const metadata = payload.metadata as Record<string, unknown> | undefined;
   const generation = metadata && typeof metadata.generation === "object" && metadata.generation !== null ? metadata.generation : null;
-  return generation as { generatedAt?: string; generationId?: string } | null;
+  return generation as { generatedAt?: string; generationId?: string; generationMode?: string; fallbackReason?: string | null } | null;
 }
 
 export function getGenerationId(metadata: Record<string, unknown> | null | undefined) {

@@ -1,6 +1,6 @@
 # TENDYY RFP Apply implementation
 
-Updated: 2026-09-07. This document supersedes the earlier foundation investigation.
+Updated: 2026-09-15. This document supersedes the earlier foundation investigation.
 
 ## Current workflow
 
@@ -66,8 +66,10 @@ interrupted GENERATING package recovers it, and concurrent builders share the re
 
 ## Intake and milestones
 
-Intake accepts PDF and DOCX; scanned documents requiring OCR remain unsupported.
-Extraction creates deterministic candidates that require human acceptance in Apply.
+Intake accepts PDF and DOCX. Text-native files parse directly; scanned PDFs use
+the `DOCUMENT_OCR` adapter, which persists externally generated OCR text from a
+sidecar object into the same extraction model. Extraction creates deterministic
+candidates that require human acceptance in Apply.
 The wizard reports pending confirmation rather than claiming canonical requirements exist.
 
 Milestone offsets are recalculated when the tender deadline changes. Removing the deadline

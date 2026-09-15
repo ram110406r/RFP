@@ -309,12 +309,17 @@ export function buildGenerationMetadata(
     generatedAt: string;
     modelConfidence: number;
     modelStatus: AnswerGenerationStatus;
+    generationMode?: "model" | "deterministic_fallback" | "blocked";
+    fallbackReason?: string | null;
   },
 ): Record<string, unknown> {
   return {
     generation: {
       provider: options.provider,
       model: options.model,
+      generationMode: options.generationMode ?? "model",
+      fallback: options.generationMode === "deterministic_fallback",
+      fallbackReason: options.fallbackReason ?? null,
       generatedAt: options.generatedAt,
       risk: options.risk,
       status: options.status,

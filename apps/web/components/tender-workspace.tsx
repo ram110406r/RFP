@@ -994,8 +994,10 @@ function DraftCard({
         generation ? (
           <div className="space-y-2">
             <InfoRow label="Generated at" value={String(getGenerationMeta(generation)?.generatedAt ?? "Now")} />
+            <InfoRow label="Generation mode" value={generationModeLabel(getGenerationMeta(generation))} />
             <InfoRow label="Generation ID" value={String(getGenerationMeta(generation)?.generationId ?? "n/a")} />
             <InfoRow label="Evidence state" value={evidenceState ?? generation.evidenceState ?? "EVIDENCE_FOUND"} />
+            {getGenerationMeta(generation)?.fallbackReason ? <InfoRow label="Fallback reason" value={String(getGenerationMeta(generation)?.fallbackReason)} /> : null}
             {grounding ? <InfoRow label="Grounding" value={grounding.status} /> : null}
             {typeof grounding?.coverage === "number" ? <InfoRow label="Coverage" value={`${Math.round(grounding.coverage * 100)}%`} /> : null}
             {reason ? <InfoRow label="Review reason" value={reason} /> : null}
@@ -1034,6 +1036,13 @@ function EvidenceBlock({ title, items, used }: { title: string; items: EvidenceC
       </div>
     </RfpReviewPanel>
   );
+}
+
+function generationModeLabel(metadata: Record<string, unknown> | null | undefined) {
+  const mode = metadata?.generationMode;
+  if (mode === "deterministic_fallback") return "Deterministic fallback";
+  if (mode === "blocked") return "Blocked by missing evidence";
+  return "AI model";
 }
 
 function AnalysisPanel({ analysis }: { analysis: AnswerAnalysisResult }) {

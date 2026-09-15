@@ -16,7 +16,7 @@ import { DOCUMENT_JOBS, type DocumentJobPayload } from "@rfp-os/jobs";
 import type { ObjectStorage } from "@rfp-os/storage";
 import { asc, eq, inArray, and } from "drizzle-orm";
 
-import { DocumentProcessor, isPermanent } from "./document-processor";
+import { DocumentProcessor, isOcrRequired, isPermanent } from "./document-processor";
 import { DocxDocumentParser } from "./docx-document-parser";
 import {
   DOCX_MIME,
@@ -324,6 +324,39 @@ describeDb("Document processing", () => {
         .orderBy(asc(documentPages.pageNumber));
       expect(pages.map((page) => page.text)).toEqual(["DOCX Section", "Paragraph", "A\tB"]);
     });
+
+    dbTest("routes a textless PDF to OCR instead of silently storing an empty extraction", async () => {
+      const payload = await givenQueuedDocument(buildPdf([""]));
+      const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch(
+        (caught: unknown) => caught,
+      );
+
+      expect(isOcrRequired(error)).toBe(true);
+      expect(await extractionOf(payload.documentId, 1)).toBeNull();
+      expect((await statusOf(payload.documentId))?.status).toBe("processing");
+    });
+
+    dbTest("stores OCR sidecar text in the normal extraction model", async () => {
+      const payload = await givenQueuedDocument(buildPdf([""]));
+      storage.put(`${payload.objectKey}.ocr.txt`, new TextEncoder().encode("Vendor shall provide support.\fBidder must submit references."));
+
+      const result = await processor.process(DOCUMENT_JOBS.OCR, payload);
+
+      expect(result).toEqual({ processed: true, status: "parsed" });
+      expect((await statusOf(payload.documentId))?.status).toBe("parsed");
+      const extraction = await extractionOf(payload.documentId, 1);
+      expect(extraction?.extractor).toBe("sidecar-ocr-text@1");
+      expect(extraction?.pageCount).toBe(2);
+      const pages = await db
+        .select()
+        .from(documentPages)
+        .where(eq(documentPages.extractionId, extraction?.id ?? ""))
+        .orderBy(asc(documentPages.pageNumber));
+      expect(pages.map((page) => page.text)).toEqual([
+        "Vendor shall provide support.",
+        "Bidder must submit references.",
+      ]);
+    });
   });
 
   describe("persistence", () => {
@@ -407,10 +440,19 @@ describeDb("Document processing", () => {
       expect(isPermanent(error)).toBe(true);
     });
 
-    dbTest("reports the unimplemented jobs as permanent, not retryable", async () => {
+    dbTest("fails OCR loudly when the OCR sidecar text is missing", async () => {
+      const payload = await givenQueuedDocument(buildPdf([""]));
+      const error = await processor.process(DOCUMENT_JOBS.OCR, payload).catch(
+        (caught: unknown) => caught,
+      );
+
+      expect(isPermanent(error)).toBe(true);
+      expect((error as Error).message).toContain("OCR text is missing");
+    });
+
+    dbTest("reports the remaining unimplemented jobs as permanent, not retryable", async () => {
       const payload = await givenQueuedDocument();
       for (const job of [
-        DOCUMENT_JOBS.OCR,
         DOCUMENT_JOBS.TABLE_EXTRACTION,
         DOCUMENT_JOBS.NORMALIZATION,
       ] as const) {
