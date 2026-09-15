@@ -506,6 +506,7 @@ export const tenderAnswerReviews = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     status: tenderReviewStatusEnum("status").notNull().default("PENDING"),
+    contentDigest: text("content_digest"),
     comment: text("comment").notNull().default(""),
     ...timestamps,
   },

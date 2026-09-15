@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { basename, extname } from "node:path";
 
-import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   DocxDocumentParser,
@@ -43,6 +43,8 @@ import {
   tenderSources,
   tenderValidationRuns,
   tenderStatusHistory,
+  tenderSubmissionPackages,
+  tenderMilestones,
   tenders,
   users,
   workspaces,
@@ -51,7 +53,8 @@ import {
   type Transaction,
 } from "@rfp-os/db";
 import { ObjectStorage, tenderSourceObjectKey, sanitizeFilename } from "@rfp-os/storage";
-import type { AuthContext } from "@rfp-os/types";
+import type { AuthContext, Permission } from "@rfp-os/types";
+import { answerContentDigest, hasCurrentApproval } from "./domain/answer-review";
 
 import {
   hasOrganizationPermission,
@@ -280,6 +283,29 @@ export class TendersService {
     private readonly answerGeneration: AnswerGenerationService,
     private readonly tenderAi: TenderAiService,
   ) {}
+
+  async authorizeTender(auth: AuthContext, tenderId: string, permission: Permission) {
+    const tender = await this.requireTender(auth.organizationId, tenderId);
+    if (!hasOrganizationPermission(auth, permission) && !hasWorkspacePermission(auth, tender.workspaceId, permission)) throw new ForbiddenException({ code: "TENDER_ACCESS_DENIED", message: `Missing permission ${permission}.` });
+    const action = permission.endsWith(":read") ? "read" : permission === "tender:approve" ? "approve" : permission === "tender:submit" ? "submit" : "update";
+    await this.assertPolicyAllows(auth, action, tender);
+    if (action !== "read") this.assertEditable(tender, action === "submit" ? "SUBMITTED" : undefined);
+    return tender;
+  }
+
+  private async lockTenderMutation(tx: Transaction, organizationId: string, tenderId: string) {
+    const [current] = await tx.select().from(tenders).where(and(eq(tenders.id, tenderId), eq(tenders.organizationId, organizationId))).for("update");
+    if (!current) throw new TenderNotFoundError();
+    this.assertEditable(current);
+    return current;
+  }
+
+  async invalidateResponseApproval(tx: Transaction, organizationId: string, tenderId: string, answerId?: string) {
+    if (answerId) await tx.update(tenderAnswerReviews).set({ status: "PENDING", contentDigest: null, updatedAt: new Date() }).where(and(eq(tenderAnswerReviews.organizationId, organizationId), eq(tenderAnswerReviews.answerId, answerId)));
+    await tx.update(tenderSubmissionPackages).set({ status: "STALE" }).where(and(eq(tenderSubmissionPackages.organizationId, organizationId), eq(tenderSubmissionPackages.tenderId, tenderId), inArray(tenderSubmissionPackages.status, ["READY", "APPROVED"])));
+    const [reopened] = await tx.update(tenders).set({ status: "REVIEW", updatedAt: new Date() }).where(and(eq(tenders.organizationId, organizationId), eq(tenders.id, tenderId), eq(tenders.status, "APPROVED"))).returning();
+    if (reopened) await tx.insert(tenderStatusHistory).values({ organizationId, workspaceId: reopened.workspaceId, tenderId, fromStatus: "APPROVED", toStatus: "REVIEW", reason: "Response content changed; approval is required again." });
+  }
 
   async list(auth: AuthContext, filters: ListTendersInput) {
     const workspaceIds = this.resolveWorkspaceScope(auth, filters.workspaceId);
@@ -779,12 +805,19 @@ export class TendersService {
 
     const changedFields = Object.keys(patch);
     const updated = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tenderId);
+      await this.invalidateResponseApproval(tx, auth.organizationId, tenderId);
       const [row] = await tx
         .update(tenders)
         .set({ ...patch, updatedAt: new Date() })
         .where(and(eq(tenders.id, tenderId), eq(tenders.organizationId, auth.organizationId)))
         .returning();
       if (!row) throw new TenderNotFoundError();
+      if (input.dueAt !== undefined) {
+        if (row.dueAt) {
+          await tx.update(tenderMilestones).set({ dueAt: sql`${row.dueAt.toISOString()}::timestamptz - ${tenderMilestones.offsetDays} * interval '1 day'`, status: "PENDING", completedAt: null, updatedAt: new Date() }).where(and(eq(tenderMilestones.tenderId, tenderId), inArray(tenderMilestones.status, ["PENDING", "OVERDUE", "CANCELLED"])));
+        } else await tx.update(tenderMilestones).set({ status: "CANCELLED", updatedAt: new Date() }).where(and(eq(tenderMilestones.tenderId, tenderId), inArray(tenderMilestones.status, ["PENDING", "OVERDUE"])));
+      }
 
       await this.audit.record(
         {
@@ -825,6 +858,7 @@ export class TendersService {
     this.assertEditable(tender, input.to);
     const from = tender.status as TenderStatus;
     const to = input.to as TenderStatus;
+    if (to === "APPROVED" || to === "SUBMITTED") throw new ConflictException({ code: "PACKAGE_WORKFLOW_REQUIRED", message: to === "APPROVED" ? "Approve a current submission package in the Apply workspace." : "Record submission of a current approved package in the Apply workspace." });
 
     if (!canTransitionTender(from, to)) {
       throw new TenderTransitionNotAllowedError(from, to);
@@ -838,6 +872,11 @@ export class TendersService {
     await this.assertPolicyAllows(auth, "transition", tender, { toStatus: to });
 
     const updated = await withTransaction(async (tx) => {
+      const [current] = await tx.select().from(tenders).where(and(eq(tenders.id, tenderId), eq(tenders.organizationId, auth.organizationId))).for("update");
+      if (!current) throw new TenderNotFoundError();
+      if (current.status !== from) throw new ConflictException({ code: "TENDER_STATE_CHANGED", message: "The tender state changed. Refresh before moving it." });
+      this.assertEditable(current, to);
+      await this.assertPolicyAllows(auth, "transition", current, { toStatus: to });
       const [row] = await tx
         .update(tenders)
         .set({ status: to, updatedAt: new Date() })
@@ -961,6 +1000,8 @@ export class TendersService {
     await this.requireRequirements(auth.organizationId, tenderId, requirementIds);
 
     const created = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tenderId);
+      await this.invalidateResponseApproval(tx, auth.organizationId, tenderId);
       const [row] = await tx
         .insert(tenderQuestions)
         .values({
@@ -1044,6 +1085,8 @@ export class TendersService {
 
     const changedFields = Object.keys(patch);
     const updated = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tenderId);
+      await this.invalidateResponseApproval(tx, auth.organizationId, tenderId);
       const [row] = await tx
         .update(tenderQuestions)
         .set({ ...patch, updatedAt: new Date() })
@@ -1152,6 +1195,8 @@ export class TendersService {
     }
 
     const created = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tenderId);
+      await this.invalidateResponseApproval(tx, auth.organizationId, tenderId);
       const [row] = await tx
         .insert(tenderRequirements)
         .values({
@@ -1222,6 +1267,8 @@ export class TendersService {
 
     const changedFields = Object.keys(patch);
     const updated = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tenderId);
+      await this.invalidateResponseApproval(tx, auth.organizationId, tenderId);
       const [row] = await tx
         .update(tenderRequirements)
         .set({ ...patch, updatedAt: new Date() })
@@ -1372,13 +1419,14 @@ export class TendersService {
     return this.searchRequirementEvidence(auth, tenderId, requirementId, { limit: 10 });
   }
 
-  async generateRequirementAnswer(auth: AuthContext, tenderId: string, requirementId: string) {
+  async generateRequirementAnswer(auth: AuthContext, tenderId: string, requirementId: string, assertActive?: (tx?: Transaction) => Promise<void>) {
     const tender = await this.requireTender(auth.organizationId, tenderId);
     this.assertTenderWorkspacePermission(auth, tender.workspaceId, "answer:create");
     await this.assertPolicyAllows(auth, "update", tender);
     const requirement = await this.requireRequirement(auth.organizationId, tenderId, requirementId);
     const question = await this.requireQuestionForRequirement(auth.organizationId, tenderId, requirementId);
 
+    const expectedAnswer = assertActive ? await this.findAnswerForQuestion(auth.organizationId, question.id) : undefined;
     const candidates = await this.evidenceRetrieval.retrieveRequirementEvidence(auth, tender, requirement);
     const selectedCandidates = selectEvidenceCandidates(candidates, {
       limit: 5,
@@ -1488,6 +1536,7 @@ export class TendersService {
       groundingSupportedClaims: groundingResult.supportedClaims,
       groundingUnsupportedClaims: groundingResult.unsupportedClaims,
     });
+    await assertActive?.();
     const answer = await this.createAnswer(auth, tenderId, question.id, {
       answerText: generated.answer,
       source: "AI_GENERATED",
@@ -1496,7 +1545,7 @@ export class TendersService {
       metadata: existing
         ? { ...existing.metadata, ...generated.metadata, ...generationMetadata, grounding: groundingResult, evidenceState }
         : { ...generated.metadata, ...generationMetadata, grounding: groundingResult, evidenceState },
-    });
+    }, assertActive, expectedAnswer ?? (assertActive ? null : undefined));
 
     for (const evidence of selectedCandidates) {
       await this.addAnswerEvidence(auth, tenderId, answer.id, {
@@ -1509,7 +1558,7 @@ export class TendersService {
         freshness: evidence.freshness,
         verifiedAt: evidence.verifiedAt,
         metadata: evidence.metadata,
-      });
+      }, assertActive, new Date(answer.updatedAt));
     }
 
     return {
@@ -2039,9 +2088,13 @@ export class TendersService {
       verifiedAt?: string | null;
       metadata?: Record<string, unknown>;
     },
+    assertActive?: (tx?: Transaction) => Promise<void>,
+    expectedAnswerUpdatedAt?: Date,
   ) {
     const tender = await this.requireTender(auth.organizationId, tenderId);
     this.assertTenderWorkspacePermission(auth, tender.workspaceId, "answer:update");
+    this.assertEditable(tender);
+    await this.assertPolicyAllows(auth, "update", tender);
     const answer = await this.requireAnswer(auth.organizationId, answerId);
     if (answer.tenderId !== tenderId) throw new TenderAnswerNotFoundError();
     const evidenceType = normalizeEvidenceType(input.evidenceType);
@@ -2091,6 +2144,14 @@ export class TendersService {
     };
 
     const created = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tenderId);
+      await assertActive?.(tx);
+      if (expectedAnswerUpdatedAt) {
+        const [current] = await tx.select().from(tenderAnswers).where(eq(tenderAnswers.id, answerId)).for("update");
+        if (!current || current.updatedAt.getTime() !== expectedAnswerUpdatedAt.getTime()) throw new ConflictException({ code: "ANSWER_CHANGED", message: "The answer changed during generation; evidence was not modified." });
+      }
+      await this.invalidateResponseApproval(tx, auth.organizationId, tenderId, answerId);
+      await tx.update(tenderAnswers).set({ status: "DRAFT", updatedAt: new Date() }).where(and(eq(tenderAnswers.id, answerId), inArray(tenderAnswers.status, ["APPROVED", "FINAL"])));
       const [row] = await tx
         .insert(tenderAnswerEvidence)
         .values(evidenceRow)
@@ -2134,6 +2195,8 @@ export class TendersService {
   async removeAnswerEvidence(auth: AuthContext, tenderId: string, answerId: string, evidenceId: string) {
     const tender = await this.requireTender(auth.organizationId, tenderId);
     this.assertTenderWorkspacePermission(auth, tender.workspaceId, "answer:update");
+    this.assertEditable(tender);
+    await this.assertPolicyAllows(auth, "update", tender);
     const answer = await this.requireAnswer(auth.organizationId, answerId);
     if (answer.tenderId !== tenderId) throw new TenderAnswerNotFoundError();
 
@@ -2152,6 +2215,9 @@ export class TendersService {
     if (!row[0]) throw new TenderAnswerNotFoundError();
 
     const removed = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tenderId);
+      await this.invalidateResponseApproval(tx, auth.organizationId, tenderId, answerId);
+      await tx.update(tenderAnswers).set({ status: "DRAFT", updatedAt: new Date() }).where(and(eq(tenderAnswers.id, answerId), inArray(tenderAnswers.status, ["APPROVED", "FINAL"])));
       const [deleted] = await tx
         .delete(tenderAnswerEvidence)
         .where(
@@ -2369,6 +2435,8 @@ export class TendersService {
         processedDocuments,
         pendingDocuments,
         reviews: reviews.items.length,
+        answeredQuestions: questions.items.filter((question) => answers.items.some((answer) => answer.questionId === question.id && answer.answerText.trim())).length,
+        approvedAnswers: answers.items.filter((answer) => hasCurrentApproval(answer, reviews.items)).length,
       },
       sources: sources.items,
       documents: serializedDocuments,
@@ -3211,19 +3279,24 @@ export class TendersService {
     return serializeSource(removed);
   }
 
-  async createAnswer(auth: AuthContext, tenderId: string, questionId: string, input: CreateTenderAnswerInput) {
+  async createAnswer(auth: AuthContext, tenderId: string, questionId: string, input: CreateTenderAnswerInput, assertActive?: (tx?: Transaction) => Promise<void>, expectedAnswer?: { id: string; updatedAt: Date } | null) {
     const tender = await this.requireTender(auth.organizationId, tenderId);
     this.assertEditable(tender);
     const question = await this.requireQuestion(auth.organizationId, tenderId, questionId);
     if (!hasWorkspacePermission(auth, tender.workspaceId, "answer:create")) {
       throw new TenderPermissionError("answer:create");
     }
-    if (input.status === "FINAL") {
+    if (input.status === "FINAL" || input.status === "APPROVED") {
       throw new TenderAnswerFinalizationNotAllowedError();
     }
 
-    const existing = await this.findAnswerForQuestion(auth.organizationId, questionId);
+    await this.assertPolicyAllows(auth, "update", tender);
     const created = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tenderId);
+      await assertActive?.(tx);
+      const [existing] = await tx.select().from(tenderAnswers).where(and(eq(tenderAnswers.organizationId, auth.organizationId), eq(tenderAnswers.questionId, questionId))).for("update");
+      if (expectedAnswer !== undefined && (expectedAnswer === null ? Boolean(existing) : !existing || existing.id !== expectedAnswer.id || existing.updatedAt.getTime() !== expectedAnswer.updatedAt.getTime())) throw new ConflictException({ code: "ANSWER_CHANGED", message: "The answer changed during generation; the current response was preserved." });
+      await this.invalidateResponseApproval(tx, auth.organizationId, tenderId, existing?.id);
       if (existing) {
         const [row] = await tx
           .update(tenderAnswers)
@@ -3231,7 +3304,7 @@ export class TendersService {
             answerText: input.answerText ?? existing.answerText,
             source: input.source ?? existing.source,
             confidence: input.confidence !== undefined ? input.confidence.toString() : existing.confidence,
-            status: input.status ?? existing.status,
+            status: input.status ?? "DRAFT",
             updatedBy: auth.userId,
             metadata: input.metadata ?? existing.metadata,
             updatedAt: new Date(),
@@ -3343,10 +3416,8 @@ export class TendersService {
       throw new TenderPermissionError("answer:update");
     }
 
-    if (input.status === "FINAL") {
-      const approved = await this.hasApprovedReview(answerId);
-      if (!approved) throw new TenderAnswerFinalizationNotAllowedError();
-    }
+    await this.assertPolicyAllows(auth, "update", tender);
+    if (input.status === "APPROVED") throw new TenderAnswerFinalizationNotAllowedError();
 
     const patch: Partial<typeof tenderAnswers.$inferInsert> = {};
     if (input.answerText !== undefined) patch.answerText = input.answerText;
@@ -3357,6 +3428,18 @@ export class TendersService {
 
     const changedFields = Object.keys(patch);
     const updated = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tenderId);
+      const [current] = await tx.select().from(tenderAnswers).where(eq(tenderAnswers.id, answerId)).for("update");
+      if (!current) throw new TenderAnswerNotFoundError();
+      const contentChanged = (input.answerText !== undefined && input.answerText !== current.answerText) || (input.source !== undefined && input.source !== current.source);
+      if (input.status === "FINAL") {
+        const reviews = await tx.select().from(tenderAnswerReviews).where(eq(tenderAnswerReviews.answerId, answerId));
+        if (contentChanged || !hasCurrentApproval(current, reviews)) throw new TenderAnswerFinalizationNotAllowedError();
+      }
+      if (contentChanged) {
+        patch.status = input.status === "GENERATED" || input.status === "IN_REVIEW" ? input.status : "DRAFT";
+        await this.invalidateResponseApproval(tx, auth.organizationId, tenderId, answerId);
+      }
       const [row] = await tx
         .update(tenderAnswers)
         .set({ ...patch, updatedBy: auth.userId, updatedAt: new Date() })
@@ -3410,6 +3493,8 @@ export class TendersService {
       throw new TenderPermissionError("answer:review");
     }
 
+    this.assertEditable(tender);
+    await this.assertPolicyAllows(auth, "update", tender);
     const reviewerId = input.reviewerId ?? auth.userId;
     await this.requireActiveMember(auth.organizationId, reviewerId);
 
@@ -3426,11 +3511,16 @@ export class TendersService {
       .limit(1);
 
     const created = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tender.id);
+      if (input.status) await this.invalidateResponseApproval(tx, auth.organizationId, tender.id);
+      const [currentAnswer] = await tx.select().from(tenderAnswers).where(eq(tenderAnswers.id, answerId)).for("update");
+      if (!currentAnswer) throw new TenderAnswerNotFoundError();
       if (existingReview[0]) {
         const [row] = await tx
           .update(tenderAnswerReviews)
           .set({
             status: input.status ?? existingReview[0].status,
+            ...(input.status ? { contentDigest: input.status === "APPROVED" ? answerContentDigest(currentAnswer) : null } : {}),
             comment: input.comment ?? existingReview[0].comment,
             updatedAt: new Date(),
           })
@@ -3443,12 +3533,12 @@ export class TendersService {
           .returning();
         if (!row) throw new TenderReviewNotFoundError();
 
-        if (row.status === "PENDING") {
+        if (input.status && row.status === "PENDING") {
           await tx
             .update(tenderAnswers)
             .set({ status: "IN_REVIEW", updatedBy: auth.userId, updatedAt: new Date() })
             .where(eq(tenderAnswers.id, answerId));
-        } else {
+        } else if (input.status) {
           await tx
             .update(tenderAnswers)
             .set({
@@ -3502,15 +3592,16 @@ export class TendersService {
           answerId,
           reviewerId,
           status: input.status ?? "PENDING",
+          contentDigest: input.status === "APPROVED" ? answerContentDigest(currentAnswer) : null,
           comment: input.comment ?? "",
         })
         .returning();
       if (!row) throw new TenderReviewNotFoundError();
 
-      if (row.status === "PENDING") {
+      {
         await tx
           .update(tenderAnswers)
-          .set({ status: "IN_REVIEW", updatedBy: auth.userId, updatedAt: new Date() })
+          .set({ status: row.status === "APPROVED" ? "APPROVED" : row.status === "CHANGES_REQUESTED" ? "CHANGES_REQUESTED" : row.status === "REJECTED" ? "REJECTED" : "IN_REVIEW", updatedBy: auth.userId, updatedAt: new Date() })
           .where(eq(tenderAnswers.id, answerId));
       }
 
@@ -3552,12 +3643,19 @@ export class TendersService {
       throw new TenderPermissionError("answer:review");
     }
 
+    this.assertEditable(tender);
+    await this.assertPolicyAllows(auth, "update", tender);
     const patch: Partial<typeof tenderAnswerReviews.$inferInsert> = {};
     if (input.comment !== undefined) patch.comment = input.comment;
     if (input.status !== undefined) patch.status = input.status;
 
     const changedFields = Object.keys(patch);
     const updated = await withTransaction(async (tx) => {
+      await this.lockTenderMutation(tx, auth.organizationId, tender.id);
+      if (input.status) await this.invalidateResponseApproval(tx, auth.organizationId, tender.id);
+      const [answer] = await tx.select().from(tenderAnswers).where(eq(tenderAnswers.id, review.answerId)).for("update");
+      if (!answer) throw new TenderAnswerNotFoundError();
+      if (input.status) patch.contentDigest = input.status === "APPROVED" ? answerContentDigest(answer) : null;
       const [row] = await tx
         .update(tenderAnswerReviews)
         .set({ ...patch, updatedAt: new Date() })
@@ -3565,7 +3663,7 @@ export class TendersService {
         .returning();
       if (!row) throw new TenderReviewNotFoundError();
 
-      if (input.status && input.status !== "PENDING") {
+      if (input.status) {
         await tx
           .update(tenderAnswers)
           .set({
@@ -3574,7 +3672,7 @@ export class TendersService {
                 ? "APPROVED"
                 : input.status === "CHANGES_REQUESTED"
                   ? "CHANGES_REQUESTED"
-                  : "REJECTED",
+                  : input.status === "PENDING" ? "IN_REVIEW" : "REJECTED",
             updatedBy: auth.userId,
             updatedAt: new Date(),
           })
@@ -3836,14 +3934,13 @@ export class TendersService {
 
     const mandatoryRequirements = requirements.filter((requirement) => requirement.mandatory);
     const requirementIsApproved = (requirement: typeof tenderRequirements.$inferSelect) => {
-      if (requirement.status === "APPROVED") return true;
       const linkedQuestionIds = questionIdsByRequirement.get(requirement.id) ?? [];
-      return linkedQuestionIds.length > 0 && linkedQuestionIds.every((questionId) => answerByQuestionId.get(questionId)?.status === "APPROVED");
+      return linkedQuestionIds.length > 0 && linkedQuestionIds.every((questionId) => { const answer = answerByQuestionId.get(questionId); return answer ? hasCurrentApproval(answer, reviews) : false; });
     };
     const approvedMandatory = mandatoryRequirements.filter(requirementIsApproved);
     const answeredQuestions = questions.filter((question) => answerByQuestionId.has(question.id));
     const answeredWithEvidence = answers.filter((answer) => (evidenceCountByAnswer.get(answer.id) ?? 0) > 0);
-    const reviewedAnswers = answers.filter((answer) => (reviewCountByAnswer.get(answer.id) ?? 0) > 0);
+    const reviewedAnswers = answers.filter((answer) => hasCurrentApproval(answer, reviews));
     const readySources = sources.filter((source) => source.status === "READY");
 
     let score = 100;
@@ -3934,6 +4031,9 @@ export class TendersService {
     for (const answer of answers) {
       const evidenceCount = evidenceCountByAnswer.get(answer.id) ?? 0;
       const latestReview = latestReviewByAnswer.get(answer.id);
+      if (questions.find((question) => question.id === answer.questionId)?.required && !hasCurrentApproval(answer, reviews)) {
+        addIssue({ id: `answer-${answer.id}-unapproved-content`, severity: "HIGH", title: "Required answer needs a current approved review", detail: "Approval must match the current answer content.", recommendation: "Review the latest answer and approve it.", blocking: true, answerId: answer.id, questionId: answer.questionId }, 15);
+      }
       if (evidenceCount === 0) {
         const relatedRequirementIds = requirementIdsByQuestion.get(answer.questionId) ?? [];
         const relatedMandatory = relatedRequirementIds.some((requirementId) => requirementById.get(requirementId)?.mandatory);
@@ -4163,15 +4263,8 @@ export class TendersService {
     return row ?? null;
   }
 
-  private async hasApprovedReview(answerId: string) {
-    const [row] = await this.db
-      .select({ id: tenderAnswerReviews.id })
-      .from(tenderAnswerReviews)
-      .where(and(eq(tenderAnswerReviews.answerId, answerId), eq(tenderAnswerReviews.status, "APPROVED")));
-    return Boolean(row);
-  }
-
   private assertEditable(tender: TenderRow, targetStatus?: TenderStatus) {
+    if (tender.status === "SUBMITTED" && !targetStatus) throw new TenderNotEditableError();
     if (["ARCHIVED", "CANCELLED", "CLOSED"].includes(tender.status) && targetStatus !== "ARCHIVED") {
       throw new TenderNotEditableError();
     }
@@ -4895,6 +4988,7 @@ function serializeReview(row: TenderReviewRow) {
     answerId: row.answerId,
     reviewerId: row.reviewerId,
     status: row.status,
+    contentDigest: row.contentDigest,
     comment: row.comment,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
