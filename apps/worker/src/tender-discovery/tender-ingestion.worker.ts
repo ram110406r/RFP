@@ -3,6 +3,7 @@ import {
   QUEUES,
   TENDER_INGESTION_JOBS,
   tenderCatalogReconcileJobId,
+  tenderDiscoveryMaintenanceJobId,
   tenderIngestionJobId,
   type TenderIngestionJobPayload,
   type TenderPortalSyncJobPayload,
@@ -11,15 +12,17 @@ import { createLogger } from "@rfp-os/observability";
 import { Queue, Worker, type Job } from "bullmq";
 import type IORedis from "ioredis";
 
-import { connectorForPortal } from "./connector";
+import { connectorForPortal, normalizeNoticeFields } from "./connector";
 import { TenderIngestionRepository } from "./tender-ingestion.repository";
 import { NoticeDocumentImporter, tenderDiscoveryStorage } from "./notice-document-importer";
+import { SavedSearchEvaluator } from "./saved-search-evaluator";
 
 const logger = createLogger("worker:tender-discovery");
 
 export function createTenderDiscoveryWorker(connection: IORedis) {
   const repository = new TenderIngestionRepository();
   const documentImporter = new NoticeDocumentImporter(tenderDiscoveryStorage());
+  const savedSearches = new SavedSearchEvaluator();
   return new Worker<TenderIngestionJobPayload>(
     QUEUES.TENDER_INGESTION,
     async (job: Job<TenderIngestionJobPayload>) => {
@@ -29,22 +32,34 @@ export function createTenderDiscoveryWorker(connection: IORedis) {
         await repository.reconcileCatalog();
         return { processed: true };
       }
+      if (job.name === TENDER_INGESTION_JOBS.EVALUATE_SAVED_SEARCHES && job.data.kind === "EVALUATE_SAVED_SEARCHES")
+        return { processed: true, evaluated: await savedSearches.evaluateDue() };
+      if (job.name === TENDER_INGESTION_JOBS.MAINTAIN_DISCOVERY_ANALYTICS && job.data.kind === "MAINTAIN_DISCOVERY_ANALYTICS") {
+        await savedSearches.maintainAnalytics();
+        return { processed: true };
+      }
       if (job.name !== TENDER_INGESTION_JOBS.SYNC_PORTAL || job.data.kind !== "SYNC_PORTAL")
         throw new Error(`Unsupported tender ingestion job ${job.name}.`);
       const data = job.data as TenderPortalSyncJobPayload;
       const portal = await repository.portal(data.portalId);
-      if (!portal || !portal.enabled)
+      const smoke = job.data.kind === "SYNC_PORTAL" && job.data.scope?.smoke === true;
+      if (!portal || (!portal.enabled && !(smoke && portal.metadata.connectorVerified === true)))
         return { processed: false, reason: "Portal is missing or disabled." };
       const mode = data.mode ?? "HEAD";
       const backfill = mode === "BACKFILL" ? gemBackfillScope(portal.syncState) : null;
-      const scope: Record<string, unknown> = backfill ? { ...backfill } : data.scope ?? {};
+      const scope: Record<string, unknown> = backfill ? { ...backfill } : mode === "FULL_REFRESH" || mode === "RECONCILE" ? { ...(data.scope ?? {}), snapshotStartedAt: data.windowStartedAt } : data.scope ?? {};
       const run = await repository.beginRun(portal.id, data.windowStartedAt, data.cursor, mode, scope);
       let cursor = mode === "BACKFILL" ? backfill?.cursor ?? null : data.cursor ?? null;
       let discovered = 0;
       let inserted = 0;
       let updated = 0;
+      let duplicates = 0;
+      let parsed = 0;
+      let rejected = 0;
+      const complete = { referenceNumber: 0, buyer: 0, deadline: 0, category: 0, state: 0, estimatedValue: 0, documents: 0 };
       try {
         const connector = connectorForPortal(portal);
+        const fetchMode = mode === "RECONCILE" ? "FULL_REFRESH" : mode;
         const maxPages = mode === "HEAD"
           ? metadataNumber(portal.metadata, "headPagesPerRun", 3, 1, 10)
           : metadataNumber(portal.metadata, "maxPagesPerRun", 25, 1, 100);
@@ -52,15 +67,32 @@ export function createTenderDiscoveryWorker(connection: IORedis) {
         let pages = 0;
         do {
           const page = await connector.fetchPage(cursor, backfill ? {
-            mode,
+            mode: fetchMode,
             deadlineFrom: backfill.deadlineFrom,
             deadlineTo: backfill.deadlineTo,
-          } : { mode });
-          for (const item of page.items) {
+          } : { mode: fetchMode });
+          discovered += page.items.length;
+          for (const sourceItem of page.items) {
+            let item;
+            try {
+              item = normalizeNoticeFields(sourceItem);
+            } catch (error) {
+              rejected += 1;
+              await repository.rejectNotice(portal.id, run.id, sourceItem, error instanceof Error ? error.message : "Notice normalization failed.");
+              continue;
+            }
             const result = await repository.persistNotice(portal.id, run.id, item);
-            discovered += 1;
+            parsed += 1;
             if (result.inserted) inserted += 1;
+            else if (result.duplicate) duplicates += 1;
             else updated += 1;
+            if (item.referenceNumber) complete.referenceNumber += 1;
+            if (item.buyerName) complete.buyer += 1;
+            if (item.deadlineAt) complete.deadline += 1;
+            if (item.category) complete.category += 1;
+            if (item.state) complete.state += 1;
+            if (item.estimatedValue !== null && item.estimatedValue !== undefined) complete.estimatedValue += 1;
+            if (item.documents?.length) complete.documents += 1;
           }
           cursor = page.nextCursor;
           pages += 1;
@@ -68,15 +100,16 @@ export function createTenderDiscoveryWorker(connection: IORedis) {
           if (cursor && pages < maxPages && requestDelayMs) await sleep(requestDelayMs);
         } while (cursor && pages < maxPages);
         const nextBackfill = backfill ? advanceGemBackfill(backfill, portal.syncState, cursor) : null;
-        await repository.completeRun(run.id, portal.id, { discovered, inserted, updated }, mode === "BACKFILL" ? null : cursor, {
+        const completeness = Object.fromEntries(Object.entries(complete).map(([key, value]) => [key, discovered ? Math.round(value * 10_000 / discovered) / 100 : 0]));
+        await repository.completeRun(run.id, portal.id, { discovered, parsed, rejected, duplicates, inserted, updated, completeness }, mode === "BACKFILL" ? null : cursor, {
           mode,
           scope,
-          fullSnapshot: nextBackfill?.complete ?? false,
+          fullSnapshot: mode === "FULL_REFRESH" || mode === "RECONCILE" || (nextBackfill?.complete ?? false),
           backfillComplete: nextBackfill?.complete ?? false,
           syncState: nextBackfill?.state ?? portal.syncState,
         });
         logger.info(
-          { portal: portal.key, discovered, inserted, updated },
+          { portal: portal.key, discovered, parsed, rejected, inserted, updated, duplicates, completeness },
           "tender portal sync complete",
         );
         return { processed: true, discovered, inserted, updated };
@@ -125,6 +158,17 @@ export function startTenderDiscoveryScheduler(connection: IORedis) {
       TENDER_INGESTION_JOBS.RECONCILE_CATALOG,
       { kind: "RECONCILE_CATALOG", windowStartedAt: hour },
       { ...DEFAULT_JOB_OPTIONS, jobId: tenderCatalogReconcileJobId(hour) },
+    );
+    const minute = windowBucket(new Date(), 1);
+    await queue.add(
+      TENDER_INGESTION_JOBS.EVALUATE_SAVED_SEARCHES,
+      { kind: "EVALUATE_SAVED_SEARCHES", windowStartedAt: minute },
+      { ...DEFAULT_JOB_OPTIONS, jobId: tenderDiscoveryMaintenanceJobId("EVALUATE_SAVED_SEARCHES", minute) },
+    );
+    await queue.add(
+      TENDER_INGESTION_JOBS.MAINTAIN_DISCOVERY_ANALYTICS,
+      { kind: "MAINTAIN_DISCOVERY_ANALYTICS", windowStartedAt: hour },
+      { ...DEFAULT_JOB_OPTIONS, jobId: tenderDiscoveryMaintenanceJobId("MAINTAIN_DISCOVERY_ANALYTICS", hour) },
     );
   };
   void repository
