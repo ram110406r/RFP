@@ -137,6 +137,8 @@ export const tenderAutomationRuns = pgTable("tender_automation_runs", {
   status: tenderAutomationStatusEnum("status").notNull().default("QUEUED"),
   requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
   idempotencyKey: text("idempotency_key").notNull(),
+  leaseOwner: uuid("lease_owner"),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
   configuration: jsonb("configuration").$type<Record<string, unknown>>().notNull().default({}),
   summary: jsonb("summary").$type<Record<string, unknown>>().notNull().default({}),
   failureReason: text("failure_reason"),
@@ -148,6 +150,7 @@ export const tenderAutomationRuns = pgTable("tender_automation_runs", {
   uniqueIndex("tender_automation_runs_tender_key_uq").on(t.tenderId, t.idempotencyKey),
   uniqueIndex("tender_automation_runs_active_uq").on(t.tenderId).where(sql`${t.status} IN ('QUEUED', 'RUNNING')`),
   index("tender_automation_runs_tender_created_idx").on(t.tenderId, t.createdAt),
+  index("tender_automation_runs_claim_idx").on(t.status, t.leaseExpiresAt, t.createdAt),
 ]);
 
 export const tenderAutomationSteps = pgTable("tender_automation_steps", {

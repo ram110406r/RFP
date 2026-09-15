@@ -9,5 +9,5 @@
 export * from "./schema";
 export * from "./relations";
 
-export { getDb, orgScope, schema, withTransaction } from "./client";
+export { closeDb, getDb, orgScope, schema, withTransaction } from "./client";
 export type { Database, Transaction } from "./client";
