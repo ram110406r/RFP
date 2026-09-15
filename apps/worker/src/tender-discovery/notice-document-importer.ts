@@ -5,7 +5,7 @@ import { files, getDb, tenderDocuments, tenderNoticeDocuments, tenderSources, te
 import { sniffFormat } from "@rfp-os/document-processing";
 import type { TenderNoticeDocumentImportJobPayload } from "@rfp-os/jobs";
 import { ObjectStorage, sanitizeFilename, tenderSourceObjectKey } from "@rfp-os/storage";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 const MAX_REMOTE_BYTES = 50 * 1024 * 1024;
 
@@ -14,11 +14,20 @@ export class NoticeDocumentImporter {
   constructor(private readonly storage: ObjectStorage) {}
 
   async import(payload: TenderNoticeDocumentImportJobPayload) {
+    await this.db.update(tenderNoticeDocuments).set({ importStatus: "PENDING", importAttempts: sql`${tenderNoticeDocuments.importAttempts} + 1`, lastCheckedAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(tenderNoticeDocuments.id, payload.noticeDocumentId));
+    try { return await this.importDocument(payload); }
+    catch (error) {
+      await this.db.update(tenderNoticeDocuments).set({ importStatus: "FAILED", lastError: error instanceof Error ? error.message.slice(0, 2_000) : "Document import failed.", lastCheckedAt: new Date(), updatedAt: new Date() }).where(eq(tenderNoticeDocuments.id, payload.noticeDocumentId));
+      throw error;
+    }
+  }
+
+  private async importDocument(payload: TenderNoticeDocumentImportJobPayload) {
     const existing = await this.db.select({ id: tenderSources.id }).from(tenderSources).where(and(eq(tenderSources.tenderId, payload.tenderId), eq(tenderSources.discoveryNoticeDocumentId, payload.noticeDocumentId))).limit(1);
-    if (existing[0]) return { processed: false, sourceId: existing[0].id };
+    if (existing[0]) { await this.markImported(payload.noticeDocumentId, null); return { processed: false, sourceId: existing[0].id }; }
     const [row] = await this.db.select({ document: tenderNoticeDocuments, tender: tenders }).from(tenderNoticeDocuments).innerJoin(tenders, eq(tenders.discoveryNoticeId, tenderNoticeDocuments.noticeId)).where(and(eq(tenderNoticeDocuments.id, payload.noticeDocumentId), eq(tenders.id, payload.tenderId), eq(tenders.organizationId, payload.organizationId), eq(tenders.workspaceId, payload.workspaceId))).limit(1);
     if (!row) throw new Error("Tender notice document is not linked to this application.");
-    if (row.document.access !== "DIRECT") return { processed: false, reason: "Document is not directly downloadable." };
+    if (row.document.access !== "DIRECT") { await this.db.update(tenderNoticeDocuments).set({ importStatus: "NOT_APPLICABLE", lastCheckedAt: new Date(), updatedAt: new Date() }).where(eq(tenderNoticeDocuments.id, payload.noticeDocumentId)); return { processed: false, reason: "Document is not directly downloadable." }; }
 
     const response = await fetchPublicDocument(row.document.url);
     if (!response.ok) throw new Error(`Official document returned HTTP ${response.status}.`);
@@ -46,12 +55,15 @@ export class NoticeDocumentImporter {
       await this.storage.deleteObject(objectKey).catch(() => undefined);
       if (error instanceof DuplicateImportError) {
         const [winner] = await this.db.select({ id: tenderSources.id }).from(tenderSources).where(and(eq(tenderSources.tenderId, payload.tenderId), eq(tenderSources.discoveryNoticeDocumentId, payload.noticeDocumentId))).limit(1);
-        if (winner) return { processed: false, sourceId: winner.id };
+        if (winner) { await this.markImported(payload.noticeDocumentId, objectKey); return { processed: false, sourceId: winner.id }; }
       }
       throw error;
     }
+    await this.markImported(payload.noticeDocumentId, objectKey);
     return { processed: true, sourceId };
   }
+
+  private async markImported(documentId: string, storageKey: string | null) { await this.db.update(tenderNoticeDocuments).set({ importStatus: "IMPORTED", storageKey, lastError: null, lastCheckedAt: new Date(), updatedAt: new Date() }).where(eq(tenderNoticeDocuments.id, documentId)); }
 }
 
 export function tenderDiscoveryStorage() {

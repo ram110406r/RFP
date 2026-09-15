@@ -389,6 +389,17 @@ export function effectiveNoticeStatus(status: NoticeStatus | undefined, deadline
   return normalized;
 }
 
+export function normalizeNoticeFields(item: ConnectorNotice): ConnectorNotice {
+  const source = new URL(item.sourceUrl);
+  if (source.protocol !== "https:" && source.protocol !== "http:") throw new Error("Tender source URL must use HTTP or HTTPS.");
+  const clean = (value: string | null | undefined) => value?.normalize("NFKC").replace(/\s+/g, " ").trim() || undefined;
+  const stateAliases: Record<string, string> = { orissa: "Odisha", uttaranchal: "Uttarakhand", "nct of delhi": "Delhi", "new delhi": "Delhi" };
+  const rawState = clean(item.state);
+  const state = rawState ? stateAliases[rawState.toLocaleLowerCase("en-IN")] ?? rawState.toLocaleLowerCase("en-IN").replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase("en-IN")) : undefined;
+  const currency = clean(item.currency)?.toUpperCase();
+  return { ...item, sourceNoticeKey: clean(item.sourceNoticeKey) ?? item.sourceNoticeKey, title: clean(item.title) ?? item.title, referenceNumber: clean(item.referenceNumber), description: clean(item.description) ?? "", buyerName: clean(item.buyerName), authorityType: clean(item.authorityType), location: clean(item.location), state, category: clean(item.category), procurementType: clean(item.procurementType), currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : "INR", sourceUrl: source.toString(), documents: item.documents?.map((document) => ({ ...document, key: clean(document.key) ?? document.key, name: clean(document.name) ?? document.name, url: new URL(document.url).toString() })) };
+}
+
 function normalizeDocuments(value: unknown): ConnectorDocument[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {

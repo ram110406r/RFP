@@ -5,12 +5,17 @@ import {
   effectiveNoticeStatus,
   normalizeGemNotice,
   normalizeOfficialFeedItem,
+  normalizeNoticeFields,
   parseCpppLatestHtml,
   parseGepnicLatestHtml,
   payloadHash,
 } from "./connector";
 
 describe("official tender feed normalization", () => {
+  test("normalizes persisted taxonomy and whitespace", () => {
+    const item = normalizeNoticeFields({ sourceNoticeKey: "  X  1 ", title: "  Cloud   services ", buyerName: " State   Department ", state: "ORISSA", currency: "inr", sourceUrl: "https://example.gov.in/tender", raw: {} });
+    expect(item).toMatchObject({ sourceNoticeKey: "X 1", title: "Cloud services", buyerName: "State Department", state: "Odisha", currency: "INR" });
+  });
   test("normalizes Indian values, dates, statuses, and document links", () => {
     const item = normalizeOfficialFeedItem({
       sourceNoticeKey: "GEM/2026/B/123",
