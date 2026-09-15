@@ -13,6 +13,18 @@ const input = {
 };
 
 describe("submission package generation", () => {
+  test("preserves same-named attachments and filename sanitization collisions", () => {
+    const artifacts = generateSubmissionArtifacts({ ...input, attachments: [
+      { filename: "cert.pdf", bytes: new Uint8Array([1]) },
+      { filename: "cert.pdf", bytes: new Uint8Array([2]) },
+      { filename: "a/b.pdf", bytes: new Uint8Array([3]) },
+      { filename: "a_b.pdf", bytes: new Uint8Array([4]) },
+    ] });
+    const bundle = unzipSync(artifacts.at(-1)!.bytes);
+    const attachments = Object.keys(bundle).filter((name) => name.startsWith("attachments/"));
+    expect(attachments).toHaveLength(4);
+    expect(attachments.map((name) => bundle[name]![0]).sort()).toEqual([1, 2, 3, 4]);
+  });
   test("creates deterministic, readable Office and bundle artifacts", () => {
     const first = generateSubmissionArtifacts(input);
     const second = generateSubmissionArtifacts(input);
@@ -26,4 +38,3 @@ describe("submission package generation", () => {
     expect(Object.keys(bundle).sort()).toEqual(["compliance-matrix.xlsx", "evidence-manifest.json", "response.docx", "submission-checklist.csv"]);
   });
 });
-

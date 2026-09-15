@@ -32,7 +32,7 @@ export function generateSubmissionArtifacts(input: SubmissionPackageInput): Gene
   const evidence = strToU8(JSON.stringify({ tender: input.reference, items: input.rows.map((row) => ({ requirement: row.requirement, evidence: row.evidence })) }, null, 2));
   const checklist = strToU8([
     "Item,Status",
-    `Required answers reviewed,${input.rows.every((row) => !row.mandatory || row.status === "APPROVED") ? "Complete" : "Incomplete"}`,
+    `Required answers reviewed,${input.rows.every((row) => !row.mandatory || ["APPROVED", "FINAL"].includes(row.status)) ? "Complete" : "Incomplete"}`,
     `Validation blockers,${input.blockers.length === 0 ? "None" : input.blockers.length}`,
     "Buyer-provided forms,Verify and attach manually",
     "Portal submission receipt,Required after submission",
@@ -45,7 +45,7 @@ export function generateSubmissionArtifacts(input: SubmissionPackageInput): Gene
   ];
   const archive = zipSync(Object.fromEntries([
     ...base.map((item) => [item.filename, item.bytes] as const),
-    ...(input.attachments ?? []).map((item) => [`attachments/${safeFilename(item.filename)}`, item.bytes] as const),
+    ...(input.attachments ?? []).map((item, index) => [`attachments/${index + 1}-${safeFilename(item.filename)}`, item.bytes] as const),
   ]), { level: 6 });
   return [...base, { kind: "PACKAGE_ZIP", filename: "submission-package.zip", mimeType: "application/zip", bytes: archive }];
 }
