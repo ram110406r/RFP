@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 
 import {
   analyzeTender,
+  extractTenderRequirements,
+  fetchTenderRequirementCandidates,
   ApiError,
   completeTenderSourceUpload,
   createTender,
@@ -29,9 +31,6 @@ const CATEGORIES = ["Technical", "Security", "Commercial", "Legal", "Compliance"
 const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  csv: "text/csv",
-  txt: "text/plain",
 };
 
 export function RfpIntakeWizard({ mode }: { mode: Mode }) {
@@ -47,6 +46,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [analysis, setAnalysis] = useState<TenderAnalysisPayload | null>(null);
   const [requirements, setRequirements] = useState<TenderRequirement[]>([]);
+  const [candidateCount, setCandidateCount] = useState<number | null>(null);
   const [questions, setQuestions] = useState<TenderQuestion[]>([]);
   const [categories, setCategories] = useState([...CATEGORIES]);
   const [preferences, setPreferences] = useState({ analyzeRequirements: true, detectMandatory: true, detectRisks: true, searchKnowledge: true, generateInitialAnswers: false });
@@ -162,6 +162,11 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
     setError(null);
     setAnalysis(null);
     try {
+      if (parsedUploads.length > 0) {
+        await extractTenderRequirements(id);
+        const candidates = await fetchTenderRequirementCandidates(id);
+        setCandidateCount(candidates.items.filter((item) => item.status === "PENDING").length);
+      }
       const result = preferences.analyzeRequirements ? await analyzeTender(id) : null;
       const [requirementResult, questionResult] = await Promise.all([fetchTenderRequirements(id), fetchTenderQuestions(id)]);
       setAnalysis(result);
@@ -223,7 +228,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
       {step === 2 ? <Panel title="Upload documents" description="Files use the real object-storage upload, completion, and parse pipeline.">
         <div onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files); }} className={`flex min-h-72 flex-col items-center justify-center rounded-3xl border-2 border-dashed px-6 text-center ${dragging ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-slate-50/50"}`}>
           <UploadIcon /><p className="mt-4 text-lg font-semibold text-slate-950">Drop your RFP files here</p><p className="mt-2 text-sm text-slate-500">PDF · DOCX · XLSX · CSV · TXT</p>
-          <button type="button" onClick={() => fileInput.current?.click()} className={`${secondary} mt-5`}>Browse files</button><input ref={fileInput} type="file" multiple accept=".pdf,.docx,.xlsx,.csv,.txt" className="sr-only" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.target.value = ""; }} />
+          <button type="button" onClick={() => fileInput.current?.click()} className={`${secondary} mt-5`}>Browse files</button><input ref={fileInput} type="file" multiple accept=".pdf,.docx" className="sr-only" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.target.value = ""; }} />
         </div>
         {uploads.length ? <div className="mt-5 space-y-3">{uploads.map((upload) => <UploadRow key={upload.id} upload={upload} />)}</div> : null}
         {mode === "create" && !uploads.length ? <p className="mt-4 text-sm text-slate-500">A manual RFP can continue without a file; real extraction counts will remain zero.</p> : null}
@@ -243,7 +248,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
 
       {step === 4 ? <div className="mx-auto max-w-3xl space-y-6">
         <Panel title={busy ? "Analyzing your RFP" : analysis || !preferences.analyzeRequirements ? "Analysis complete" : "Analysis needs attention"} description={busy ? "TENDYY is calling the real analysis pipeline once." : "Results come from persisted tender data."}>
-          <div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className={`h-full bg-blue-700 transition-all ${busy ? "w-2/3 animate-pulse" : "w-full"}`} /></div><div className="mt-6 space-y-3"><Stage label="Documents uploaded" state={uploads.length ? "done" : "empty"} /><Stage label="Documents parsed" state={uploads.length && parsedUploads.length === uploads.length ? "done" : uploads.length ? "active" : "empty"} /><Stage label="Questions detected" state={busy ? "active" : "done"} count={busy ? undefined : questions.length} /><Stage label="Requirements classified" state={busy ? "pending" : "done"} count={busy ? undefined : requirements.length} /><Stage label="Initial RFP intelligence" state={busy ? "pending" : analysis || !preferences.analyzeRequirements ? "done" : "error"} /></div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className={`h-full bg-blue-700 transition-all ${busy ? "w-2/3 animate-pulse" : "w-full"}`} /></div><div className="mt-6 space-y-3"><Stage label="Documents uploaded" state={uploads.length ? "done" : "empty"} /><Stage label="Documents parsed" state={uploads.length && parsedUploads.length === uploads.length ? "done" : uploads.length ? "active" : "empty"} /><Stage label="Questions accepted" state={busy ? "active" : questions.length ? "done" : "empty"} count={busy ? undefined : questions.length} /><Stage label="Requirements awaiting confirmation in Apply" state={busy ? "pending" : candidateCount === null ? "empty" : "done"} count={candidateCount ?? undefined} /><Stage label="Initial RFP intelligence" state={busy ? "pending" : analysis || !preferences.analyzeRequirements ? "done" : "error"} /></div>
         </Panel>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Metric label="Requirements" value={requirements.length} /><Metric label="Mandatory" value={mandatory} /><Metric label="Security" value={security} /><Metric label="Commercial" value={commercial} /></div>
         {!busy && tenderId ? <div className="flex justify-center gap-3">{!analysis && preferences.analyzeRequirements ? <button type="button" onClick={() => void startAnalysis(tenderId)} className={primary}>Retry analysis</button> : null}<Link href={`/tenders/${tenderId}`} className={primary}>Open RFP workspace</Link></div> : null}

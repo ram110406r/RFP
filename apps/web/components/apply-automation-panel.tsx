@@ -7,6 +7,8 @@ import { Button } from "@rfp-os/ui";
 import type { TenderSummary } from "../lib/models";
 import {
   useApproveTenderPackage,
+  useCancelTenderAutomationRun,
+  useTransitionTender,
   useCreateTenderAutomationRun,
   useCreateTenderPackage,
   useCreateTenderSubmission,
@@ -33,6 +35,9 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
   const decide = useDecideTenderRequirementCandidates(tender.id);
   const prepare = useCreateTenderAutomationRun(tender.id);
   const retry = useRetryTenderAutomationRun(tender.id);
+  const cancel = useCancelTenderAutomationRun(tender.id);
+  const transition = useTransitionTender(tender.id);
+  const nextStage = ({ DRAFT: "INTAKE", INTAKE: "PROCESSING", PROCESSING: "READY", READY: "IN_PROGRESS", IN_PROGRESS: "REVIEW" } as Record<string, string>)[tender.status];
   const createPackage = useCreateTenderPackage(tender.id);
   const approvePackage = useApproveTenderPackage(tender.id);
   const download = useDownloadTenderPackage(tender.id);
@@ -47,7 +52,7 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
   const latestRun = runs.data?.items[0] ?? null;
   const approvedPackage = packages.data?.items.find((item) => item.status === "APPROVED") ?? null;
   const busy = prepare.isPending || latestRun?.status === "RUNNING" || latestRun?.status === "QUEUED";
-  const error = [candidates.error, runs.error, packages.error, milestones.error, submissions.error, extract.error, decide.error, prepare.error, retry.error, createPackage.error, approvePackage.error, download.error, updateMilestones.error, submit.error].find(Boolean);
+  const error = [cancel.error, transition.error,candidates.error, runs.error, packages.error, milestones.error, submissions.error, extract.error, decide.error, prepare.error, retry.error, createPackage.error, approvePackage.error, download.error, updateMilestones.error, submit.error].find(Boolean);
   const runSteps = latestRun?.steps ?? [];
   const selectedCount = selected.size;
   const offsets = useMemo(() => Object.fromEntries((milestones.data?.items ?? []).map((item) => [item.kind, item.offsetDays])), [milestones.data]);
@@ -74,7 +79,10 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
             <Play className="h-4 w-4" />{busy ? "Preparing..." : "Prepare application"}
           </Button>
           {latestRun && ["FAILED", "PARTIAL", "BLOCKED", "WAITING_FOR_INPUT"].includes(latestRun.status) ? <Button type="button" variant="secondary" onClick={() => retry.mutate(latestRun.id)} disabled={retry.isPending}><RefreshCw className="h-4 w-4" />Retry run</Button> : null}
+          {latestRun && ["RUNNING", "QUEUED"].includes(latestRun.status) ? <Button type="button" variant="secondary" onClick={() => cancel.mutate(latestRun.id)} disabled={cancel.isPending}>Cancel preparation</Button> : null}
+          {nextStage ? <Button type="button" variant="secondary" onClick={() => transition.mutate({ to: nextStage })} disabled={busy || transition.isPending}>Move to {label(nextStage)}</Button> : null}
         </div>
+        {latestRun ? <div className="mt-3 text-sm"><TendyyStatusBadge tone={toneFromStatus(latestRun.status)}>{latestRun.status}</TendyyStatusBadge>{latestRun.failureReason ? <p className="mt-2 text-red-700">{latestRun.failureReason}</p> : null}{latestRun.items?.filter((item) => ["FAILED", "BLOCKED"].includes(item.status)).map((item) => <p key={item.id} className="mt-2 text-amber-800">{item.requirementId}: {item.failureReason ?? String(item.result.reason ?? item.status)}</p>)}</div> : null}
         {pending.length > 0 ? <p className="mt-3 flex items-center gap-2 text-xs font-medium text-amber-800"><AlertTriangle className="h-4 w-4" />Confirm {pending.length} extracted candidate{pending.length === 1 ? "" : "s"} before preparation.</p> : null}
         {error ? <div className="mt-4"><TendyyErrorState title="Automation action failed" message={error instanceof Error ? error.message : "The automation request failed."} /></div> : null}
         <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -100,7 +108,7 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
       <TendyyCard>
         <TendyySectionHeader eyebrow="Submission package" title="Immutable package versions" description="Build DOCX, XLSX, evidence manifest, checklist, and ZIP projections from canonical approved workspace data." />
         <div className="mt-4 flex flex-wrap gap-2"><Button type="button" onClick={() => createPackage.mutate()} disabled={createPackage.isPending}><FileArchive className="h-4 w-4" />{createPackage.isPending ? "Building..." : "Build package"}</Button>{approvedPackage && tender.status === "APPROVED" ? <Button type="button" variant="secondary" onClick={() => setShowSubmit(true)}><Send className="h-4 w-4" />Record submission</Button> : null}</div>
-        <div className="mt-4 space-y-2">{packages.data?.items.length ? packages.data.items.map((item) => <div key={item.id} className="flex flex-col gap-3 border border-[var(--border-subtle)] p-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><p className="text-sm font-semibold text-[var(--text)]">Package v{item.version}</p><TendyyStatusBadge tone={toneFromStatus(item.status)}>{item.status}</TendyyStatusBadge></div><p className="mt-1 text-xs text-[var(--muted)]">{item.artifacts.length} artifacts · {formatDate(item.createdAt)}</p>{item.failureReason ? <p className="mt-1 text-xs text-red-700">{item.failureReason}</p> : null}</div><div className="flex gap-2">{["READY", "APPROVED"].includes(item.status) ? <Button type="button" size="sm" variant="secondary" onClick={() => download.mutate(item.id)} disabled={download.isPending}><Download className="h-4 w-4" />Download</Button> : null}{item.status === "READY" ? <Button type="button" size="sm" onClick={() => approvePackage.mutate({ packageId: item.id })} disabled={approvePackage.isPending}>Approve</Button> : null}</div></div>) : <TendyyEmptyState title="No package versions" description="Build a package after answers have been reviewed and validation blockers are resolved." />}</div>
+        <div className="mt-4 space-y-2">{packages.data?.items.length ? packages.data.items.map((item) => <div key={item.id} className="flex flex-col gap-3 border border-[var(--border-subtle)] p-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><p className="text-sm font-semibold text-[var(--text)]">Package v{item.version}</p><TendyyStatusBadge tone={toneFromStatus(item.status)}>{item.status}</TendyyStatusBadge></div><p className="mt-1 text-xs text-[var(--muted)]">{item.artifacts.length} artifacts · {formatDate(item.createdAt)}</p>{item.failureReason ? <p className="mt-1 text-xs text-red-700">{item.failureReason}</p> : null}</div><div className="flex gap-2">{["READY", "APPROVED"].includes(item.status) ? <Button type="button" size="sm" variant="secondary" onClick={() => download.mutate(item.id)} disabled={download.isPending}><Download className="h-4 w-4" />Download</Button> : null}{item.status === "READY" ? <Button type="button" size="sm" onClick={() => approvePackage.mutate({ packageId: item.id })} disabled={approvePackage.isPending || tender.status !== "REVIEW"}>Approve</Button> : null}</div></div>) : <TendyyEmptyState title="No package versions" description="Build a package after answers have been reviewed and validation blockers are resolved." />}</div>
         {showSubmit && approvedPackage ? <div className="mt-5 border-t border-[var(--border)] pt-5"><h3 className="text-sm font-semibold text-[var(--text)]">Submission receipt</h3><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold text-[var(--muted)]">Portal<input value={portal} onChange={(event) => setPortal(event.target.value)} placeholder="GeM, CPPP, email..." className="mt-1 h-10 w-full border border-[var(--border)] px-3 text-sm text-[var(--text)]" /></label><label className="text-xs font-semibold text-[var(--muted)]">Portal reference<input value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Submission acknowledgement ID" className="mt-1 h-10 w-full border border-[var(--border)] px-3 text-sm text-[var(--text)]" /></label><label className="text-xs font-semibold text-[var(--muted)] sm:col-span-2">Notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="mt-1 min-h-20 w-full border border-[var(--border)] p-3 text-sm text-[var(--text)]" /></label></div><div className="mt-3 flex gap-2"><Button type="button" onClick={recordSubmission} disabled={!portal.trim() || !reference.trim() || submit.isPending}>{submit.isPending ? "Recording..." : "Confirm submitted"}</Button><Button type="button" variant="secondary" onClick={() => setShowSubmit(false)}>Cancel</Button></div></div> : null}
         {submissions.data?.items.length ? <div className="mt-5 border-t border-[var(--border)] pt-4"><p className="text-xs font-semibold uppercase text-[var(--muted)]">Submission history</p>{submissions.data.items.map((item) => <div key={item.id} className="mt-2 flex items-center justify-between border border-[var(--border-subtle)] p-3 text-sm"><span><span className="font-semibold text-[var(--text)]">{item.portal}</span><span className="ml-2 text-[var(--muted)]">{item.portalReference}</span></span><span className="text-xs text-[var(--muted)]">{formatDate(item.submittedAt)}</span></div>)}</div> : null}
       </TendyyCard>

@@ -1,213 +1,113 @@
-# TENDYY RFP Apply Investigation
+# TENDYY RFP Apply implementation
 
-## Status
+Updated: 2026-09-07. This document supersedes the earlier foundation investigation.
 
-Investigation complete. No new `rfp-apply` module, route, migration, or table is
-required for the current foundation phase.
+## Current workflow
 
-## Executive Decision
+Tender intake -> PDF/DOCX parsing -> requirement candidates -> human acceptance ->
+queued preparation -> answer review -> validation -> package creation -> package
+approval -> external submission acknowledgement.
 
-The active product workflow is tender-centered:
+The tender domain remains canonical. Legacy `rfps` and `rfp_documents` are retained
+for existing worker/data compatibility; Apply does not create duplicate response tables.
 
-```text
-Tender
-  -> Questions / Requirements
-  -> Answers / Answer Versions
-  -> Evidence
-  -> Reviews / Approval
-  -> Validation
-  -> Submission / Export
-```
+## Preparation execution
 
-`RFP` and `Tender` are parallel representations, not parent and child records.
-The current Next.js UI calls `/api/v1/tenders` and related endpoints. The NestJS
-application now registers the tender domain but does not register the legacy
-`rfp` or `documents` controllers.
+`POST /api/v1/rfp-apply/:tenderId/runs` persists a QUEUED run and returns without
+waiting for AI generation. `FULL` on the compatibility `/run` endpoint also schedules
+work and preserves its requested generation limit. Other explicit phases remain synchronous.
 
-The legacy RFP model cannot be deleted yet because extraction, audit, seed, and
-worker code still reference `rfps`, `rfp_documents`, and related tables.
+`ApplyRunnerService` runs in the API process and polls PostgreSQL every two seconds.
+It claims one run per instance with `FOR UPDATE SKIP LOCKED`, a random ownership token,
+and a two-minute lease renewed every fifteen seconds. Expired RUNNING leases (including
+legacy rows with no lease) are eligible for recovery. Restart the API normally; no
+manual status repair or Redis preparation job is required.
 
-## Architecture Map
+Requesting-user permissions are resolved from current membership before execution.
+Execution checks role/workspace permissions and resource policies. No session credentials
+or permission snapshots are persisted. Cancelled or expired executions cannot commit an
+answer through the guarded write transaction. Evidence and SME assignment writes also
+use the guard. A provider call already in flight may finish, but its result is discarded
+if the execution no longer owns the run. Concurrent human answer edits are preserved.
 
-| Apply capability | Canonical owner | Current evidence | Status |
-| --- | --- | --- | --- |
-| Intake | `TendersService` | `POST /tenders`, tender source upload intent | Available for document/manual intake |
-| Questions | Tender schema/service | `tenderQuestions`, tender question endpoints | Available |
-| Requirements | Tender schema/service | `tenderRequirements`, requirement endpoints | Available |
-| Document sources | Tender source flow | `tenderSources`, `tenderDocuments`, object storage | Available |
-| Parsing | Worker and source parsing flow | BullMQ jobs, document parsers, source parse endpoint | Partial; extraction coverage remains limited |
-| Knowledge retrieval | Evidence services | `EvidenceRetrievalService`, knowledge module | Available for evidence search |
-| Answer generation | Tender AI services | `AnswerGenerationService`, `TenderAiService`, `ModelRouter` | Available; provider-backed with non-production fallback |
-| Evidence selection | Tender evidence services | ranking, retrieval, and selection services | Available |
-| Risk/readiness | Tender analysis and validation | answer analysis, validation snapshot, readiness fields | Available but some values remain derived/seeded |
-| Human review | Tender review flow | `tenderAnswerReviews`, review create/update endpoints | Available |
-| Finalization | Tender lifecycle and answer rules | answer status rules and approval checks | Available |
-| Submission | Tender service | approve, submit, validation, export methods | Backend available; UI coverage needs verification |
-| Audit/activity | Platform services | `AuditService`, `ActivityService` | Available |
-| Tenant security | Global API security | `AuthContext`, auth guard, permissions guard, policies | Required on every new endpoint |
+Run list responses include steps and item outcomes. The UI polls active runs, displays
+partial failures, allows cancellation, and refreshes response data when execution ends.
+Creation is serialized per tender. Reusing a completed idempotency key returns that run;
+reusing a key with different configuration is rejected. Recovery skips successful items.
 
-## Model Relationship
+## Review and submission invariants
 
-There is no foreign-key relationship from `tenders` to `rfps` or from `rfps` to
-`tenders`. They have overlapping concepts but different ownership, status
-vocabularies, fields, and child tables.
+- Ordinary answer create/update calls cannot set APPROVED. FINAL requires an explicit,
+  current approved review. Reviews bind a server-generated digest of answer text and source.
+- Changed answer content or evidence invalidates review/package approval. Comment-only
+  review edits never rebind approval. Required answers with missing/stale approval block validation.
+- Review and response writes serialize with package approval/submission using the tender lock.
+  Lifecycle transitions recheck the locked state to prevent reopening a concurrently submitted tender.
+- Generic transitions to APPROVED or SUBMITTED, including the older `/approve` and `/submit`
+  paths, require use of the package workflow. They return `PACKAGE_WORKFLOW_REQUIRED`
+  when reached; callers must migrate to the package endpoints below.
+- Approve through `POST /tenders/:id/packages/:packageId/approve` from REVIEW.
+  The current digest, validation and reviews are checked before package and tender state
+  change together. Reviewed FINAL answers are accepted.
+- Record an external submission through `POST /tenders/:id/submissions`, providing
+  package ID, portal, acknowledgement reference and submission time. This records a receipt;
+  it does not send anything to a buyer portal. Submitted response content is not editable.
 
-The active model is `tenders` because:
+## Package integrity
 
-- The active UI routes are `/tenders`, `/apply/:id`, `/reviews`, and related
-  tender workspace routes.
-- The active client calls `/api/v1/tenders/...` for questions, requirements,
-  answers, sources, reviews, analysis, validation, and submission.
-- `TendersModule` contains the active controllers and services.
-- The old RFP controllers are not registered in `apps/api/src/app.module.ts`.
+Generator version `tendyy-package@2` exports every question (including standalone questions),
+all linked requirement titles, and uncovered requirements. Same-named attachments receive
+unique ZIP paths. Missing attachments or checksum mismatches fail generation. Content
+identity includes question/requirement relationships and the generator version. Package
+listing projects staleness without mutating tender status. Concurrent package creation
+serializes version allocation. Existing v1 packages require rebuilding and approval.
+Artifact records and completion commit together under a package row lock. Retrying an
+interrupted GENERATING package recovers it, and concurrent builders share the result.
 
-The old RFP model is compatibility-only until its data and worker dependencies
-are migrated.
+## Intake and milestones
 
-## Reuse Matrix
+Intake accepts PDF and DOCX; scanned documents requiring OCR remain unsupported.
+Extraction creates deterministic candidates that require human acceptance in Apply.
+The wizard reports pending confirmation rather than claiming canonical requirements exist.
 
-RFP Apply must orchestrate these existing components instead of duplicating
-them:
+Milestone offsets are recalculated when the tender deadline changes. Removing the deadline
+cancels pending milestones. Reminder jobs use a fifteen-minute time window, and notification
+deduplication includes the deadline so postponed milestones can notify again. Reminder
+workers skip completed/cancelled milestones and submitted/closed tenders.
 
-| Responsibility | Reuse |
-| --- | --- |
-| Authentication | `AuthGuard`, `AuthContext`, existing Firebase/Better Auth integration |
-| Authorization | `PermissionsGuard`, permission catalog, `PolicyService` |
-| Tender access | `TendersService` and tender DTO validation |
-| Lifecycle | Tender state machine and `TendersService.transition` |
-| Sources and storage | Tender source methods, `ObjectStorage`, source DTOs |
-| Parsing jobs | `packages/jobs`, BullMQ, `apps/worker` document processors |
-| Knowledge | `KnowledgeService` and knowledge APIs |
-| Retrieval/ranking | `EvidenceRetrievalService`, `EvidenceRankingService`, `EvidenceSelectionService` |
-| AI | `TenderAiService`, `AnswerGenerationService`, `ModelRouter` |
-| Reviews | Tender review methods and `tenderAnswerReviews` |
-| Validation | Tender validation methods and `tenderValidationRuns` |
-| Submission | Tender approval, submit, and export methods |
-| Audit | `AuditService` |
-| Activity/events | `ActivityService`, event publisher, queue infrastructure |
+Preparation runs in the API; reminders require `apps/worker` plus Redis. Both full-stack
+production Compose definitions and the application-only definition include the worker.
 
-## Orchestration Decision
+## Migration and verification
 
-A future `rfp-apply` module is justified only as a thin coordination layer. It
-should use `tenderId` as its primary identifier and should not introduce
-parallel question, answer, evidence, review, submission, or document tables.
+Apply additive migration `0031_apply_execution_and_review` before starting the updated API.
+It adds execution leases and review content digests. Legacy reviews have no proven content
+binding and must be explicitly reviewed again before a new package can be approved.
+No production migration or deployment was performed during implementation.
 
-Its responsibility should be limited to:
+Regression tests:
 
-- Coordinating multi-step operations across existing tender services
-- Returning aggregate progress for the Apply UI
-- Enforcing idempotency for retried orchestration requests
-- Recording orchestration-level audit/activity events
-- Dispatching long-running work to existing queues
-- Reporting partial failure and resumable progress
+- `bun --no-env-file test apps/api/src/modules/rfp-apply apps/api/src/modules/tenders/domain`
+- For database tests, use a disposable migrated PostgreSQL database, set `DATABASE_URL`,
+  `RFP_APPLY_INTEGRATION=1`, and `NODE_ENV=test`, then run
+  `bun --no-env-file test --timeout 30000 apps/api/src/modules/rfp-apply/apply-automation.integration.test.ts`.
+- Run API, web, worker and affected shared-package type checks and lint the changed modules.
 
-It must not own AI generation, evidence retrieval, authorization, storage,
-database access from controllers, or independent lifecycle semantics.
+Database regressions cover approval bypasses, changed reviews, FINAL answers, complete
+package export, stale submission rejection, resource policies, missing attachments,
+concurrent creation, idempotency, lease recovery, cancellation, deadline updates,
+concurrent human edits, interrupted package recovery, and stale lifecycle transitions.
 
-### Progress state decision
+Implementation verification: 241 isolated tests passed, and all 16 opt-in database
+regressions passed against a disposable PostgreSQL instance after applying the full
+migration chain. API, web, worker and database type checks passed. Both updated
+Compose files validate. Changed-module lint has no errors (two existing unused-import
+warnings remain in tender/assignment services).
 
-Do not add a workflow table initially. Progress can be derived from the tender,
-source, question, requirement, answer, review, validation, and submission
-records already stored.
+The older `tenders.integration.test.ts` suite could not initialize its Nest test module:
+its provider list omits `TenderAiService`. That suite also still expects approval and
+submission through the legacy endpoints and needs its fixtures/contracts updated.
+It is not included in the passing results above.
 
-A workflow table should be introduced only if a later requirement needs durable
-execution state that cannot be reconstructed, such as resumable bulk generation,
-per-step retry history, or external submission callbacks. That table should be
-an orchestration job record keyed by `tenderId`, not a replacement domain model.
-
-### Initial Foundation Implemented
-
-The first tender-based foundation is registered at `/api/v1/rfp-apply`:
-
-- `GET /:tenderId/progress` derives intake, analysis readiness, response, review,
-  validation, approval, and submission progress from the existing tender overview.
-- `POST /:tenderId/run` coordinates analysis, bounded answer generation, and validation.
-  Generation is capped at ten requirements per request and reports item-level failures.
-- `FULL` stops after validation and explicitly leaves human review and approval to the
-  existing canonical `/tenders/:id/approve` and `/tenders/:id/submit` endpoints.
-- No new tables, queues, AI provider contracts, or duplicate lifecycle endpoints were
-  added. All tenant, policy, and phase-specific permission checks remain in
-  `TendersService`.
-
-This first implementation intentionally derives progress from current records. It does
-not claim durable cross-instance idempotency; a workflow table should be added only when
-durable retries, external callbacks, or long-running asynchronous orchestration require
-that state.
-
-## Cutoff Inventory
-
-### Removed after deployment verification
-
-- Previous prototype frontend and API applications
-- Prototype Docker/deployment entries and package metadata
-- Prototype-only environment and port documentation
-- Historical documentation that presented the old stack as active
-
-### Retire after migration and data verification
-
-- `apps/api/src/modules/rfp`
-- `apps/api/src/modules/documents`
-- `packages/db/src/schema/rfp.ts`
-- `packages/db/src/schema/rfp-lifecycle.ts`
-- RFP-specific relations and extraction dependencies
-- RFP-only migrations, only after production export and reference checks
-
-### Retain
-
-- `apps/web`, `apps/api`, and `apps/worker`
-- Tender schema, service, controllers, AI, evidence, validation, and lifecycle
-- Organizations, workspaces, teams, roles, policies, onboarding, auth, audit,
-  activity, jobs, storage, validation, types, and observability packages
-- Existing additive migrations and regression tests
-
-### Alter
-
-- Replace RFP terminology with tender terminology in active UI/API contracts
-- Keep legacy terminology only in migration and compatibility documentation
-- Add dedicated UI/API coverage for submission, assignment, extraction, and
-  online questionnaire workflows when those features are product requirements
-- Keep deterministic AI fallback limited to development/test behavior
-
-### Investigate before implementing
-
-- Whether `/reviews`, `/submissions`, and `/analytics` require dedicated APIs
-  instead of dashboard aggregates
-- Tender-level assignment APIs for requirement ownership and reviewers
-- Online questionnaire intake and browser/portal integration
-- Durable bulk analysis/generation progress
-- Migration of worker extraction from `rfp_documents` to tender sources
-- Final authentication ownership between Firebase browser sessions and backend
-  Better Auth/dev-login paths
-
-## Security Requirements
-
-Every future Apply endpoint must:
-
-- Resolve organization and workspace from authenticated context
-- Ignore client-supplied organization ownership claims
-- Scope every tender and child-resource lookup to the authenticated tenant
-- Use existing permission decorators and policy checks
-- Record state-changing operations in audit/activity services
-- Prevent generation, review, evidence access, and submission across tenants
-
-## Validation Findings
-
-- The active monorepo typecheck passes across all workspace packages.
-- Focused tender AI, answer-generation, evidence, lifecycle, and grounding tests
-  pass.
-- Live database tests cannot complete when PostgreSQL is unavailable.
-- The broad Bun/Nest controller test suite still has an existing decorator
-  loading error and should be isolated or corrected before relying on it as an
-  end-to-end gate.
-- Removed prototype applications no longer participate in the root typecheck
-  graph.
-- Worker and database extraction code still directly references legacy RFP
-  document tables, blocking safe schema deletion.
-
-## Next Implementation Phase
-
-The smallest safe implementation is a tender-based Apply foundation that adds
-only orchestration/progress behavior if the UI needs it. It should be built
-after confirming the required submission and online questionnaire flows, with
-contract tests for tenant isolation, idempotency, partial failure, and resume
-behavior.
+Live AI providers, buyer portals and authenticated browser interactions require their own
+configured integration environment; database tests use controlled provider/storage substitutes.
