@@ -46,7 +46,7 @@ export const QUEUE_REDIS = Symbol("QUEUE_REDIS");
         connection ? new BullMqJobQueue(connection, logger) : new NoopJobQueue(logger),
     },
   ],
-  exports: [JobQueue],
+  exports: [JobQueue, QUEUE_REDIS],
 })
 export class QueueModule implements OnApplicationShutdown {
   constructor(private readonly queue: JobQueue) {}
