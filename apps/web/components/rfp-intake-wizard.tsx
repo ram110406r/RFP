@@ -144,7 +144,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
     setUploads((current) => [...current, { id, name: file.name, size: file.size, status: "uploading" }]);
     try {
       const intent = await createTenderSourceUploadIntent(tenderId, { sourceType: "DOCUMENT", name: file.name, filename: file.name, mimeType, sizeBytes: file.size, metadata: { intakeMode: mode } });
-      await uploadTenderSourceBytes(intent.uploadUrl, file);
+      await uploadTenderSourceBytes(intent.uploadUrl, file, mimeType);
       await completeTenderSourceUpload(tenderId, intent.sourceId);
       const source = await parseTenderSource(tenderId, intent.sourceId);
       setUploads((current) => current.map((upload) => upload.id === id ? { ...upload, status: "parsed", source } : upload));

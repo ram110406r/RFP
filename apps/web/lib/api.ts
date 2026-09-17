@@ -688,10 +688,10 @@ export async function createTenderSourceUploadIntent(
   });
 }
 
-export async function uploadTenderSourceBytes(uploadUrl: string, file: File) {
+export async function uploadTenderSourceBytes(uploadUrl: string, file: File, mimeType: string) {
   const response = await fetch(uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": file.type },
+    headers: { "Content-Type": mimeType },
     body: file,
   });
   if (!response.ok) {
