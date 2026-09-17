@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -58,8 +58,8 @@ type NavigationGroup = {
 
 type Viewport = "mobile" | "tablet" | "desktop";
 
-const SIDEBAR_WIDTH_EXPANDED = 248;
-const SIDEBAR_WIDTH_COLLAPSED = 72;
+const SIDEBAR_WIDTH_EXPANDED = 224;
+const SIDEBAR_WIDTH_COLLAPSED = 64;
 
 function maskEmail(email: string | null) {
   if (!email) return "signed in";
@@ -152,26 +152,30 @@ function SidebarSearch({ collapsed = false }: { collapsed?: boolean }) {
   if (collapsed) {
     return (
       <div className="group relative flex justify-center">
-        <button
-          type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-[var(--sidebar-radius)] border border-transparent bg-transparent text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]"
-          aria-label="Search"
+        <Link
+          href="/tenders"
+          className="tendyy-sidebar-control inline-flex h-9 w-9 items-center justify-center rounded-[var(--sidebar-radius)] border border-transparent bg-transparent transition-colors"
+          aria-label="Search tenders"
         >
           <Search className="h-[18px] w-[18px]" strokeWidth={1.75} />
-        </button>
+        </Link>
         <SidebarTooltip label="Search" />
       </div>
     );
   }
 
   return (
-    <label className="flex h-8 items-center gap-2 rounded-[var(--sidebar-radius)] border border-[var(--sidebar-border)] bg-[var(--sidebar-hover)] px-2.5 text-[var(--sidebar-muted)]">
-      <Search className="h-[15px] w-[15px] shrink-0 text-[var(--sidebar-muted)]" strokeWidth={1.75} />
-      <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--sidebar-muted)]">Search</span>
-      <span className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--sidebar-muted)]">
+    <Link
+      href="/tenders"
+      aria-label="Search tenders"
+      className="tendyy-sidebar-control flex h-8 items-center gap-2 rounded-[var(--sidebar-radius)] border border-[var(--sidebar-border)] bg-[var(--sidebar-hover)] px-2.5 transition-colors hover:border-[var(--sidebar-accent)]"
+    >
+      <Search className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
+      <span className="min-w-0 flex-1 truncate text-[12px]">Search</span>
+      <span className="tendyy-sidebar-text-muted inline-flex items-center gap-1 rounded-[6px] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] px-1.5 py-0.5 text-[10px] font-medium">
         Ctrl K
       </span>
-    </label>
+    </Link>
   );
 }
 
@@ -179,7 +183,7 @@ function SidebarTooltip({ label }: { label: string }) {
   return (
     <span
       role="tooltip"
-      className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-[7px] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--sidebar-foreground)] opacity-0 shadow-[var(--shadow-elevated)] transition-opacity delay-150 group-hover:block group-hover:opacity-100 group-focus-within:block group-focus-within:opacity-100"
+      className="tendyy-sidebar-text-foreground pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-[7px] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] px-2.5 py-1.5 text-[11px] font-medium opacity-0 shadow-[var(--shadow-elevated)] transition-opacity delay-150 group-hover:block group-hover:opacity-100 group-focus-within:block group-focus-within:opacity-100"
     >
       {label}
     </span>
@@ -188,7 +192,7 @@ function SidebarTooltip({ label }: { label: string }) {
 
 function SidebarBadge({ value }: { value: string | number }) {
   return (
-    <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-[6px] border border-[var(--sidebar-border)] bg-[var(--sidebar-hover)] px-1.5 text-[10px] font-semibold text-[var(--sidebar-muted)]">
+    <span className="tendyy-sidebar-text-muted ml-auto inline-flex min-w-5 items-center justify-center rounded-[6px] border border-[var(--sidebar-border)] bg-[var(--sidebar-hover)] px-1.5 text-[10px] font-semibold">
       {value}
     </span>
   );
@@ -198,10 +202,12 @@ function SidebarSubItems({
   item,
   pathname,
   onNavigate,
+  exposeTestAttributes = true,
 }: {
   item: NavigationItem;
   pathname: string;
   onNavigate?: () => void;
+  exposeTestAttributes?: boolean;
 }) {
   return (
     <div className="ml-4 mt-1 space-y-0.5 border-l border-[var(--sidebar-border)] pl-2">
@@ -213,13 +219,13 @@ function SidebarSubItems({
             key={child.href}
             href={child.href}
             aria-current={active ? "page" : undefined}
-            data-sidebar-child={child.label}
+            data-sidebar-child={exposeTestAttributes ? child.label : undefined}
             onClick={onNavigate}
             className={[
               "flex h-8 items-center gap-2 rounded-[7px] px-2 text-[11px] transition-colors",
               active
-                ? "bg-[var(--sidebar-active)] font-semibold text-[var(--sidebar-active-foreground)]"
-                : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
+                ? "tendyy-sidebar-item-active font-semibold"
+                : "tendyy-sidebar-item",
             ].join(" ")}
           >
             <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
@@ -236,18 +242,24 @@ function SidebarFlyout({
   item,
   pathname,
   onNavigate,
+  onMouseEnter,
+  onMouseLeave,
 }: {
   item: NavigationItem;
   pathname: string;
   onNavigate?: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }) {
   return (
     <div
-      className="absolute left-full top-0 z-50 ml-3 w-64 rounded-[var(--sidebar-radius-lg)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] p-2 shadow-[var(--shadow-elevated)]"
+      className="absolute left-full top-0 z-50 ml-2 w-[204px] rounded-[8px] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] p-1.5 shadow-[var(--shadow-elevated)]"
       data-sidebar-flyout={item.label}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
-      <div className="px-2 pb-2 pt-1 text-[11px] font-semibold text-[var(--sidebar-foreground)]">{item.label}</div>
-      <div className="border-t border-[var(--sidebar-border)] pt-2">
+      <div className="tendyy-sidebar-text-foreground px-2 pb-1.5 pt-1 text-[11px] font-semibold">{item.label}</div>
+      <div className="space-y-0.5">
         {item.children?.map((child) => {
           const active = isItemActive(pathname, child);
           const Icon = child.icon;
@@ -258,13 +270,13 @@ function SidebarFlyout({
               aria-current={active ? "page" : undefined}
               onClick={onNavigate}
               className={[
-                "flex h-9 items-center gap-2.5 rounded-[var(--sidebar-radius)] px-2.5 text-[12px] transition-colors",
+                "flex h-8 items-center gap-2.5 rounded-[8px] px-2.5 text-[11px] transition-colors",
                 active
-                  ? "bg-[var(--sidebar-active)] font-semibold text-[var(--sidebar-active-foreground)]"
-                  : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
+                  ? "tendyy-sidebar-item-active font-semibold"
+                  : "tendyy-sidebar-item",
               ].join(" ")}
             >
-              <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+              <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
               <span className="min-w-0 flex-1 truncate">{child.label}</span>
               {child.badge ? <SidebarBadge value={child.badge} /> : null}
             </Link>
@@ -284,15 +296,17 @@ function SidebarItem({
   setActiveFlyout,
   onToggleGroup,
   onNavigate,
+  exposeTestAttributes = true,
 }: {
   item: NavigationItem;
   collapsed: boolean;
   pathname: string;
   activeFlyout: string | null;
   openGroups: Record<string, boolean>;
-  setActiveFlyout: (value: string | null) => void;
+  setActiveFlyout: Dispatch<SetStateAction<string | null>>;
   onToggleGroup: (href: string) => void;
   onNavigate?: () => void;
+  exposeTestAttributes?: boolean;
 }) {
   const active = isItemActive(pathname, item);
   const directlyActive = isItemDirectlyActive(pathname, item);
@@ -304,28 +318,65 @@ function SidebarItem({
   const strongActive = collapsed ? active || flyoutOpen : directlyActive || flyoutOpen || (!hasChildren && active);
   const parentActive = hasChildren && childActive && !strongActive;
   const itemClass = [
-    "relative grid h-[var(--sidebar-item-height)] w-full items-center rounded-[var(--sidebar-radius)] text-[13px] font-medium transition-colors",
-    collapsed ? "grid-cols-1 justify-items-center px-0" : "grid-cols-[18px_minmax(0,1fr)_auto] gap-3 px-3",
+    "relative grid h-[var(--sidebar-item-height)] w-full items-center rounded-[var(--sidebar-radius)] text-[12px] font-medium transition-colors",
+    collapsed ? "grid-cols-1 justify-items-center px-0" : "grid-cols-[18px_minmax(0,1fr)_auto] gap-2.5 px-2.5",
     strongActive
-      ? "bg-[var(--sidebar-active)] text-[var(--sidebar-active-foreground)]"
+      ? "tendyy-sidebar-item-active"
       : parentActive
-        ? "bg-[var(--sidebar-active-soft)] text-[var(--sidebar-foreground)]"
-        : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
+        ? "tendyy-sidebar-item-parent-active"
+        : "tendyy-sidebar-item",
   ].join(" ");
   const iconClass = [
     "flex h-[18px] w-[18px] shrink-0 items-center justify-center",
-    strongActive ? "text-[var(--sidebar-active-foreground)]" : parentActive ? "text-[var(--sidebar-accent)]" : "text-[var(--sidebar-muted)]",
+    strongActive ? "tendyy-sidebar-icon" : parentActive ? "tendyy-sidebar-icon-accent" : "tendyy-sidebar-icon",
   ].join(" ");
+  const closeFlyoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeFlyoutTimerRef.current) clearTimeout(closeFlyoutTimerRef.current);
+    };
+  }, []);
+
+  const openFlyout = () => {
+    if (!hasChildren) return;
+    if (closeFlyoutTimerRef.current) {
+      clearTimeout(closeFlyoutTimerRef.current);
+      closeFlyoutTimerRef.current = null;
+    }
+    setActiveFlyout(item.href);
+  };
+
+  const closeFlyoutSoon = () => {
+    if (!hasChildren) return;
+    if (closeFlyoutTimerRef.current) clearTimeout(closeFlyoutTimerRef.current);
+    closeFlyoutTimerRef.current = setTimeout(() => {
+      setActiveFlyout((current) => (current === item.href ? null : current));
+      closeFlyoutTimerRef.current = null;
+    }, 120);
+  };
 
   if (collapsed) {
     return (
-      <div className="group relative">
+      <div
+        className="group relative"
+        onMouseEnter={hasChildren ? openFlyout : undefined}
+        onMouseLeave={hasChildren ? closeFlyoutSoon : undefined}
+        onFocusCapture={hasChildren ? openFlyout : undefined}
+        onBlurCapture={
+          hasChildren
+            ? (event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) closeFlyoutSoon();
+              }
+            : undefined
+        }
+      >
         {hasChildren ? (
           <button
             type="button"
             aria-label={`${flyoutOpen ? "Close" : "Open"} ${item.label} menu`}
             aria-expanded={flyoutOpen}
-            data-sidebar-parent={item.label}
+            data-sidebar-parent={exposeTestAttributes ? item.label : undefined}
             onClick={() => setActiveFlyout(flyoutOpen ? null : item.href)}
             className={itemClass}
           >
@@ -338,7 +389,7 @@ function SidebarItem({
             href={item.href}
             aria-label={item.label}
             aria-current={active ? "page" : undefined}
-            data-sidebar-link={item.label}
+            data-sidebar-link={exposeTestAttributes ? item.label : undefined}
             onClick={onNavigate}
             className={itemClass}
           >
@@ -349,7 +400,15 @@ function SidebarItem({
         )}
 
         {!flyoutOpen ? <SidebarTooltip label={item.label} /> : null}
-        {flyoutOpen ? <SidebarFlyout item={item} pathname={pathname} onNavigate={onNavigate} /> : null}
+        {flyoutOpen ? (
+          <SidebarFlyout
+            item={item}
+            pathname={pathname}
+            onNavigate={onNavigate}
+            onMouseEnter={openFlyout}
+            onMouseLeave={closeFlyoutSoon}
+          />
+        ) : null}
       </div>
     );
   }
@@ -360,7 +419,7 @@ function SidebarItem({
         <button
           type="button"
           aria-expanded={expanded}
-          data-sidebar-parent={item.label}
+          data-sidebar-parent={exposeTestAttributes ? item.label : undefined}
           onClick={() => onToggleGroup(item.href)}
           className={itemClass}
         >
@@ -369,7 +428,7 @@ function SidebarItem({
           </span>
           <span className="min-w-0 truncate text-left">{item.label}</span>
           <ChevronDown
-            className={`h-3.5 w-3.5 transition-transform duration-150 ${strongActive ? "text-[var(--sidebar-active-muted)]" : "text-[var(--sidebar-muted)]"} ${chevronClass(expanded)}`}
+            className={`h-3.5 w-3.5 transition-transform duration-150 ${chevronClass(expanded)}`}
             strokeWidth={1.75}
           />
         </button>
@@ -380,7 +439,12 @@ function SidebarItem({
           ].join(" ")}
         >
           <div className="overflow-hidden">
-            <SidebarSubItems item={item} pathname={pathname} onNavigate={onNavigate} />
+            <SidebarSubItems
+              item={item}
+              pathname={pathname}
+              onNavigate={onNavigate}
+              exposeTestAttributes={exposeTestAttributes}
+            />
           </div>
         </div>
       </div>
@@ -391,7 +455,7 @@ function SidebarItem({
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      data-sidebar-link={item.label}
+      data-sidebar-link={exposeTestAttributes ? item.label : undefined}
       onClick={onNavigate}
       className={itemClass}
     >
@@ -413,20 +477,22 @@ function SidebarSection({
   setActiveFlyout,
   onToggleGroup,
   onNavigate,
+  exposeTestAttributes = true,
 }: {
   group: NavigationGroup;
   collapsed: boolean;
   pathname: string;
   activeFlyout: string | null;
   openGroups: Record<string, boolean>;
-  setActiveFlyout: (value: string | null) => void;
+  setActiveFlyout: Dispatch<SetStateAction<string | null>>;
   onToggleGroup: (href: string) => void;
   onNavigate?: () => void;
+  exposeTestAttributes?: boolean;
 }) {
   return (
     <section className="space-y-1.5">
       {!collapsed ? (
-        <p className="px-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--sidebar-muted)]">{group.label}</p>
+        <p className="tendyy-sidebar-text-muted px-1 text-[9px] font-semibold uppercase tracking-[0.12em]">{group.label}</p>
       ) : null}
       <nav className="space-y-1" aria-label={group.label}>
         {group.items.map((item) => (
@@ -440,6 +506,7 @@ function SidebarSection({
             setActiveFlyout={setActiveFlyout}
             onToggleGroup={onToggleGroup}
             onNavigate={onNavigate}
+            exposeTestAttributes={exposeTestAttributes}
           />
         ))}
       </nav>
@@ -449,26 +516,42 @@ function SidebarSection({
 
 function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
   return (
-    <div className={collapsed ? "flex min-w-0 items-center" : "flex min-w-0 items-center gap-2"}>
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-accent)] text-[11px] font-semibold text-white">
+    <div className={collapsed ? "flex min-w-0 items-center justify-center" : "flex min-w-0 items-center gap-2"}>
+      <div className={`${collapsed ? "h-9 w-9 text-[14px]" : "h-6 w-6 text-[10px]"} flex shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-accent)] font-semibold text-white`}>
         T
       </div>
-      {!collapsed ? <span className="text-[16px] font-semibold tracking-normal text-[var(--sidebar-foreground)]">TENDYY</span> : null}
+      {!collapsed ? <span className="tendyy-sidebar-text-foreground text-[15px] font-semibold tracking-normal">TENDYY</span> : null}
     </div>
   );
 }
 
 function SidebarHeader({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  if (collapsed) {
+    return (
+      <div className="relative flex h-12 items-center justify-center">
+        <BrandMark collapsed />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="tendyy-sidebar-control absolute right-0 top-1/2 inline-flex h-6 w-6 translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] shadow-[var(--shadow-subtle)] transition-colors"
+          aria-label="Expand navigation"
+        >
+          <ChevronRight className="h-3 w-3" strokeWidth={1.75} />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex h-10 items-center justify-between ${collapsed ? "gap-1" : "gap-2"}`}>
-      <BrandMark collapsed={collapsed} />
+    <div className="flex h-10 items-center justify-between gap-2">
+      <BrandMark />
       <button
         type="button"
         onClick={onToggle}
-        className={`${collapsed ? "h-6 w-6" : "h-7 w-7"} inline-flex shrink-0 items-center justify-center rounded-full border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]`}
-        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+        className="tendyy-sidebar-control inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] transition-colors"
+        aria-label="Collapse navigation"
       >
-        {collapsed ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.75} /> : <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.75} />}
+        <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
       </button>
     </div>
   );
@@ -491,19 +574,19 @@ function SidebarFooter({
       aria-label="Open profile"
       className={[
         "group relative flex items-center rounded-[var(--sidebar-radius)] transition-colors hover:bg-[var(--sidebar-hover)]",
-        collapsed ? "h-10 justify-center px-0" : "h-12 gap-2.5 px-2",
+        collapsed ? "h-9 justify-center px-0" : "h-11 gap-2 px-1.5",
       ].join(" ")}
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-active-soft)] text-[11px] font-semibold text-[var(--sidebar-accent)]">
+      <div className="tendyy-sidebar-text-accent flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-active-soft)] text-[10px] font-semibold">
         {initials}
       </div>
       {!collapsed ? (
         <>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-semibold text-[var(--sidebar-foreground)]">{displayLabel}</p>
-            <p className="truncate text-[10px] text-[var(--sidebar-muted)]">{subtitle}</p>
+            <p className="tendyy-sidebar-text-foreground truncate text-[11px] font-semibold">{displayLabel}</p>
+            <p className="tendyy-sidebar-text-muted truncate text-[10px]">{subtitle}</p>
           </div>
-          <span className="text-[var(--sidebar-muted)]">
+          <span className="tendyy-sidebar-text-muted">
             <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.75} />
           </span>
         </>
@@ -763,7 +846,7 @@ function MobileDrawer({
           <SidebarSearch />
         </div>
 
-        <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
+        <div className="scrollbar-hide mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
           {navigation.map((group) => (
             <SidebarSection
               key={group.label}
@@ -772,9 +855,10 @@ function MobileDrawer({
               pathname={pathname}
               activeFlyout={null}
               openGroups={openGroups}
-              setActiveFlyout={() => undefined}
+              setActiveFlyout={(_value) => undefined}
               onToggleGroup={onToggleGroup}
               onNavigate={onClose}
+              exposeTestAttributes={false}
             />
           ))}
         </div>
@@ -890,7 +974,7 @@ export function AppShell({
           data-sidebar-state={collapsed ? "collapsed" : "expanded"}
           style={{ width: sidebarWidth }}
         >
-          <div className={`flex h-full w-full flex-col pb-3 pt-3 ${collapsed ? "px-2" : "px-[18px]"}`}>
+          <div className={`flex h-full w-full flex-col pb-2.5 pt-2.5 ${collapsed ? "px-1.5" : "px-3.5"}`}>
             <SidebarHeader
               collapsed={collapsed}
               onToggle={() => {
@@ -899,12 +983,17 @@ export function AppShell({
               }}
             />
 
-            <div className="mt-3">
+            <div className="mt-2.5">
               <SidebarSearch collapsed={collapsed} />
             </div>
 
-            <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-visible pr-0">
+            <div className="mt-3.5 flex min-h-0 flex-1 flex-col overflow-visible">
+              <div
+                className={[
+                  "min-h-0 flex-1 space-y-4 pr-0",
+                  collapsed ? "overflow-visible" : "scrollbar-hide overflow-y-auto overflow-x-hidden",
+                ].join(" ")}
+              >
                 {navigation.map((group) => (
                   <SidebarSection
                     key={group.label}
@@ -920,7 +1009,7 @@ export function AppShell({
                 ))}
               </div>
 
-              <div className="mt-3 border-t border-[var(--sidebar-border)] pt-3">
+              <div className="mt-2.5 border-t border-[var(--sidebar-border)] pt-2.5">
                 <SidebarFooter collapsed={collapsed} displayLabel={displayLabel} subtitle={subtitle} initials={initials} />
               </div>
             </div>
@@ -939,7 +1028,7 @@ export function AppShell({
         onClose={() => setMobileNavOpen(false)}
       />
 
-      <div className="min-w-0 max-w-full transition-[margin] duration-200 ease-out" data-app-shell-content style={contentStyle}>
+      <div className="min-w-0 max-w-full" data-app-shell-content style={contentStyle}>
         {!hideDesktopHeader || isMobile ? (
           <ShellHeader
             breadcrumbs={breadcrumbs}

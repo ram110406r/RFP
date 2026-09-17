@@ -26,9 +26,10 @@
   --radius-md: 8px;
   --radius-lg: 10px;
   --radius-xl: 12px;
-  --sidebar-width: 248px;
-  --sidebar-width-collapsed: 72px;
-  --sidebar-item-height: 40px;
+  --sidebar-width-expanded: 224px;
+  --sidebar-width: var(--sidebar-width-expanded);
+  --sidebar-width-collapsed: 64px;
+  --sidebar-item-height: 36px;
   --sidebar-radius: 8px;
   --sidebar-radius-lg: 10px;
   --sidebar-gap: 8px;
@@ -75,19 +76,56 @@
   --shadow: var(--shadow-card);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --sidebar-surface: #101828;
-    --sidebar-border: #1f2937;
-    --sidebar-foreground: #f8fafc;
-    --sidebar-muted: #98a2b3;
-    --sidebar-hover: #1d2939;
-    --sidebar-active: #155eef;
-    --sidebar-active-foreground: #ffffff;
-    --sidebar-active-muted: #eaf1ff;
-    --sidebar-active-soft: #172554;
-    --sidebar-accent: #60a5fa;
-  }
+.tendyy-sidebar-text-muted {
+  color: var(--sidebar-muted);
+}
+
+.tendyy-sidebar-text-foreground {
+  color: var(--sidebar-foreground);
+}
+
+.tendyy-sidebar-text-active {
+  color: var(--sidebar-active-foreground);
+}
+
+.tendyy-sidebar-text-accent {
+  color: var(--sidebar-accent);
+}
+
+.tendyy-sidebar-control {
+  color: var(--sidebar-muted);
+}
+
+.tendyy-sidebar-control:hover {
+  background-color: var(--sidebar-hover);
+  color: var(--sidebar-foreground);
+}
+
+.tendyy-sidebar-item {
+  color: var(--sidebar-muted);
+}
+
+.tendyy-sidebar-item:hover {
+  background-color: var(--sidebar-hover);
+  color: var(--sidebar-foreground);
+}
+
+.tendyy-sidebar-item-active {
+  background-color: var(--sidebar-active);
+  color: var(--sidebar-active-foreground);
+}
+
+.tendyy-sidebar-item-parent-active {
+  background-color: var(--sidebar-active-soft);
+  color: var(--sidebar-foreground);
+}
+
+.tendyy-sidebar-icon {
+  color: currentColor;
+}
+
+.tendyy-sidebar-icon-accent {
+  color: var(--sidebar-accent);
 }
 
 html,

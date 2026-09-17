@@ -84,15 +84,11 @@ test.describe("authenticated responsive route matrix", () => {
 
     const sidebar = page.locator("[data-sidebar-state='expanded']");
     await expect(sidebar).toBeVisible();
-    await expect(sidebar).toHaveJSProperty("offsetWidth", 248);
+    await expect(sidebar).toHaveJSProperty("offsetWidth", 224);
     await expect(page.locator("[data-sidebar-parent='Apply']")).toHaveAttribute("aria-expanded", "true");
     await expect(page.locator("[data-sidebar-child='Requirements']")).toHaveAttribute("aria-current", "page");
 
-    const contentOffset = await page.evaluate(() => {
-      const shellContent = document.querySelector<HTMLElement>("[data-app-shell-content]");
-      return shellContent ? Number.parseFloat(window.getComputedStyle(shellContent).marginLeft) : 0;
-    });
-    expect(contentOffset).toBe(248);
+    await expectAppShellOffset(page, 224);
     await assertNoPageOverflow(page);
   });
 
@@ -104,26 +100,32 @@ test.describe("authenticated responsive route matrix", () => {
 
     const sidebar = page.locator("[data-sidebar-state='collapsed']");
     await expect(sidebar).toBeVisible();
-    await expect(sidebar).toHaveJSProperty("offsetWidth", 72);
+    await expect(sidebar).toHaveJSProperty("offsetWidth", 64);
 
     await page.locator("[data-sidebar-link='Tender Search']").hover();
     await expect(page.getByRole("tooltip", { name: "Tender Search" })).toBeVisible();
 
-    await page.locator("[data-sidebar-parent='Apply']").click();
-    await expect(page.locator("[data-sidebar-flyout='Apply']")).toBeVisible();
+    await page.locator("[data-sidebar-parent='Apply']").hover();
+    const applyFlyout = page.locator("[data-sidebar-flyout='Apply']");
+    await expect(applyFlyout).toBeVisible();
+    await applyFlyout.getByRole("link", { name: "Responses" }).hover();
+    await expect(applyFlyout).toBeVisible();
+
     await page.keyboard.press("Escape");
-    await expect(page.locator("[data-sidebar-flyout='Apply']")).toBeHidden();
+    await expect(applyFlyout).toBeHidden();
 
-    await page.locator("[data-sidebar-parent='Apply']").click();
-    await page.locator("[data-sidebar-flyout='Apply']").getByRole("link", { name: "Responses" }).click();
+    await page.locator("[data-sidebar-parent='Apply']").hover();
+    await applyFlyout.getByRole("link", { name: "Responses" }).click();
     await expect(page).toHaveURL(/\/responses(?:\?|$)/);
-    await expect(page.locator("[data-sidebar-flyout='Apply']")).toBeHidden();
+    await expect(applyFlyout).toBeHidden();
 
-    const contentOffset = await page.evaluate(() => {
-      const shellContent = document.querySelector<HTMLElement>("[data-app-shell-content]");
-      return shellContent ? Number.parseFloat(window.getComputedStyle(shellContent).marginLeft) : 0;
-    });
-    expect(contentOffset).toBe(72);
+    await page.locator("[data-sidebar-parent='Knowledge Brain']").hover();
+    const knowledgeFlyout = page.locator("[data-sidebar-flyout='Knowledge Brain']");
+    await expect(knowledgeFlyout).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(knowledgeFlyout).toBeHidden();
+
+    await expectAppShellOffset(page, 64);
     await assertNoPageOverflow(page);
   });
 
@@ -164,6 +166,17 @@ async function assertNoPageOverflow(page: import("@playwright/test").Page) {
     return rect.width > 0 && (rect.left < -1 || rect.right > window.innerWidth + 1);
   }).map((element) => ({ tag: element.tagName, text: element.textContent?.trim().slice(0, 80), aria: element.getAttribute("aria-label") })));
   expect(escaped, `interactive controls outside viewport: ${JSON.stringify(escaped)}`).toEqual([]);
+}
+
+async function expectAppShellOffset(page: import("@playwright/test").Page, expected: number) {
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const shellContent = document.querySelector<HTMLElement>("[data-app-shell-content]");
+        return shellContent ? Number.parseFloat(window.getComputedStyle(shellContent).marginLeft) : 0;
+      }),
+    )
+    .toBe(expected);
 }
 
 function escapeRegExp(value: string) {
