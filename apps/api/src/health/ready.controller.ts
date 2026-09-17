@@ -3,6 +3,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   ServiceUnavailableException,
   VERSION_NEUTRAL,
 } from "@nestjs/common";
@@ -20,6 +21,8 @@ import { Public } from "../common/auth";
 @Public()
 @Controller({ path: "ready", version: VERSION_NEUTRAL })
 export class ReadyController {
+  private readonly logger = new Logger(ReadyController.name);
+
   constructor(private readonly health: HealthService) {}
 
   @Get()
@@ -27,6 +30,7 @@ export class ReadyController {
   async check() {
     const result = await this.health.readiness();
     if (result.status === "degraded") {
+      this.logger.warn(`Readiness degraded checks=${JSON.stringify(result.checks)}`);
       throw new ServiceUnavailableException({
         code: "SERVICE_UNAVAILABLE",
         message: "One or more dependencies are unavailable.",
