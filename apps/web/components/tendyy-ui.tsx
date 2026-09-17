@@ -7,6 +7,7 @@ import { ArrowRight, CircleAlert, LockKeyhole, RefreshCw, X } from "lucide-react
 import { Button, cn } from "@rfp-os/ui";
 
 export type TendyyTone = "success" | "warning" | "danger" | "neutral" | "primary";
+export type TendyyDensity = "default" | "compact" | "table";
 
 export function toneFromStatus(status: string | null | undefined): TendyyTone {
   const value = (status ?? "").trim().toUpperCase();
@@ -24,6 +25,7 @@ export function TendyyPageHeader({
   actions,
   children,
   className,
+  density = "default",
 }: {
   eyebrow?: string;
   title: string;
@@ -32,13 +34,15 @@ export function TendyyPageHeader({
   actions?: ReactNode;
   children?: ReactNode;
   className?: string;
+  density?: TendyyDensity;
 }) {
+  const padding = density === "compact" ? "p-3 sm:p-4" : density === "table" ? "p-0" : "p-4 sm:p-5";
   return (
-    <header className={cn("tendyy-surface p-4 sm:p-5", className)}>
+    <header className={cn("tendyy-surface", padding, className)}>
       {children}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 max-w-3xl">
-          {eyebrow ? <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--primary)]">{eyebrow}</p> : null}
+          {eyebrow ? <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{eyebrow}</p> : null}
           <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2.5">
             <h1 className="min-w-0 text-[var(--font-size-page-title)] font-semibold tracking-normal text-[var(--text)]">{title}</h1>
             {badge}
@@ -69,7 +73,7 @@ export function TendyySectionHeader({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
-        {eyebrow ? <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">{eyebrow}</p> : null}
+        {eyebrow ? <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{eyebrow}</p> : null}
         <h2 className="text-[var(--font-size-section-title)] font-semibold tracking-normal text-[var(--text)]">{title}</h2>
         {description ? <p className="mt-1.5 max-w-3xl text-[13px] leading-6 text-[var(--muted)]">{description}</p> : null}
       </div>
@@ -78,8 +82,9 @@ export function TendyySectionHeader({
   );
 }
 
-export function TendyyCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cn("tendyy-surface min-w-0 p-4 sm:p-5", className)}>{children}</section>;
+export function TendyyCard({ children, className, density = "default" }: { children: ReactNode; className?: string; density?: TendyyDensity }) {
+  const padding = density === "compact" ? "p-3 sm:p-4" : density === "table" ? "p-0" : "p-4 sm:p-5";
+  return <section className={cn("tendyy-surface min-w-0", padding, className)}>{children}</section>;
 }
 
 export function TendyyMetricCard({
@@ -102,9 +107,9 @@ export function TendyyMetricCard({
   return (
     <article className={cn("tendyy-surface min-w-0 p-4", className)}>
       <div className="flex items-start gap-3">
-        {icon ? <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]", toneIconClass(tone))}>{icon}</span> : null}
+        {icon ? <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)]", toneIconClass(tone))}>{icon}</span> : null}
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">{label}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">{label}</p>
           {loading ? <div className="mt-2 h-8 w-20 animate-pulse rounded-[8px] bg-[var(--neutral-soft)]" /> : <p className="mt-1 text-[26px] font-semibold leading-8 tracking-normal text-[var(--text)]">{value}</p>}
           {detail ? <p className="mt-2 text-[12px] leading-5 text-[var(--muted)]">{detail}</p> : null}
         </div>
@@ -114,7 +119,7 @@ export function TendyyMetricCard({
 }
 
 export function TendyyStatusBadge({ tone = "neutral", children }: { tone?: TendyyTone; children: ReactNode }) {
-  return <span className={cn("inline-flex h-6 items-center rounded-full border px-2.5 text-[11px] font-semibold", toneBadgeClass(tone))}>{children}</span>;
+  return <span className={cn("inline-flex h-6 items-center rounded-[6px] border px-2 text-[11px] font-semibold", toneBadgeClass(tone))}>{children}</span>;
 }
 
 export function TendyyTable({ children, mobile, minWidth = 760 }: { children: ReactNode; mobile?: ReactNode; minWidth?: number }) {
@@ -216,6 +221,45 @@ export function TendyyEmptyState({
           </Button>
         )
       ) : null}
+    </div>
+  );
+}
+
+export function TendyyField({
+  label,
+  children,
+  required,
+  hint,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  required?: boolean;
+  hint?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={cn("block min-w-0 text-[12px] font-semibold text-[var(--text-soft)]", className)}>
+      <span>{label}{required ? <span className="text-[var(--danger)]"> *</span> : null}</span>
+      <div className="mt-1.5">{children}</div>
+      {hint ? <span className="mt-1.5 block text-[11px] font-normal leading-5 text-[var(--muted)]">{hint}</span> : null}
+    </label>
+  );
+}
+
+export const tendyyInputClass = "min-h-10 w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-3 py-2 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)] disabled:bg-[var(--surface-muted)] disabled:text-[var(--muted)]";
+
+export function TendyyProgress({ value, label }: { value: number | null | undefined; label?: string }) {
+  const progress = typeof value === "number" ? Math.max(0, Math.min(100, value)) : 0;
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-[var(--text-soft)]">
+        <span>{label ?? "Progress"}</span>
+        <span>{typeof value === "number" ? `${Math.round(progress)}%` : "-"}</span>
+      </div>
+      <div className="mt-1.5 h-1.5 bg-[var(--border)]">
+        <div className="h-1.5 bg-[var(--primary)]" style={{ width: `${progress}%` }} />
+      </div>
     </div>
   );
 }

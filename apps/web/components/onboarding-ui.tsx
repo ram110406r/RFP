@@ -176,7 +176,7 @@ export function CheckboxGroup({ legend, values, options, onChange }: { legend: s
 
 export function FormFooter({ label = "Continue", busy, secondaryLabel, onSecondary }: { label?: string; busy: boolean; secondaryLabel?: string; onSecondary?: () => void }) {
   return (
-    <div className="sticky bottom-4 z-20 rounded-[12px] border border-slate-200 bg-white/95 px-4 py-4 shadow-[0_12px_32px_rgba(15,23,42,0.08)] backdrop-blur">
+    <div className="sticky bottom-4 z-20 rounded-[var(--radius-lg)] border border-[var(--border)] bg-white px-4 py-4 shadow-[var(--shadow-card)]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
           {secondaryLabel && onSecondary ? (

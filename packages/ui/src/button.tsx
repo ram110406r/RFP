@@ -11,13 +11,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  primary: "bg-[#155EEF] text-white shadow-[0_1px_2px_rgba(16,24,40,0.08)] hover:bg-[#0F4BD6] active:bg-[#0B3EB6]",
-  secondary: "border border-[#D0D5DD] bg-white text-black hover:border-[#B6C2D1] hover:bg-[#F8FAFC] active:bg-[#F2F4F7]",
-  ghost: "bg-transparent text-black hover:bg-[#F8FAFC] active:bg-[#F2F4F7]",
-  destructive: "bg-[#D92D20] text-white hover:bg-[#B42318] active:bg-[#912018]",
-  outline: "border border-[#D0D5DD] bg-transparent text-black hover:border-[#B6C2D1] hover:bg-[#F8FAFC]",
-  icon: "border border-[#D0D5DD] bg-white text-black hover:border-[#B6C2D1] hover:bg-[#F8FAFC]",
-  compact: "bg-[#155EEF] text-white shadow-[0_1px_2px_rgba(16,24,40,0.08)] hover:bg-[#0F4BD6] active:bg-[#0B3EB6]",
+  primary: "border border-[var(--primary)] bg-[var(--primary)] text-white hover:border-[var(--primary-hover)] hover:bg-[var(--primary-hover)] active:bg-[var(--primary-active)]",
+  secondary: "border border-[var(--border-strong)] bg-white text-[var(--text)] hover:bg-[var(--surface-muted)] active:bg-[var(--neutral-soft)]",
+  ghost: "bg-transparent text-[var(--text-soft)] hover:bg-[var(--surface-muted)] hover:text-[var(--text)] active:bg-[var(--neutral-soft)]",
+  destructive: "border border-[var(--danger)] bg-[var(--danger)] text-white hover:bg-[var(--danger-strong)] active:bg-[var(--danger-strong)]",
+  outline: "border border-[var(--border-strong)] bg-transparent text-[var(--text)] hover:bg-[var(--surface-muted)]",
+  icon: "border border-[var(--border)] bg-white text-[var(--text-soft)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-muted)]",
+  compact: "border border-[var(--primary)] bg-[var(--primary)] text-white hover:border-[var(--primary-hover)] hover:bg-[var(--primary-hover)] active:bg-[var(--primary-active)]",
 };
 
 const sizeClasses: Record<NonNullable<ButtonProps["size"]>, string> = {
@@ -29,7 +29,7 @@ const sizeClasses: Record<NonNullable<ButtonProps["size"]>, string> = {
 
 function baseClasses(variant: NonNullable<ButtonProps["variant"]>, size: NonNullable<ButtonProps["size"]>) {
   return cn(
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[11px] font-medium transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/30 active:scale-[0.99] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(21,94,239,0.28)] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
     variantClasses[variant],
     sizeClasses[size],
     variant === "icon" ? "p-0" : null,

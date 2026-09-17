@@ -1070,8 +1070,8 @@ function AnalysisPanel({ analysis }: { analysis: AnswerAnalysisResult }) {
         <DetailList title="Missing evidence" items={analysis.missingEvidence} />
       ) : null}
       {Array.isArray(analysis.contradictions) && analysis.contradictions.length > 0 ? (
-        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Contradictions</p>
+        <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+          <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Contradictions</p>
           <div className="mt-3 space-y-2">
             {(analysis.contradictions as Array<{ claim: string; reason: string }>).map((item) => (
             <div key={`${item.claim}-${item.reason}`} className="rounded-[8px] bg-white p-3 text-[13px] text-slate-700 shadow-sm">

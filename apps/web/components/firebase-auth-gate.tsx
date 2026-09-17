@@ -246,8 +246,8 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#eff6ff_0%,_#ffffff_55%,_#f8fafc_100%)] px-6">
-        <div className="rounded-[10px] border border-slate-200 bg-white/90 px-5 py-4 text-sm text-slate-600 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--bg-deep)] px-6">
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-white px-5 py-4 text-sm text-[var(--muted)] shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-3">
             <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#155EEF]" aria-hidden="true" />
             <span>Loading your secure workspace...</span>
@@ -275,18 +275,18 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
         heading={heading}
         description={pathname === "/signup" ? "Create the first account for your company. You will set up the organization and its first workspace next." : pathname === "/join" ? "Use the exact email address that received the workspace invitation." : isRegister ? "Create a company account, or create your account with the email from an employee invitation." : "Sign in as a company owner or an invited employee to continue into TENDYY."}
       >
-        <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+        <div className="mb-5 grid grid-cols-2 gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-muted)] p-1">
           <button
             type="button"
             onClick={() => setMode("sign-in")}
-            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${!isRegister ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+            className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${!isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}
           >
             Sign in
           </button>
           <button
             type="button"
             onClick={() => setMode("register")}
-            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${isRegister ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+            className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}
           >
             Create account
           </button>
@@ -302,7 +302,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-950 outline-none ring-0 transition focus:border-sky-300 focus:bg-white"
+              className="w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-3 text-[var(--text)] outline-none ring-0 transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]"
               placeholder="name@company.com"
               required
             />
@@ -317,7 +317,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
               autoComplete={mode === "register" ? "new-password" : "current-password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-950 outline-none ring-0 transition focus:border-sky-300 focus:bg-white"
+              className="w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-3 text-[var(--text)] outline-none ring-0 transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]"
               placeholder="********"
               required
               minLength={6}
@@ -325,21 +325,21 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
           </div>
 
           {error ? (
-            <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
+            <p className="rounded-[var(--radius-sm)] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
           ) : null}
 
           <div className="flex flex-wrap gap-3">
             <button
               type="submit"
               disabled={busy}
-              className="inline-flex items-center justify-center rounded-2xl bg-sky-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-[var(--radius-sm)] bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy ? "Working..." : isRegister ? "Create account" : "Sign in"}
             </button>
             <button
               type="button"
               onClick={() => setMode(mode === "register" ? "sign-in" : "register")}
-              className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
+              className="inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-5 py-3 text-sm font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)]"
             >
               {isRegister ? "Already have an account? Sign in" : "New here? Create account"}
             </button>
@@ -359,7 +359,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
             type="button"
             onClick={() => void handleGoogleSignIn()}
             disabled={busy}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-5 py-3 text-sm font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <span className="text-base font-bold text-blue-600" aria-hidden="true">G</span>
             {isRegister ? "Create with Google" : "Continue with Google"}
@@ -380,7 +380,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
 
   return (
     <FirebaseSessionContext.Provider value={session}>
-      <div className="min-h-screen min-w-0 max-w-full bg-[linear-gradient(180deg,#f8fafc_0%,#f3f6fb_100%)] text-slate-900">
+      <div className="min-h-screen min-w-0 max-w-full bg-[var(--bg-deep)] text-slate-900">
           {error ? (
             <div className="tendyy-wrap-anywhere relative z-[60] mx-3 mt-3 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:mx-4">
               {error}
@@ -444,13 +444,13 @@ function AuthShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#eff6ff_0%,_#ffffff_55%,_#f8fafc_100%)] px-4 py-10">
-      <div className="w-full max-w-md rounded-[12px] border border-slate-200 bg-white/95 p-6 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--bg-deep)] px-4 py-10">
+      <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--border)] bg-white p-6 shadow-[var(--shadow-card)]">
         <div className="mb-6">
-          <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#155EEF] text-lg font-semibold text-white">
+          <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--primary)] text-lg font-semibold text-white">
             T
           </div>
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-sky-700">TENDYY</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">TENDYY</p>
           <h1 className="mt-2 text-[26px] font-semibold tracking-tight text-slate-950">{heading}</h1>
           <p className="mt-2 text-[13px] leading-6 text-slate-600">{description}</p>
         </div>
@@ -464,7 +464,7 @@ function AuthShell({
 function ConfigNotice() {
   return (
     <div className="space-y-3">
-      <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <p className="rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
         Firebase environment variables are missing. Set `NEXT_PUBLIC_FIREBASE_*` in `.env` and restart the app.
       </p>
       <p className="text-sm leading-6 text-slate-600">

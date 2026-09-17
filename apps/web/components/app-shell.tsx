@@ -6,28 +6,26 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  Bell,
   Brain,
   Building2,
-  Bell,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   CircleHelp,
   ClipboardList,
-  CircleAlert,
   FilePenLine,
   FileText,
   FolderOpen,
   GitBranch,
-  Home,
   LayoutGrid,
   Menu,
   MessageSquare,
-  PanelsTopLeft,
   Search,
   Send,
   Settings,
   Star,
-  User,
   X,
 } from "lucide-react";
 
@@ -41,26 +39,27 @@ type Breadcrumb = {
   href?: string;
 };
 
-type NavSubItem = {
+type NavigationItem = {
   label: string;
   href: string;
   icon: LucideIcon;
-};
-
-type NavItem = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  section: "main" | "system";
   exact?: boolean;
   matches?: string[];
-  submenu?: NavSubItem[];
+  children?: NavigationItem[];
+  badge?: string | number;
+  permission?: string;
+  parentActive?: boolean;
+};
+
+type NavigationGroup = {
+  label: "WORK" | "KNOWLEDGE" | "ORGANIZATION";
+  items: NavigationItem[];
 };
 
 type Viewport = "mobile" | "tablet" | "desktop";
 
-const SIDEBAR_WIDTH_EXPANDED = 216;
-const SIDEBAR_WIDTH_COLLAPSED = 68;
+const SIDEBAR_WIDTH_EXPANDED = 248;
+const SIDEBAR_WIDTH_COLLAPSED = 72;
 
 function maskEmail(email: string | null) {
   if (!email) return "signed in";
@@ -77,223 +76,360 @@ function initialsFromName(value: string) {
   return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase();
 }
 
-function isPathActive(pathname: string, item: NavItem) {
-  if (
-    item.matches?.some(
-      (match) => pathname === match || pathname.startsWith(`${match}/`) || pathname.startsWith(`${match}?`),
-    )
-  ) {
-    return true;
-  }
-
-  if (item.exact) {
-    return pathname === item.href;
-  }
-
-  return pathname === item.href || pathname.startsWith(`${item.href}/`) || pathname.startsWith(`${item.href}?`);
+function matchesHref(pathname: string, href: string, exact?: boolean) {
+  if (exact) return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`) || pathname.startsWith(`${href}?`);
 }
 
-const navGroups: { label: string; items: NavItem[] }[] = [
+function isItemActive(pathname: string, item: NavigationItem): boolean {
+  if (item.matches?.some((match) => matchesHref(pathname, match))) return true;
+  if (matchesHref(pathname, item.href, item.exact)) return true;
+  return item.children?.some((child) => child.parentActive !== false && isItemActive(pathname, child)) ?? false;
+}
+
+function isChildActive(pathname: string, item: NavigationItem) {
+  return item.children?.some((child) => child.parentActive !== false && isItemActive(pathname, child)) ?? false;
+}
+
+function chevronClass(open: boolean) {
+  return open ? "rotate-180" : "rotate-0";
+}
+
+const navigation: NavigationGroup[] = [
   {
-    label: "MAIN",
+    label: "WORK",
     items: [
-      { href: "/", label: "Dashboard", icon: LayoutGrid, section: "main", exact: true },
-      { href: "/tenders", label: "Tender Search", icon: Search, section: "main", exact: true },
+      { href: "/", label: "Dashboard", icon: LayoutGrid, exact: true },
+      { href: "/tenders", label: "Tender Search", icon: Search, exact: true },
       {
         href: "/apply",
         label: "Apply",
         icon: FilePenLine,
-        section: "main",
         matches: ["/tenders/new", "/tenders/import", "/requirements", "/responses", "/reviews", "/submissions"],
-        submenu: [
-          { href: "/apply", label: "Overview", icon: Home },
-          { href: "/tenders", label: "Active Tenders", icon: FileText },
+        children: [
+          { href: "/apply", label: "Overview", icon: FilePenLine, exact: true },
+          { href: "/tenders", label: "Active Tenders", icon: FileText, parentActive: false },
           { href: "/requirements", label: "Requirements", icon: ClipboardList },
           { href: "/responses", label: "Responses", icon: MessageSquare },
           { href: "/reviews", label: "Reviews", icon: Star },
           { href: "/submissions", label: "Submissions", icon: Send },
         ],
       },
-      { href: "/pipeline", label: "Pipeline", icon: GitBranch, section: "main", exact: true },
-      { href: "/analytics", label: "Analytics", icon: PanelsTopLeft, section: "main", exact: true },
+      { href: "/pipeline", label: "Pipeline", icon: GitBranch, exact: true },
+    ],
+  },
+  {
+    label: "KNOWLEDGE",
+    items: [
       {
         href: "/knowledge",
         label: "Knowledge Brain",
         icon: Brain,
-        section: "main",
-        submenu: [
-          { href: "/knowledge/library", label: "Knowledge library", icon: Brain },
+        children: [
+          { href: "/knowledge", label: "Knowledge", icon: Brain, exact: true },
           { href: "/knowledge/sources", label: "Sources", icon: FolderOpen },
-          { href: "/templates", label: "Response templates", icon: ClipboardList },
-          { href: "/knowledge/issues", label: "Knowledge issues", icon: CircleAlert },
+          { href: "/templates", label: "Templates", icon: ClipboardList },
+          { href: "/knowledge/issues", label: "Knowledge Issues", icon: CircleAlert },
         ],
       },
-      { href: "/organization", label: "Organization", icon: Building2, section: "main", exact: true },
     ],
   },
   {
-    label: "SYSTEM",
+    label: "ORGANIZATION",
     items: [
-      { href: "/settings", label: "Settings", icon: Settings, section: "system", exact: true },
-      { href: "/profile", label: "Profile", icon: User, section: "system", exact: true },
-      { href: "/workspace", label: "Workspace", icon: PanelsTopLeft, section: "system", exact: true },
-      { href: "/notifications", label: "Notifications", icon: MessageSquare, section: "system", exact: true },
-      { href: "/audits", label: "Audit log", icon: ClipboardList, section: "system", exact: true },
+      { href: "/organization", label: "Organization", icon: Building2, exact: true },
+      { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
 ];
 
-function SidebarSearch({ shortcut = "⌘ S" }: { shortcut?: string }) {
+function SidebarSearch({ collapsed = false }: { collapsed?: boolean }) {
+  if (collapsed) {
+    return (
+      <div className="group relative flex justify-center">
+        <button
+          type="button"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--sidebar-radius)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] text-[var(--sidebar-muted)] transition hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]"
+          aria-label="Search"
+        >
+          <Search className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+        <SidebarTooltip label="Search" />
+      </div>
+    );
+  }
+
   return (
-    <label className="flex h-8 items-center gap-1.5 rounded-[8px] border border-[#E5E7EB] bg-white px-2.5 text-slate-500">
-      <Search className="h-[15px] w-[15px] shrink-0 text-slate-400" strokeWidth={1.75} />
-      <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500">Search</span>
-      <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">
-        {shortcut}
+    <label className="flex h-9 items-center gap-2 rounded-[var(--sidebar-radius)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] px-3 text-[var(--sidebar-muted)]">
+      <Search className="h-4 w-4 shrink-0 text-[var(--sidebar-muted)]" strokeWidth={1.75} />
+      <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--sidebar-muted)]">Search</span>
+      <span className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--sidebar-border)] bg-[var(--sidebar-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--sidebar-muted)]">
+        Ctrl K
       </span>
     </label>
   );
 }
 
-function NavLink({
+function SidebarTooltip({ label }: { label: string }) {
+  return (
+    <span
+      role="tooltip"
+      className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-[7px] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--sidebar-foreground)] opacity-0 shadow-[var(--shadow-elevated)] transition-opacity delay-150 group-hover:block group-hover:opacity-100 group-focus-within:block group-focus-within:opacity-100"
+    >
+      {label}
+    </span>
+  );
+}
+
+function SidebarBadge({ value }: { value: string | number }) {
+  return (
+    <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-[6px] border border-[var(--sidebar-border)] bg-[var(--sidebar-hover)] px-1.5 text-[10px] font-semibold text-[var(--sidebar-muted)]">
+      {value}
+    </span>
+  );
+}
+
+function SidebarSubItems({
   item,
-  collapsed,
   pathname,
-  activeFlyout,
-  setActiveFlyout,
   onNavigate,
 }: {
-  item: NavItem;
-  collapsed: boolean;
+  item: NavigationItem;
   pathname: string;
-  activeFlyout: string | null;
-  setActiveFlyout: (value: string | null) => void;
   onNavigate?: () => void;
 }) {
-  const active = isPathActive(pathname, item);
-  const Icon = item.icon;
-  const hasSubmenu = Boolean(item.submenu?.length);
-  const flyoutOpen = collapsed && hasSubmenu && (activeFlyout === item.href || active);
-
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => {
-        if (hasSubmenu && collapsed) setActiveFlyout(item.href);
-      }}
-      onMouseLeave={() => {
-        if (hasSubmenu && collapsed && !active) setActiveFlyout(null);
-      }}
-    >
-      <Link
-        href={item.href}
-        aria-current={active ? "page" : undefined}
-        aria-label={collapsed ? item.label : undefined}
-        title={collapsed ? item.label : undefined}
-        onClick={onNavigate}
-        className={[
-          "grid h-8 items-center rounded-[8px] px-2 text-[11px] font-medium transition",
-          collapsed ? "grid-cols-[18px] justify-items-center px-0" : "grid-cols-[18px_minmax(0,1fr)] gap-2.5",
-          active || flyoutOpen ? "bg-[#EFF5FF] text-[#0F172A]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
-        ].join(" ")}
-      >
-        <span
-          className={[
-            "flex h-[16px] w-[16px] shrink-0 items-center justify-center",
-            active || flyoutOpen ? "text-[#155EEF]" : "text-slate-500",
-          ].join(" ")}
-        >
-          <Icon size={15} strokeWidth={1.75} />
-        </span>
-        {!collapsed ? <span className="truncate">{item.label}</span> : null}
-      </Link>
-
-      {flyoutOpen ? (
-        <div className="absolute left-full top-1/2 z-40 ml-3 w-64 -translate-y-1/2">
-          <div className="rounded-[10px] border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.08)]">
-            {item.submenu?.map((subItem) => {
-              const subActive =
-                pathname === subItem.href ||
-                pathname.startsWith(`${subItem.href}/`) ||
-                pathname.startsWith(`${subItem.href}?`);
-              const SubIcon = subItem.icon;
-
-              return (
-                <Link
-                  key={subItem.href}
-                  href={subItem.href}
-                  onClick={onNavigate}
-                  className={[
-                    "flex h-8 items-center gap-2.5 rounded-[8px] px-3 text-[11px] transition",
-                    subActive ? "bg-[#EFF5FF] text-[#155EEF]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950",
-                  ].join(" ")}
-                >
-                  <span className={subActive ? "text-[#155EEF]" : "text-slate-400"}>
-                    <SubIcon className="h-4 w-4" strokeWidth={1.75} />
-                  </span>
-                  <span className="flex-1">{subItem.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      {!collapsed && hasSubmenu ? (
-        <div className="ml-4 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
-          {item.submenu?.map((subItem) => {
-            const subActive = pathname === subItem.href || pathname.startsWith(`${subItem.href}/`) || pathname.startsWith(`${subItem.href}?`);
-            const SubIcon = subItem.icon;
-            return (
-              <Link
-                key={subItem.href}
-                href={subItem.href}
-                onClick={onNavigate}
-                className={[
-                  "flex h-7 items-center gap-2 rounded-[7px] px-2 text-[10px] transition",
-                  subActive ? "bg-[#EFF5FF] font-medium text-[#155EEF]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950",
-                ].join(" ")}
-              >
-                <SubIcon className="h-3.5 w-3.5" strokeWidth={1.75} />
-                <span className="truncate">{subItem.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      ) : null}
+    <div className="ml-4 mt-1 space-y-0.5 border-l border-[var(--sidebar-border)] pl-2">
+      {item.children?.map((child) => {
+        const active = isItemActive(pathname, child);
+        const Icon = child.icon;
+        return (
+          <Link
+            key={child.href}
+            href={child.href}
+            aria-current={active ? "page" : undefined}
+            data-sidebar-child={child.label}
+            onClick={onNavigate}
+            className={[
+              "flex h-8 items-center gap-2 rounded-[7px] px-2 text-[11px] transition-colors",
+              active
+                ? "bg-[var(--sidebar-active)] font-semibold text-[var(--sidebar-accent)]"
+                : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
+            ].join(" ")}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+            <span className="truncate">{child.label}</span>
+            {child.badge ? <SidebarBadge value={child.badge} /> : null}
+          </Link>
+        );
+      })}
     </div>
   );
 }
 
-function SidebarSection({
-  label,
-  items,
-  collapsed,
+function SidebarFlyout({
+  item,
   pathname,
-  activeFlyout,
-  setActiveFlyout,
   onNavigate,
 }: {
-  label: string;
-  items: NavItem[];
-  collapsed: boolean;
+  item: NavigationItem;
   pathname: string;
-  activeFlyout: string | null;
-  setActiveFlyout: (value: string | null) => void;
   onNavigate?: () => void;
 }) {
   return (
-    <section className="space-y-1">
-      {!collapsed ? <p className="px-1 text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p> : null}
-      <nav className="space-y-0.5">
-        {items.map((item) => (
-          <NavLink
+    <div
+      className="absolute left-full top-0 z-50 ml-3 w-64 rounded-[var(--sidebar-radius-lg)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] p-2 shadow-[var(--shadow-elevated)]"
+      data-sidebar-flyout={item.label}
+    >
+      <div className="px-2 pb-2 pt-1 text-[11px] font-semibold text-[var(--sidebar-foreground)]">{item.label}</div>
+      <div className="border-t border-[var(--sidebar-border)] pt-2">
+        {item.children?.map((child) => {
+          const active = isItemActive(pathname, child);
+          const Icon = child.icon;
+          return (
+            <Link
+              key={child.href}
+              href={child.href}
+              aria-current={active ? "page" : undefined}
+              onClick={onNavigate}
+              className={[
+                "flex h-9 items-center gap-2.5 rounded-[var(--sidebar-radius)] px-2.5 text-[12px] transition-colors",
+                active
+                  ? "bg-[var(--sidebar-active)] font-semibold text-[var(--sidebar-accent)]"
+                  : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
+              ].join(" ")}
+            >
+              <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+              <span className="min-w-0 flex-1 truncate">{child.label}</span>
+              {child.badge ? <SidebarBadge value={child.badge} /> : null}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SidebarItem({
+  item,
+  collapsed,
+  pathname,
+  activeFlyout,
+  openGroups,
+  setActiveFlyout,
+  onToggleGroup,
+  onNavigate,
+}: {
+  item: NavigationItem;
+  collapsed: boolean;
+  pathname: string;
+  activeFlyout: string | null;
+  openGroups: Record<string, boolean>;
+  setActiveFlyout: (value: string | null) => void;
+  onToggleGroup: (href: string) => void;
+  onNavigate?: () => void;
+}) {
+  const active = isItemActive(pathname, item);
+  const childActive = isChildActive(pathname, item);
+  const Icon = item.icon;
+  const hasChildren = Boolean(item.children?.length);
+  const expanded = hasChildren && (openGroups[item.href] || childActive);
+  const flyoutOpen = collapsed && hasChildren && activeFlyout === item.href;
+  const itemClass = [
+    "relative grid h-9 w-full items-center rounded-[var(--sidebar-radius)] text-[12px] font-medium transition-colors",
+    collapsed ? "grid-cols-1 justify-items-center px-0" : "grid-cols-[18px_minmax(0,1fr)_auto] gap-2.5 px-2.5",
+    active || flyoutOpen
+      ? "bg-[var(--sidebar-active)] text-[var(--sidebar-foreground)]"
+      : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
+  ].join(" ");
+  const iconClass = [
+    "flex h-[18px] w-[18px] shrink-0 items-center justify-center",
+    active || flyoutOpen ? "text-[var(--sidebar-accent)]" : "text-[var(--sidebar-muted)]",
+  ].join(" ");
+
+  if (collapsed) {
+    return (
+      <div className="group relative">
+        {active ? <span className="absolute left-[-8px] top-1.5 h-6 w-0.5 rounded-full bg-[var(--sidebar-accent)]" aria-hidden="true" /> : null}
+        {hasChildren ? (
+          <button
+            type="button"
+            aria-label={`${flyoutOpen ? "Close" : "Open"} ${item.label} menu`}
+            aria-expanded={flyoutOpen}
+            data-sidebar-parent={item.label}
+            onClick={() => setActiveFlyout(flyoutOpen ? null : item.href)}
+            className={itemClass}
+          >
+            <span className={iconClass}>
+              <Icon size={16} strokeWidth={1.75} />
+            </span>
+          </button>
+        ) : (
+          <Link
+            href={item.href}
+            aria-label={item.label}
+            aria-current={active ? "page" : undefined}
+            data-sidebar-link={item.label}
+            onClick={onNavigate}
+            className={itemClass}
+          >
+            <span className={iconClass}>
+              <Icon size={16} strokeWidth={1.75} />
+            </span>
+          </Link>
+        )}
+
+        {!flyoutOpen ? <SidebarTooltip label={item.label} /> : null}
+        {flyoutOpen ? <SidebarFlyout item={item} pathname={pathname} onNavigate={onNavigate} /> : null}
+      </div>
+    );
+  }
+
+  if (hasChildren) {
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          data-sidebar-parent={item.label}
+          onClick={() => onToggleGroup(item.href)}
+          className={itemClass}
+        >
+          <span className={iconClass}>
+            <Icon size={16} strokeWidth={1.75} />
+          </span>
+          <span className="min-w-0 truncate text-left">{item.label}</span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 text-[var(--sidebar-muted)] transition-transform duration-150 ${chevronClass(expanded)}`}
+            strokeWidth={1.75}
+          />
+        </button>
+        <div
+          className={[
+            "grid transition-[grid-template-rows,opacity] duration-150 ease-out",
+            expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          ].join(" ")}
+        >
+          <div className="overflow-hidden">
+            <SidebarSubItems item={item} pathname={pathname} onNavigate={onNavigate} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      data-sidebar-link={item.label}
+      onClick={onNavigate}
+      className={itemClass}
+    >
+      <span className={iconClass}>
+        <Icon size={16} strokeWidth={1.75} />
+      </span>
+      <span className="min-w-0 truncate">{item.label}</span>
+      {item.badge ? <SidebarBadge value={item.badge} /> : null}
+    </Link>
+  );
+}
+
+function SidebarSection({
+  group,
+  collapsed,
+  pathname,
+  activeFlyout,
+  openGroups,
+  setActiveFlyout,
+  onToggleGroup,
+  onNavigate,
+}: {
+  group: NavigationGroup;
+  collapsed: boolean;
+  pathname: string;
+  activeFlyout: string | null;
+  openGroups: Record<string, boolean>;
+  setActiveFlyout: (value: string | null) => void;
+  onToggleGroup: (href: string) => void;
+  onNavigate?: () => void;
+}) {
+  return (
+    <section className="space-y-1.5">
+      {!collapsed ? (
+        <p className="px-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--sidebar-muted)]">{group.label}</p>
+      ) : null}
+      <nav className="space-y-1" aria-label={group.label}>
+        {group.items.map((item) => (
+          <SidebarItem
             key={item.href}
             item={item}
             collapsed={collapsed}
             pathname={pathname}
             activeFlyout={activeFlyout}
+            openGroups={openGroups}
             setActiveFlyout={setActiveFlyout}
+            onToggleGroup={onToggleGroup}
             onNavigate={onNavigate}
           />
         ))}
@@ -304,11 +440,11 @@ function SidebarSection({
 
 function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[8px] bg-[#155EEF] text-[10px] font-semibold text-white">
+    <div className={collapsed ? "flex w-full justify-center" : "flex items-center gap-2"}>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-accent)] text-[11px] font-semibold text-white">
         T
       </div>
-      {!collapsed ? <span className="text-[15px] font-semibold tracking-[-0.02em] text-slate-950">TENDYY</span> : null}
+      {!collapsed ? <span className="text-[16px] font-semibold tracking-normal text-[var(--sidebar-foreground)]">TENDYY</span> : null}
     </div>
   );
 }
@@ -329,24 +465,26 @@ function SidebarFooter({
       href="/profile"
       aria-label="Open profile"
       className={[
-        "flex items-center rounded-[10px] border border-slate-200 bg-white transition hover:bg-slate-50",
-        collapsed ? "justify-center px-0 py-1.5" : "gap-2.5 px-2.5 py-1.5",
+        "group relative flex items-center rounded-[var(--sidebar-radius-lg)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] transition-colors hover:bg-[var(--sidebar-hover)]",
+        collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-2",
       ].join(" ")}
     >
-      <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[10px] font-semibold text-[#155EEF]">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-active)] text-[11px] font-semibold text-[var(--sidebar-accent)]">
         {initials}
       </div>
       {!collapsed ? (
         <>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-medium text-slate-950">{displayLabel}</p>
-            <p className="truncate text-[9px] text-slate-500">{subtitle}</p>
+            <p className="truncate text-[12px] font-medium text-[var(--sidebar-foreground)]">{displayLabel}</p>
+            <p className="truncate text-[10px] text-[var(--sidebar-muted)]">{subtitle}</p>
           </div>
-          <span className="text-slate-400">
+          <span className="text-[var(--sidebar-muted)]">
             <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.75} />
           </span>
         </>
-      ) : null}
+      ) : (
+        <SidebarTooltip label="Profile" />
+      )}
     </Link>
   );
 }
@@ -378,7 +516,7 @@ function ShellHeader({
   }, [selectedWorkspaceId, workspaces]);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-white/95 backdrop-blur">
+    <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-white">
       <div className="flex h-[60px] items-center gap-4 px-4 sm:px-5 lg:px-6">
         {isMobile ? (
           <>
@@ -404,20 +542,24 @@ function ShellHeader({
                   onChange={(event) => selectWorkspace(event.target.value)}
                   className="h-9 max-w-[190px] rounded-[8px] border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 outline-none focus:border-[#155EEF]"
                 >
-                  {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                  {workspaces.map((workspace) => (
+                    <option key={workspace.id} value={workspace.id}>
+                      {workspace.name}
+                    </option>
+                  ))}
                 </select>
               </label>
             ) : null}
 
-            <button
-              type="button"
+            <Link
+              href="/profile"
               className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
               aria-label="Profile"
             >
               <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[11px] font-semibold text-[#155EEF]">
                 {initials}
               </div>
-            </button>
+            </Link>
           </>
         ) : (
           <>
@@ -444,7 +586,7 @@ function ShellHeader({
               <Search className="h-[18px] w-[18px] shrink-0 text-slate-400" strokeWidth={1.75} />
               <span className="text-[13px] text-slate-500">Search</span>
               <span className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
-                <span>⌘</span>
+                <span>Ctrl</span>
                 <span>K</span>
               </span>
             </label>
@@ -457,7 +599,11 @@ function ShellHeader({
                   onChange={(event) => selectWorkspace(event.target.value)}
                   className="h-9 max-w-[190px] rounded-[8px] border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 outline-none focus:border-[#155EEF]"
                 >
-                  {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                  {workspaces.map((workspace) => (
+                    <option key={workspace.id} value={workspace.id}>
+                      {workspace.name}
+                    </option>
+                  ))}
                 </select>
               </label>
             ) : null}
@@ -479,15 +625,15 @@ function ShellHeader({
               <CircleHelp className="h-4 w-4" strokeWidth={1.75} />
             </Link>
 
-            <button
-              type="button"
+            <Link
+              href="/profile"
               className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
               aria-label="Profile"
             >
               <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[#EFF5FF] text-[11px] font-semibold text-[#155EEF]">
                 {initials}
               </div>
-            </button>
+            </Link>
           </>
         )}
       </div>
@@ -501,6 +647,8 @@ function MobileDrawer({
   initials,
   displayLabel,
   subtitle,
+  openGroups,
+  onToggleGroup,
   onClose,
 }: {
   open: boolean;
@@ -508,6 +656,8 @@ function MobileDrawer({
   initials: string;
   displayLabel: string;
   subtitle: string;
+  openGroups: Record<string, boolean>;
+  onToggleGroup: (href: string) => void;
   onClose: () => void;
 }) {
   const drawerRef = useRef<HTMLElement>(null);
@@ -528,7 +678,11 @@ function MobileDrawer({
         return;
       }
       if (event.key !== "Tab" || !drawerRef.current) return;
-      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      const focusable = Array.from(
+        drawerRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -551,7 +705,7 @@ function MobileDrawer({
 
   return (
     <div
-      className={`fixed inset-0 z-40 transition-opacity duration-300 ease-out md:hidden ${
+      className={`fixed inset-0 z-40 transition-opacity duration-200 ease-out md:hidden ${
         open ? "pointer-events-auto bg-slate-950/30 opacity-100" : "pointer-events-none bg-slate-950/0 opacity-0"
       }`}
       onClick={onClose}
@@ -562,7 +716,7 @@ function MobileDrawer({
         role="dialog"
         aria-modal="true"
         aria-label="Main navigation"
-        className={`flex h-full w-[min(280px,calc(100vw-24px))] min-w-0 flex-col border-r border-slate-200 bg-white p-3 transition-transform duration-300 ease-out ${
+        className={`flex h-full w-[min(296px,calc(100vw-24px))] min-w-0 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] p-3 transition-transform duration-200 ease-out ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
         onClick={(event) => event.stopPropagation()}
@@ -573,7 +727,7 @@ function MobileDrawer({
             ref={closeRef}
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-700"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-[var(--sidebar-border)] bg-white text-slate-700"
             aria-label="Close navigation"
           >
             <X className="h-4 w-4" strokeWidth={1.75} />
@@ -584,21 +738,23 @@ function MobileDrawer({
           <SidebarSearch />
         </div>
 
-        <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
-          {navGroups.map((group) => (
+        <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
+          {navigation.map((group) => (
             <SidebarSection
               key={group.label}
-              label={group.label}
-              items={group.items}
+              group={group}
               collapsed={false}
               pathname={pathname}
               activeFlyout={null}
+              openGroups={openGroups}
               setActiveFlyout={() => undefined}
+              onToggleGroup={onToggleGroup}
+              onNavigate={onClose}
             />
           ))}
         </div>
 
-        <div className="mt-3">
+        <div className="mt-3 border-t border-[var(--sidebar-border)] pt-3">
           <SidebarFooter collapsed={false} displayLabel={displayLabel} subtitle={subtitle} initials={initials} />
         </div>
       </aside>
@@ -620,6 +776,8 @@ export function AppShell({
   const { mobileNavOpen, setMobileNavOpen, sidebarCollapsed, sidebarReady, setSidebarCollapsed } = useAppShellState();
   const [viewport, setViewport] = useState<Viewport>("desktop");
   const [activeFlyout, setActiveFlyout] = useState<string | null>(null);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const sidebarRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -639,18 +797,43 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
-    if (viewport === "mobile") {
-      return;
-    }
-
-    if (viewport !== "desktop") {
-      setSidebarCollapsed(true);
-    }
+    if (viewport === "mobile") return;
+    if (viewport !== "desktop") setSidebarCollapsed(true);
   }, [setSidebarCollapsed, viewport]);
 
   useEffect(() => {
     setActiveFlyout(null);
+    setOpenGroups((current) => {
+      const next = { ...current };
+      for (const group of navigation) {
+        for (const item of group.items) {
+          if (item.children?.length && isChildActive(pathname, item)) next[item.href] = true;
+        }
+      }
+      return next;
+    });
   }, [pathname]);
+
+  useEffect(() => {
+    if (!activeFlyout) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!sidebarRef.current?.contains(event.target as Node)) setActiveFlyout(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setActiveFlyout(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeFlyout]);
 
   const accountEmail = session?.profile?.email ?? session?.user?.email ?? null;
   const displayLabel = maskEmail(accountEmail);
@@ -660,24 +843,36 @@ export function AppShell({
   const isMobile = viewport === "mobile";
   const collapsed = !isMobile && sidebarCollapsed;
   const sidebarWidth = collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED;
-  const contentStyle = isMobile
-    ? undefined
-    : { marginLeft: sidebarReady ? sidebarWidth : SIDEBAR_WIDTH_COLLAPSED };
+  const contentStyle = isMobile ? undefined : { marginLeft: sidebarReady ? sidebarWidth : SIDEBAR_WIDTH_COLLAPSED };
+
+  const toggleGroup = (href: string) => {
+    setOpenGroups((current) => ({ ...current, [href]: !current[href] }));
+  };
+
+  const closeNavigationSurfaces = () => {
+    setActiveFlyout(null);
+    setMobileNavOpen(false);
+  };
 
   return (
-    <div className="min-h-screen min-w-0 max-w-full bg-[var(--bg-deep)] text-slate-950">
+    <div className="min-h-screen min-w-0 max-w-full overflow-x-hidden bg-[var(--bg-deep)] text-slate-950">
       {!isMobile ? (
         <aside
-          className={`fixed inset-y-0 left-0 z-30 hidden border-r border-slate-200 bg-white transition-[width] duration-300 ease-out md:flex ${
+          ref={sidebarRef}
+          className={`fixed inset-y-0 left-0 z-30 hidden border-r border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] transition-[width] duration-200 ease-out md:flex ${
             sidebarReady ? "visible" : "invisible"
           }`}
+          data-sidebar-state={collapsed ? "collapsed" : "expanded"}
           style={{ width: sidebarWidth }}
         >
-          <div className="relative flex h-full w-full flex-col px-2 pb-2 pt-2.5">
+          <div className="relative flex h-full w-full flex-col px-3 pb-3 pt-3">
             <button
               type="button"
-              onClick={() => setSidebarCollapsed((current) => !current)}
-              className="absolute -right-3 top-[18px] inline-flex h-[26px] w-[26px] items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
+              onClick={() => {
+                setActiveFlyout(null);
+                setSidebarCollapsed((current) => !current);
+              }}
+              className="absolute -right-3 top-[18px] inline-flex h-[26px] w-[26px] items-center justify-center rounded-full border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]"
               aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
             >
               {collapsed ? (
@@ -687,44 +882,32 @@ export function AppShell({
               )}
             </button>
 
-            <div className="flex h-11 items-center px-1">
+            <div className="flex h-11 items-center">
               <BrandMark collapsed={collapsed} />
             </div>
 
-            {!collapsed ? (
-              <div className="mt-2.5">
-                <SidebarSearch />
-              </div>
-            ) : (
-              <div className="mt-2.5 flex justify-center">
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
-                  aria-label="Search"
-                >
-                  <Search className="h-[15px] w-[15px]" strokeWidth={1.75} />
-                </button>
-              </div>
-            )}
+            <div className="mt-3">
+              <SidebarSearch collapsed={collapsed} />
+            </div>
 
-            <div className="mt-2.5 flex min-h-0 flex-1 flex-col overflow-hidden pr-1">
-              <div className="space-y-2.5">
-                {navGroups.map((group, index) => (
-                  <section key={group.label}>
-                    {index > 0 && !collapsed ? <div className="mb-2.5 border-t border-slate-200 pt-2.5" /> : null}
-                    <SidebarSection
-                      label={group.label}
-                      items={group.items}
-                      collapsed={collapsed}
-                      pathname={pathname}
-                      activeFlyout={activeFlyout}
-                      setActiveFlyout={setActiveFlyout}
-                    />
-                  </section>
+            <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-visible pr-1">
+                {navigation.map((group) => (
+                  <SidebarSection
+                    key={group.label}
+                    group={group}
+                    collapsed={collapsed}
+                    pathname={pathname}
+                    activeFlyout={activeFlyout}
+                    openGroups={openGroups}
+                    setActiveFlyout={setActiveFlyout}
+                    onToggleGroup={toggleGroup}
+                    onNavigate={closeNavigationSurfaces}
+                  />
                 ))}
               </div>
 
-              <div className="mt-auto pt-2.5">
+              <div className="mt-3 border-t border-[var(--sidebar-border)] pt-3">
                 <SidebarFooter collapsed={collapsed} displayLabel={displayLabel} subtitle={subtitle} initials={initials} />
               </div>
             </div>
@@ -738,10 +921,12 @@ export function AppShell({
         initials={initials}
         displayLabel={displayLabel}
         subtitle={subtitle}
+        openGroups={openGroups}
+        onToggleGroup={toggleGroup}
         onClose={() => setMobileNavOpen(false)}
       />
 
-      <div className="min-w-0 max-w-full transition-[margin] duration-300 ease-out" style={contentStyle}>
+      <div className="min-w-0 max-w-full transition-[margin] duration-200 ease-out" data-app-shell-content style={contentStyle}>
         {!hideDesktopHeader || isMobile ? (
           <ShellHeader
             breadcrumbs={breadcrumbs}

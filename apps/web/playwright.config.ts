@@ -26,6 +26,11 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      name: "ui-guardrails",
+      testMatch: /ui-system-guardrails\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
       name: "authenticated-chromium",
       testMatch: /responsive\.spec\.ts/,
       dependencies: ["auth-setup"],

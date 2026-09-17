@@ -76,6 +76,73 @@ test.describe("authenticated responsive route matrix", () => {
     }
   });
 
+  test("production sidebar desktop dimensions and expanded nested active state", async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.setItem("tendyy.sidebar-collapsed", "false"));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/requirements", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(300);
+
+    const sidebar = page.locator("[data-sidebar-state='expanded']");
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar).toHaveJSProperty("offsetWidth", 248);
+    await expect(page.locator("[data-sidebar-parent='Apply']")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("[data-sidebar-child='Requirements']")).toHaveAttribute("aria-current", "page");
+
+    const contentOffset = await page.evaluate(() => {
+      const shellContent = document.querySelector<HTMLElement>("[data-app-shell-content]");
+      return shellContent ? Number.parseFloat(window.getComputedStyle(shellContent).marginLeft) : 0;
+    });
+    expect(contentOffset).toBe(248);
+    await assertNoPageOverflow(page);
+  });
+
+  test("production sidebar collapsed rail, tooltip, flyout, and Escape behavior", async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.setItem("tendyy.sidebar-collapsed", "true"));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/apply", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(300);
+
+    const sidebar = page.locator("[data-sidebar-state='collapsed']");
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar).toHaveJSProperty("offsetWidth", 72);
+
+    await page.locator("[data-sidebar-link='Tender Search']").hover();
+    await expect(page.getByRole("tooltip", { name: "Tender Search" })).toBeVisible();
+
+    await page.locator("[data-sidebar-parent='Apply']").click();
+    await expect(page.locator("[data-sidebar-flyout='Apply']")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-sidebar-flyout='Apply']")).toBeHidden();
+
+    await page.locator("[data-sidebar-parent='Apply']").click();
+    await page.locator("[data-sidebar-flyout='Apply']").getByRole("link", { name: "Responses" }).click();
+    await expect(page).toHaveURL(/\/responses(?:\?|$)/);
+    await expect(page.locator("[data-sidebar-flyout='Apply']")).toBeHidden();
+
+    const contentOffset = await page.evaluate(() => {
+      const shellContent = document.querySelector<HTMLElement>("[data-app-shell-content]");
+      return shellContent ? Number.parseFloat(window.getComputedStyle(shellContent).marginLeft) : 0;
+    });
+    expect(contentOffset).toBe(72);
+    await assertNoPageOverflow(page);
+  });
+
+  test("production mobile drawer opens, traps focus, and closes with Escape", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/tenders", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(300);
+
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    const drawer = page.getByRole("dialog", { name: "Main navigation" });
+    await expect(drawer).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close navigation" })).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(drawer).toBeHidden();
+    await expect(page.getByRole("button", { name: "Open navigation" })).toBeFocused();
+    await assertNoPageOverflow(page);
+  });
+
   test("key route screenshots", async ({ page }) => {
     test.skip(process.env.PLAYWRIGHT_SCREENSHOTS !== "1", "Set PLAYWRIGHT_SCREENSHOTS=1 to update visual review artifacts.");
     for (const [route, width] of [["/tenders", 390], ["/pipeline", 1024], ["/apply", 1440]] as const) {
