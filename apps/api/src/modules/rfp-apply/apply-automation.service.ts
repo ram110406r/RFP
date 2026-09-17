@@ -474,7 +474,10 @@ export class ApplyAutomationService {
       this.db.select().from(tenderAnswerEvidence).where(and(eq(tenderAnswerEvidence.organizationId, auth.organizationId), eq(tenderAnswerEvidence.tenderId, tenderId))),
       this.tendersService.getValidation(auth, tenderId),
     ]);
-    const links = await this.db.select().from(tenderQuestionRequirements).where(and(eq(tenderQuestionRequirements.organizationId, auth.organizationId), inArray(tenderQuestionRequirements.requirementId, requirements.map((item) => item.id))));
+    const requirementIds = requirements.map((item) => item.id);
+    const links = requirementIds.length
+      ? await this.db.select().from(tenderQuestionRequirements).where(and(eq(tenderQuestionRequirements.organizationId, auth.organizationId), inArray(tenderQuestionRequirements.requirementId, requirementIds)))
+      : [];
     const rows = projectPackageRows(requirements, questions, answers, links, evidence);
     const attachmentRows = await this.db.select({ document: tenderDocuments, file: files }).from(tenderDocuments).innerJoin(files, eq(files.id, tenderDocuments.documentId)).where(and(eq(tenderDocuments.organizationId, auth.organizationId), eq(tenderDocuments.tenderId, tenderId), inArray(tenderDocuments.documentRole, ["ATTACHMENT", "RESPONSE_DOCUMENT"])));
     const approvedAttachments = attachmentRows.filter(({ document }) => document.documentRole === "RESPONSE_DOCUMENT" || document.metadata.approvedForSubmission === true);

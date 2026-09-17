@@ -143,7 +143,7 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
           description="TENDYY extracts response work, grounds drafts in evidence, validates readiness, and leaves buyer-portal submission as a manual team action."
         />
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" onClick={() => extract.mutate()} disabled={extract.isPending}>
+          <Button type="button" variant="secondary" onClick={() => extract.mutate()} disabled={extract.isPending || processedDocuments === 0}>
             <Sparkles className="h-4 w-4" />{extract.isPending ? "Extracting..." : "Extract requirements"}
           </Button>
           <Button type="button" onClick={() => prepare.mutate({ includePackage: false })} disabled={busy || pending.length > 0}>
