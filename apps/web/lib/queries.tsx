@@ -5,6 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 
 import {
   analyzeRequirementAnswer,
+  addAnswerEvidence,
   cancelTenderAutomationRun,
   addTeamMember,
   addWorkspaceMember,
@@ -58,6 +59,7 @@ import {
   fetchWorkspaceMembers,
   generateRequirementAnswer,
   improveRequirementAnswer,
+  removeAnswerEvidence,
   updateAnswer,
   updateKnowledge,
   updateReview,
@@ -270,7 +272,7 @@ export function useRfpApplyProgress(tenderId: string) {
 export function useTenderRequirementCandidates(tenderId: string) { return useQuery({ queryKey: tenderKeys.requirementCandidates(tenderId), queryFn: () => fetchTenderRequirementCandidates(tenderId), enabled: Boolean(tenderId) }); }
 export function useTenderAutomationRuns(tenderId: string) {
   const client = useQueryClient();
-  const query = useQuery({ queryKey: tenderKeys.automationRuns(tenderId), queryFn: () => fetchTenderAutomationRuns(tenderId), enabled: Boolean(tenderId), refetchInterval: (current) => current.state.data?.items.some((item) => item.status === "RUNNING" || item.status === "QUEUED") ? 2000 : false });
+  const query = useQuery({ queryKey: tenderKeys.automationRuns(tenderId), queryFn: () => fetchTenderAutomationRuns(tenderId), enabled: Boolean(tenderId), staleTime: 10_000, refetchInterval: (current) => current.state.data?.items.some((item) => item.status === "RUNNING" || item.status === "QUEUED") ? 2000 : false });
   const latestId = query.data?.items[0]?.id;
   const latestStatus = query.data?.items[0]?.status;
   useEffect(() => {
@@ -281,9 +283,9 @@ export function useTenderAutomationRuns(tenderId: string) {
   }, [client, tenderId, latestId, latestStatus]);
   return query;
 }
-export function useTenderPackages(tenderId: string) { return useQuery({ queryKey: tenderKeys.packages(tenderId), queryFn: () => fetchTenderPackages(tenderId), enabled: Boolean(tenderId) }); }
-export function useTenderMilestones(tenderId: string) { return useQuery({ queryKey: tenderKeys.milestones(tenderId), queryFn: () => fetchTenderMilestones(tenderId), enabled: Boolean(tenderId) }); }
-export function useTenderSubmissions(tenderId: string) { return useQuery({ queryKey: tenderKeys.submissions(tenderId), queryFn: () => fetchTenderSubmissions(tenderId), enabled: Boolean(tenderId) }); }
+export function useTenderPackages(tenderId: string) { return useQuery({ queryKey: tenderKeys.packages(tenderId), queryFn: () => fetchTenderPackages(tenderId), enabled: Boolean(tenderId), staleTime: 15_000 }); }
+export function useTenderMilestones(tenderId: string) { return useQuery({ queryKey: tenderKeys.milestones(tenderId), queryFn: () => fetchTenderMilestones(tenderId), enabled: Boolean(tenderId), staleTime: 30_000 }); }
+export function useTenderSubmissions(tenderId: string) { return useQuery({ queryKey: tenderKeys.submissions(tenderId), queryFn: () => fetchTenderSubmissions(tenderId), enabled: Boolean(tenderId), staleTime: 15_000 }); }
 
 function useAutomationMutation<TInput, TResult>(tenderId: string, mutationFn: (input: TInput) => Promise<TResult>) {
   const queryClient = useQueryClient();
@@ -424,6 +426,8 @@ export function useDashboardSummary(pageSize = 6, initialData?: DashboardOvervie
     queryKey: ["dashboard", "summary", pageSize] as const,
     queryFn: () => fetchDashboardSummary({ pageSize }),
     initialData: initialData ?? undefined,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -466,6 +470,7 @@ export function useWorkspaces(params: { status?: "active" | "archived" | "all" }
   return useQuery({
     queryKey: [...workspaceKeys.list(), params.status ?? "active"],
     queryFn: () => fetchWorkspaces(params),
+    staleTime: 5 * 60_000,
   });
 }
 
@@ -546,6 +551,7 @@ export function useOrganizationCurrent(initialData?: OrganizationSummary | null)
     queryKey: organizationKeys.current(),
     queryFn: () => fetchOrganizationCurrent(),
     initialData: initialData ?? undefined,
+    staleTime: 5 * 60_000,
     retry: false,
   });
 }
@@ -571,6 +577,7 @@ export function useOrganizationMembers(initialData?: { members: OrganizationMemb
     queryKey: organizationKeys.members(),
     queryFn: () => fetchOrganizationMembers(),
     initialData: initialData ?? undefined,
+    staleTime: 5 * 60_000,
     retry: false,
   });
 }
@@ -580,6 +587,7 @@ export function useOrganizationInvitations(initialData?: { invitations: Organiza
     queryKey: organizationKeys.invitations(),
     queryFn: () => fetchOrganizationInvitations(),
     initialData: initialData ?? undefined,
+    staleTime: 60_000,
     retry: false,
   });
 }
@@ -672,6 +680,7 @@ export function useRoles(initialData?: { items: RoleSummary[] } | null) {
     queryKey: organizationKeys.roles(),
     queryFn: () => fetchRoles(),
     initialData: initialData ?? undefined,
+    staleTime: 10 * 60_000,
     retry: false,
   });
 }
@@ -681,6 +690,7 @@ export function useTeams(initialData?: { items: TeamSummary[] } | null) {
     queryKey: organizationKeys.teams(),
     queryFn: () => fetchTeams(),
     initialData: initialData ?? undefined,
+    staleTime: 5 * 60_000,
     retry: false,
   });
 }
@@ -956,6 +966,58 @@ export function useSubmitReview(tenderId: string) {
         queryClient.invalidateQueries({ queryKey: tenderKeys.reviews(tenderId) }),
         queryClient.invalidateQueries({ queryKey: tenderKeys.answers(tenderId) }),
         queryClient.invalidateQueries({ queryKey: ["tender", tenderId, "answers"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+      ]);
+    },
+  });
+}
+
+export function useAttachAnswerEvidence(tenderId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      answerId: string;
+      evidenceType: string;
+      evidenceId: string;
+      sourceId?: string;
+      sourceVersion?: string | null;
+      relevance?: number;
+      confidence?: number;
+      freshness?: string;
+      verifiedAt?: string | null;
+      metadata?: Record<string, unknown>;
+    }) =>
+      addAnswerEvidence(tenderId, input.answerId, {
+        evidenceType: input.evidenceType,
+        evidenceId: input.evidenceId,
+        sourceId: input.sourceId,
+        sourceVersion: input.sourceVersion,
+        relevance: input.relevance,
+        confidence: input.confidence,
+        freshness: input.freshness,
+        verifiedAt: input.verifiedAt,
+        metadata: input.metadata,
+      }),
+    onSuccess: async (_row, input) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenderKeys.answers(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.answerEvidence(tenderId, input.answerId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.workspace(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+      ]);
+    },
+  });
+}
+
+export function useRemoveAnswerEvidence(tenderId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { answerId: string; evidenceId: string }) => removeAnswerEvidence(tenderId, input.answerId, input.evidenceId),
+    onSuccess: async (_row, input) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenderKeys.answers(tenderId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.answerEvidence(tenderId, input.answerId) }),
+        queryClient.invalidateQueries({ queryKey: tenderKeys.workspace(tenderId) }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
       ]);
     },

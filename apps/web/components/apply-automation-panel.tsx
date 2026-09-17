@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, Check, Clock3, Download, FileArchive, Play, RefreshCw, Send, Sparkles, X } from "lucide-react";
 import { Button } from "@rfp-os/ui";
 
-import type { TenderAutomationRun, TenderSummary } from "../lib/models";
+import type { TenderAutomationRun, TenderSubmissionPackage, TenderSummary } from "../lib/models";
 import {
   useApproveTenderPackage,
   useCancelTenderAutomationRun,
@@ -20,6 +20,7 @@ import {
   useTenderPackages,
   useTenderRequirementCandidates,
   useTenderSubmissions,
+  useTenderWorkspace,
   useTransitionTender,
   useUpdateTenderMilestones,
 } from "../lib/queries";
@@ -31,6 +32,7 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
   const packages = useTenderPackages(tender.id);
   const milestones = useTenderMilestones(tender.id);
   const submissions = useTenderSubmissions(tender.id);
+  const workspace = useTenderWorkspace(tender.id);
   const extract = useExtractTenderRequirements(tender.id);
   const decide = useDecideTenderRequirementCandidates(tender.id);
   const prepare = useCreateTenderAutomationRun(tender.id);
@@ -52,8 +54,17 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
 
   const nextStage = ({ DRAFT: "INTAKE", INTAKE: "PROCESSING", PROCESSING: "READY", READY: "IN_PROGRESS", IN_PROGRESS: "REVIEW" } as Record<string, string>)[tender.status];
   const pending = candidates.data?.items.filter((item) => item.status === "PENDING") ?? [];
+  const allCandidates = candidates.data?.items ?? [];
   const latestRun = runs.data?.items[0] ?? null;
   const approvedPackage = packages.data?.items.find((item) => item.status === "APPROVED") ?? null;
+  const validation = workspace.data?.validation.current ?? null;
+  const blockers = validation?.issues.filter((issue) => issue.blocking) ?? [];
+  const processedDocuments = workspace.data?.counts.processedDocuments ?? 0;
+  const extractionState =
+    extract.isPending ? "extracting" :
+    pending.length > 0 ? "pending" :
+    allCandidates.length > 0 ? "resolved" :
+    processedDocuments > 0 ? "ready" : "needs-documents";
   const busy = prepare.isPending || latestRun?.status === "RUNNING" || latestRun?.status === "QUEUED";
   const selectedCount = selected.size;
   const runSteps = latestRun?.steps ?? [];
@@ -89,6 +100,14 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
   function decideSelected(decision: "ACCEPTED" | "REJECTED") {
     if (!selectedCount) return;
     decide.mutate([...selected].map((candidateId) => ({ candidateId, decision })), { onSuccess: () => setSelected(new Set()) });
+  }
+
+  function selectAllPending() {
+    setSelected(new Set(pending.map((item) => item.id)));
+  }
+
+  function selectHighConfidence() {
+    setSelected(new Set(pending.filter((item) => Number(item.confidence) >= 0.8).map((item) => item.id)));
   }
 
   function saveMilestones(form: FormData) {
@@ -139,6 +158,10 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
           {nextStage ? <Button type="button" variant="secondary" onClick={() => transition.mutate({ to: nextStage })} disabled={busy || transition.isPending}>Move to {label(nextStage)}</Button> : null}
         </div>
 
+        <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--neutral-soft)] p-3 text-sm">
+          <span className="font-semibold text-[var(--text)]">Extraction state: </span>
+          <span className="text-[var(--muted)]">{extractionLabel(extractionState, processedDocuments, pending.length)}</span>
+        </div>
         {latestRun ? <RunState latestRun={latestRun} /> : null}
         {pending.length > 0 ? <p className="mt-3 flex items-center gap-2 text-xs font-medium text-amber-800"><AlertTriangle className="h-4 w-4" />Confirm {pending.length} extracted candidate{pending.length === 1 ? "" : "s"} before preparation.</p> : null}
         {error ? <div className="mt-4"><TendyyErrorState title="Automation action failed" message={error instanceof Error ? error.message : "The automation request failed."} /></div> : null}
@@ -165,6 +188,9 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Button type="button" size="sm" onClick={() => decideSelected("ACCEPTED")} disabled={!selectedCount || decide.isPending}><Check className="h-4 w-4" />Accept selected</Button>
                 <Button type="button" size="sm" variant="secondary" onClick={() => decideSelected("REJECTED")} disabled={!selectedCount || decide.isPending}><X className="h-4 w-4" />Reject selected</Button>
+                <Button type="button" size="sm" variant="secondary" onClick={selectAllPending} disabled={!pending.length || decide.isPending}>Select all</Button>
+                <Button type="button" size="sm" variant="secondary" onClick={selectHighConfidence} disabled={!pending.length || decide.isPending}>High confidence</Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => setSelected(new Set())} disabled={!selectedCount || decide.isPending}>Clear</Button>
                 <span className="text-xs text-[var(--muted)]">{selectedCount} selected</span>
               </div>
               <div className="mt-4 max-h-[420px] min-w-0 space-y-2 overflow-y-auto overflow-x-hidden">
@@ -178,6 +204,7 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
                       </span>
                       <span className="tendyy-wrap-anywhere mt-1 block text-xs leading-5 text-[var(--muted)]">{item.sourceExcerpt}</span>
                       <span className="mt-2 block text-[11px] text-blue-700">{label(item.candidateType)} - {Math.round(Number(item.confidence) * 100)}% confidence</span>
+                      <span className="tendyy-wrap-anywhere mt-1 block text-[11px] text-[var(--muted)]">{candidateProvenance(item.metadata)}</span>
                     </span>
                   </label>
                 ))}
@@ -206,6 +233,7 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
       </div>
 
       <TendyyCard>
+        <div id="packages" />
         <TendyySectionHeader
           eyebrow="Submission package"
           title="Immutable package versions"
@@ -215,19 +243,23 @@ export function ApplyAutomationPanel({ tender }: { tender: TenderSummary }) {
           <Button type="button" onClick={() => createPackage.mutate()} disabled={createPackage.isPending}><FileArchive className="h-4 w-4" />{createPackage.isPending ? "Building..." : "Build package"}</Button>
           {approvedPackage && tender.status === "APPROVED" ? <Button type="button" variant="secondary" onClick={() => setShowSubmit(true)}><Send className="h-4 w-4" />Record manual submission receipt</Button> : null}
         </div>
+        {validation ? (
+          <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--neutral-soft)] p-3 text-xs leading-5 text-[var(--muted)]">
+            Validation score {validation.score}%. {blockers.length ? `${blockers.length} blocking issue${blockers.length === 1 ? "" : "s"} must be resolved before approval.` : "No blocking validation issues."}
+          </div>
+        ) : null}
         <div className="mt-4 space-y-2">
           {packages.data?.items.length ? packages.data.items.map((item) => (
             <div key={item.id} className="flex flex-col gap-3 border border-[var(--border-subtle)] p-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2"><p className="text-sm font-semibold text-[var(--text)]">Package v{item.version}</p><TendyyStatusBadge tone={toneFromStatus(item.status)}>{item.status}</TendyyStatusBadge></div>
                 <p className="mt-1 text-xs text-[var(--muted)]">{item.artifacts.length} artifacts - {formatDate(item.createdAt)}</p>
-                {item.status === "STALE" ? <p className="mt-1 text-xs text-amber-800">Workspace content changed. Rebuild before approval or submission.</p> : null}
-                {item.status === "FAILED" ? <p className="mt-1 text-xs text-red-700">Package generation failed. Resolve the issue and rebuild.</p> : null}
+                {packageHint(item.status)}
                 {item.failureReason ? <p className="mt-1 text-xs text-red-700">{item.failureReason}</p> : null}
               </div>
               <div className="flex gap-2">
                 {["READY", "APPROVED"].includes(item.status) ? <Button type="button" size="sm" variant="secondary" onClick={() => download.mutate(item.id)} disabled={download.isPending}><Download className="h-4 w-4" />Download</Button> : null}
-                {item.status === "READY" ? <Button type="button" size="sm" onClick={() => approvePackage.mutate({ packageId: item.id })} disabled={approvePackage.isPending || tender.status !== "REVIEW"}>Approve</Button> : null}
+                {item.status === "READY" ? <Button type="button" size="sm" onClick={() => approvePackage.mutate({ packageId: item.id })} disabled={approvePackage.isPending || tender.status !== "REVIEW" || blockers.length > 0}>Approve</Button> : null}
               </div>
             </div>
           )) : <TendyyEmptyState title="No package versions" description="Build a package after answers have been reviewed and validation blockers are resolved." />}
@@ -278,6 +310,30 @@ function RunState({ latestRun }: { latestRun: TenderAutomationRun }) {
       ))}
     </div>
   );
+}
+
+function extractionLabel(state: string, processedDocuments: number, pending: number) {
+  if (state === "extracting") return "Extracting candidates from processed documents.";
+  if (state === "pending") return `${pending} candidate${pending === 1 ? "" : "s"} awaiting human confirmation.`;
+  if (state === "resolved") return "All extracted candidates are resolved.";
+  if (state === "ready") return `${processedDocuments} processed document${processedDocuments === 1 ? "" : "s"} ready for extraction.`;
+  return "Process at least one source document before extracting requirements.";
+}
+
+function candidateProvenance(metadata: Record<string, unknown>) {
+  const parts = ["documentName", "sourceName", "fileName", "section", "page", "pageNumber"]
+    .map((key) => metadata[key])
+    .filter((value) => value !== undefined && value !== null && String(value).trim().length > 0)
+    .map(String);
+  return parts.length ? parts.join(" - ") : "Source provenance unavailable";
+}
+
+function packageHint(status: TenderSubmissionPackage["status"]) {
+  if (status === "GENERATING") return <p className="mt-1 text-xs text-blue-800">Package generation is locked while artifacts are being created.</p>;
+  if (status === "READY") return <p className="mt-1 text-xs text-emerald-800">Ready packages can be downloaded and approved after review blockers are clear.</p>;
+  if (status === "STALE") return <p className="mt-1 text-xs text-amber-800">Workspace content changed. Rebuild before approval or submission.</p>;
+  if (status === "APPROVED") return <p className="mt-1 text-xs text-emerald-800">Approved package is current and can be submitted manually.</p>;
+  return <p className="mt-1 text-xs text-red-700">Package generation failed. Resolve the issue and rebuild.</p>;
 }
 
 function label(value: string) { return value.toLowerCase().replace(/_/g, " ").replace(/^./, (character) => character.toUpperCase()); }

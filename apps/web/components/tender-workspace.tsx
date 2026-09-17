@@ -36,6 +36,7 @@ import type {
   EvidenceCandidate,
   TenderBriefPayload,
   TenderAnswer,
+  TenderAnswerEvidence,
   TenderAnswerVersion,
   TenderDocument,
   TenderRequirement,
@@ -45,11 +46,13 @@ import type {
 } from "../lib/models";
 import {
   useAnalyzeAnswer,
+  useAttachAnswerEvidence,
   useAnswerEvidence,
   useAnswerVersions,
   useGenerateAnswer,
   useImproveAnswer,
   useRegenerateAnswer,
+  useRemoveAnswerEvidence,
   useRequirementEvidence,
   useSaveTender,
   useSaveAnswer,
@@ -604,9 +607,11 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
   const regenerateAnswer = useRegenerateAnswer(tenderId);
   const improveAnswer = useImproveAnswer(tenderId);
   const analyzeAnswer = useAnalyzeAnswer(tenderId);
+  const attachEvidence = useAttachAnswerEvidence(tenderId);
   const parseSourceMutation = useParseTenderSource(tenderId);
   const saveAnswer = useSaveAnswer(tenderId);
   const submitReview = useSubmitReview(tenderId);
+  const removeEvidence = useRemoveAnswerEvidence(tenderId);
 
   const requirement = requirementsQuery.data?.items.find((item) => item.id === requirementId) ?? null;
   const question = questionsQuery.data?.items.find((item) => item.requirementIds.includes(requirementId)) ?? null;
@@ -645,7 +650,8 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
 
   const availableEvidence = evidenceQuery.data?.candidates ?? [];
   const answerVersions = answerVersionsQuery.data?.items ?? [];
-  const answerEvidence = answerEvidenceQuery.data?.items ?? [];
+  const answerEvidence = useMemo(() => answerEvidenceQuery.data?.items ?? [], [answerEvidenceQuery.data?.items]);
+  const answerEvidenceByEvidenceId = useMemo(() => new Map(answerEvidence.map((item) => [item.evidenceId, item])), [answerEvidence]);
   const sources = overviewQuery.data?.sources ?? [];
   const tender = overviewQuery.data?.tender;
   const brief = briefQuery.data?.brief;
@@ -677,6 +683,27 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
       comment: reviewComment,
     });
     setReviewComment("");
+  };
+
+  const attachCandidate = async (candidate: EvidenceCandidate) => {
+    if (!currentAnswer?.id) return;
+    await attachEvidence.mutateAsync({
+      answerId: currentAnswer.id,
+      evidenceType: candidate.evidenceType,
+      evidenceId: candidate.evidenceId,
+      sourceId: candidate.sourceId,
+      sourceVersion: candidate.sourceVersion,
+      relevance: candidate.relevanceScore,
+      confidence: candidate.authorityScore,
+      freshness: candidate.freshness,
+      verifiedAt: candidate.verifiedAt,
+      metadata: candidate.metadata,
+    });
+  };
+
+  const removeCandidateEvidence = async (candidate: EvidenceCandidate) => {
+    if (!currentAnswer?.id) return;
+    await removeEvidence.mutateAsync({ answerId: currentAnswer.id, evidenceId: candidate.evidenceId });
   };
 
   return (
@@ -835,13 +862,14 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
             </RfpCard>
 
             <RfpCard>
-              <RfpSectionHeader eyebrow="Evidence" title="Available vs used evidence" />
+              <RfpSectionHeader eyebrow="Evidence" title="Available vs used evidence" actions={<ActionButton variant="secondary" onClick={() => void evidenceQuery.refetch()} loading={evidenceQuery.isFetching}>Refresh</ActionButton>} />
               {evidenceQuery.error ? (
                 <ErrorBanner error={evidenceQuery.error} />
               ) : (
                 <div className="space-y-3">
-                  <EvidenceBlock title="Used in this draft" items={availableEvidence.filter((item) => selectedEvidenceIds.has(item.evidenceId))} used />
-                  <EvidenceBlock title="Available evidence" items={availableEvidence} used={false} />
+                  {!currentAnswer ? <p className="rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Save an answer before attaching evidence.</p> : null}
+                  <EvidenceBlock title="Used in this answer" items={availableEvidence.filter((item) => selectedEvidenceIds.has(item.evidenceId))} used onRemove={currentAnswer ? removeCandidateEvidence : undefined} busy={removeEvidence.isPending} />
+                  <EvidenceBlock title="Available evidence" items={availableEvidence} used={false} attached={answerEvidenceByEvidenceId} onAttach={currentAnswer ? attachCandidate : undefined} busy={attachEvidence.isPending} />
                 </div>
               )}
             </RfpCard>
@@ -1010,25 +1038,48 @@ function DraftCard({
   );
 }
 
-function EvidenceBlock({ title, items, used }: { title: string; items: EvidenceCandidate[]; used: boolean }) {
+function EvidenceBlock({
+  title,
+  items,
+  used,
+  attached,
+  onAttach,
+  onRemove,
+  busy,
+}: {
+  title: string;
+  items: EvidenceCandidate[];
+  used: boolean;
+  attached?: Map<string, TenderAnswerEvidence>;
+  onAttach?: (item: EvidenceCandidate) => void;
+  onRemove?: (item: EvidenceCandidate) => void;
+  busy?: boolean;
+}) {
   return (
-            <RfpReviewPanel title={title}>
+    <RfpReviewPanel title={title}>
       <div className="space-y-3">
         {items.length > 0 ? (
           items.map((item) => (
-            <RfpEvidenceCard
-              key={item.evidenceId}
-              title={item.title}
-              description={item.snippet}
-              sourceType={item.evidenceType}
-              version={item.sourceVersion}
-              freshness={item.freshness}
-              relevance={item.relevanceScore}
-              confidence={item.authorityScore}
-              ownerId={item.ownerId ?? null}
-              verifiedAt={item.verifiedAt ?? null}
-              used={used}
-            />
+            <div key={item.evidenceId} className="space-y-2">
+              <RfpEvidenceCard
+                title={item.title}
+                description={item.snippet}
+                sourceType={item.evidenceType}
+                version={item.sourceVersion}
+                freshness={item.freshness}
+                relevance={item.relevanceScore}
+                confidence={item.authorityScore}
+                ownerId={item.ownerId ?? null}
+                verifiedAt={item.verifiedAt ?? null}
+                used={used || attached?.has(item.evidenceId)}
+              />
+              {onAttach && !attached?.has(item.evidenceId) ? (
+                <ActionButton variant="secondary" onClick={() => onAttach(item)} loading={busy}>Attach evidence</ActionButton>
+              ) : null}
+              {onRemove ? (
+                <ActionButton variant="secondary" onClick={() => onRemove(item)} loading={busy}>Remove evidence</ActionButton>
+              ) : null}
+            </div>
           ))
         ) : (
           <p className="text-sm text-slate-500">No authoritative evidence found.</p>

@@ -7,10 +7,11 @@ import { useState } from "react";
 import { AppShell } from "./app-shell";
 import { RfpEmptyState, RfpStatusBadge, statusTone } from "./rfp-foundation";
 import { TendyyResponsiveDataView } from "./tendyy-ui";
-import { fetchTenderAnswers, fetchTenderRequirements } from "../lib/api";
+import { fetchTenderAnswers, fetchTenderRequirements, fetchTenderReviews } from "../lib/api";
 import { tenderKeys, useActivities, useAudits, useCreateKnowledge, useDashboardSummary, useKnowledgeList, useTenders } from "../lib/queries";
 
 export function RequirementsPage() {
+  const [filter, setFilter] = useState("all");
   const tendersQuery = useTenders({ pageSize: 100, includeArchived: false });
   const tenders = tendersQuery.data?.items ?? [];
   const requirementQueries = useQueries({
@@ -19,35 +20,88 @@ export function RequirementsPage() {
       queryFn: () => fetchTenderRequirements(tender.id),
     })),
   });
-  const rows = tenders.flatMap((tender, index) =>
-    (requirementQueries[index]?.data?.items ?? []).map((requirement) => ({ tender, requirement })),
+  const answerQueries = useQueries({ queries: tenders.map((tender) => ({ queryKey: tenderKeys.answers(tender.id), queryFn: () => fetchTenderAnswers(tender.id) })) });
+  const reviewQueries = useQueries({ queries: tenders.map((tender) => ({ queryKey: tenderKeys.reviews(tender.id), queryFn: () => fetchTenderReviews(tender.id) })) });
+  const rows = tenders.flatMap((tender, index) => {
+    const answers = answerQueries[index]?.data?.items ?? [];
+    const reviews = reviewQueries[index]?.data?.items ?? [];
+    const pendingReviewAnswerIds = new Set(reviews.filter((review) => review.status === "PENDING" || review.status === "CHANGES_REQUESTED").map((review) => review.answerId));
+    return (requirementQueries[index]?.data?.items ?? []).map((requirement) => {
+      const linkedAnswers = answers.filter((answer) => requirement.questionIds.includes(answer.questionId));
+      const answered = linkedAnswers.some((answer) => answer.answerText.trim().length > 0);
+      const pendingReview = linkedAnswers.some((answer) => pendingReviewAnswerIds.has(answer.id) || /REVIEW|PENDING/i.test(answer.status));
+      const approved = linkedAnswers.some((answer) => /APPROVED|FINAL/i.test(answer.status));
+      const lowConfidence = linkedAnswers.some((answer) => answer.confidence < 0.65);
+      return { tender, requirement, answered, pendingReview, approved, lowConfidence };
+    });
+  });
+  const filteredRows = rows.filter((row) =>
+    filter === "all"
+    || (filter === "mandatory" && row.requirement.mandatory)
+    || (filter === "unanswered" && !row.answered)
+    || (filter === "high-risk" && (row.requirement.mandatory && (!row.answered || row.lowConfidence)))
+    || (filter === "pending-review" && row.pendingReview)
+    || (filter === "approved" && row.approved)
+    || (filter === "blocked" && /BLOCKED|FAILED/i.test(row.requirement.status)),
   );
+  const filters: Array<[string, string]> = [
+    ["all", `All (${rows.length})`],
+    ["mandatory", `Mandatory (${rows.filter((row) => row.requirement.mandatory).length})`],
+    ["unanswered", `Unanswered (${rows.filter((row) => !row.answered).length})`],
+    ["high-risk", `High risk (${rows.filter((row) => row.requirement.mandatory && (!row.answered || row.lowConfidence)).length})`],
+    ["pending-review", `Pending review (${rows.filter((row) => row.pendingReview).length})`],
+    ["approved", `Approved (${rows.filter((row) => row.approved).length})`],
+    ["blocked", `Blocked (${rows.filter((row) => /BLOCKED|FAILED/i.test(row.requirement.status)).length})`],
+  ];
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Apply", href: "/apply" }, { label: "Requirements" }]}>
       <main className="space-y-5">
         <PageTitle eyebrow="Response planning" title="Requirements" description="A workspace-wide view of tender requirements. Open a requirement to draft, evidence, and review its answer." />
         <MetricRow values={[["Tenders", tenders.length], ["Requirements", rows.length], ["Mandatory", rows.filter(({ requirement }) => requirement.mandatory).length]]} />
-        {rows.length ? <TendyyResponsiveDataView desktop={<section className="overflow-hidden rounded-[10px] border border-slate-200 bg-white"><table className="w-full table-fixed text-left text-[13px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-[0.12em] text-slate-500"><tr><th className="w-2/5 px-4 py-3">Requirement</th><th className="px-4 py-3">Tender</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Priority</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.map(({ tender, requirement }) => <tr key={requirement.id} className="hover:bg-slate-50"><td className="px-4 py-3"><Link href={`/tenders/${tender.id}/requirements/${requirement.id}`} className="tendyy-wrap-anywhere font-semibold text-slate-950 hover:text-[#155EEF]">{requirement.title}</Link><p className="mt-1 line-clamp-2 text-xs text-slate-500">{requirement.description || "No description"}</p></td><td className="px-4 py-3"><Link href={`/apply/${tender.id}`} className="tendyy-wrap-anywhere font-medium text-[#155EEF] hover:underline">{tender.title}</Link></td><td className="px-4 py-3 text-slate-600">{formatLabel(requirement.requirementType)}</td><td className="px-4 py-3"><RfpStatusBadge tone={requirement.mandatory ? "warning" : "neutral"}>{requirement.mandatory ? "Mandatory" : "Standard"}</RfpStatusBadge></td><td className="px-4 py-3"><RfpStatusBadge tone={statusTone(requirement.status)}>{formatLabel(requirement.status)}</RfpStatusBadge></td></tr>)}</tbody></table></section>} mobile={<div className="space-y-3">{rows.map(({ tender, requirement }) => <article key={requirement.id} className="min-w-0 rounded-[10px] border border-slate-200 bg-white p-4"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><Link href={`/tenders/${tender.id}/requirements/${requirement.id}`} className="tendyy-wrap-anywhere min-w-0 flex-1 font-semibold text-slate-950">{requirement.title}</Link><RfpStatusBadge tone={statusTone(requirement.status)}>{formatLabel(requirement.status)}</RfpStatusBadge></div><p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-600">{requirement.description || "No description"}</p><dl className="mt-3 grid grid-cols-2 gap-3 text-xs"><CardField label="Tender" value={tender.title} /><CardField label="Type" value={formatLabel(requirement.requirementType)} /><CardField label="Priority" value={requirement.mandatory ? "Mandatory" : "Standard"} /></dl><Link href={`/apply/${tender.id}`} className="mt-4 inline-flex text-xs font-semibold text-[#155EEF]">Open application</Link></article>)}</div>} /> : <RfpEmptyState title="No requirements yet" description="Import or create a tender, then run requirement extraction to populate this queue." actionHref="/tenders/import" actionLabel="Import RFP" />}
+        <QueueFilters items={filters} value={filter} onChange={setFilter} />
+        {filteredRows.length ? <TendyyResponsiveDataView desktop={<section className="overflow-hidden rounded-[10px] border border-slate-200 bg-white"><table className="w-full table-fixed text-left text-[13px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-[0.12em] text-slate-500"><tr><th className="w-2/5 px-4 py-3">Requirement</th><th className="px-4 py-3">Tender</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Priority</th><th className="px-4 py-3">Answer</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredRows.map(({ tender, requirement, answered, pendingReview, approved }) => <tr key={requirement.id} className="hover:bg-slate-50"><td className="px-4 py-3"><Link href={`/tenders/${tender.id}/requirements/${requirement.id}`} className="tendyy-wrap-anywhere font-semibold text-slate-950 hover:text-[#155EEF]">{requirement.title}</Link><p className="mt-1 line-clamp-2 text-xs text-slate-500">{requirement.description || "No description"}</p></td><td className="px-4 py-3"><Link href={`/apply/${tender.id}`} className="tendyy-wrap-anywhere font-medium text-[#155EEF] hover:underline">{tender.title}</Link></td><td className="px-4 py-3 text-slate-600">{formatLabel(requirement.requirementType)}</td><td className="px-4 py-3"><RfpStatusBadge tone={requirement.mandatory ? "warning" : "neutral"}>{requirement.mandatory ? "Mandatory" : "Standard"}</RfpStatusBadge></td><td className="px-4 py-3"><RfpStatusBadge tone={approved ? "success" : pendingReview ? "warning" : answered ? "neutral" : "danger"}>{approved ? "Approved" : pendingReview ? "Pending review" : answered ? "Answered" : "Unanswered"}</RfpStatusBadge></td><td className="px-4 py-3"><RfpStatusBadge tone={statusTone(requirement.status)}>{formatLabel(requirement.status)}</RfpStatusBadge></td></tr>)}</tbody></table></section>} mobile={<div className="space-y-3">{filteredRows.map(({ tender, requirement, answered, pendingReview, approved }) => <article key={requirement.id} className="min-w-0 rounded-[10px] border border-slate-200 bg-white p-4"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><Link href={`/tenders/${tender.id}/requirements/${requirement.id}`} className="tendyy-wrap-anywhere min-w-0 flex-1 font-semibold text-slate-950">{requirement.title}</Link><RfpStatusBadge tone={statusTone(requirement.status)}>{formatLabel(requirement.status)}</RfpStatusBadge></div><p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-600">{requirement.description || "No description"}</p><dl className="mt-3 grid grid-cols-2 gap-3 text-xs"><CardField label="Tender" value={tender.title} /><CardField label="Type" value={formatLabel(requirement.requirementType)} /><CardField label="Priority" value={requirement.mandatory ? "Mandatory" : "Standard"} /><CardField label="Answer" value={approved ? "Approved" : pendingReview ? "Pending review" : answered ? "Answered" : "Unanswered"} /></dl><Link href={`/tenders/${tender.id}/requirements/${requirement.id}`} className="mt-4 inline-flex text-xs font-semibold text-[#155EEF]">Open requirement</Link></article>)}</div>} /> : <RfpEmptyState title="No matching requirements" description="Try another queue filter or import a tender to populate this page." actionHref="/tenders/import" actionLabel="Import RFP" />}
       </main>
     </AppShell>
   );
 }
 
 export function ResponsesPage() {
+  const [filter, setFilter] = useState("all");
   const tendersQuery = useTenders({ pageSize: 100, includeArchived: false });
   const tenders = tendersQuery.data?.items ?? [];
   const answerQueries = useQueries({
     queries: tenders.map((tender) => ({ queryKey: tenderKeys.answers(tender.id), queryFn: () => fetchTenderAnswers(tender.id) })),
   });
-  const rows = tenders.flatMap((tender, index) => (answerQueries[index]?.data?.items ?? []).map((answer) => ({ tender, answer })));
+  const reviewQueries = useQueries({ queries: tenders.map((tender) => ({ queryKey: tenderKeys.reviews(tender.id), queryFn: () => fetchTenderReviews(tender.id) })) });
+  const rows = tenders.flatMap((tender, index) => {
+    const reviews = reviewQueries[index]?.data?.items ?? [];
+    return (answerQueries[index]?.data?.items ?? []).map((answer) => ({ tender, answer, reviews: reviews.filter((review) => review.answerId === answer.id) }));
+  });
+  const filteredRows = rows.filter((row) =>
+    filter === "all"
+    || (filter === "draft" && /DRAFT/i.test(row.answer.status))
+    || (filter === "missing-evidence" && row.answer.evidenceCount === 0)
+    || (filter === "low-confidence" && row.answer.confidence < 0.65)
+    || (filter === "changes-requested" && row.reviews.some((review) => review.status === "CHANGES_REQUESTED"))
+    || (filter === "final" && /FINAL|APPROVED/i.test(row.answer.status)),
+  );
+  const filters: Array<[string, string]> = [
+    ["all", `All (${rows.length})`],
+    ["draft", `Draft (${rows.filter((row) => /DRAFT/i.test(row.answer.status)).length})`],
+    ["missing-evidence", `Missing evidence (${rows.filter((row) => row.answer.evidenceCount === 0).length})`],
+    ["low-confidence", `Low confidence (${rows.filter((row) => row.answer.confidence < 0.65).length})`],
+    ["changes-requested", `Changes requested (${rows.filter((row) => row.reviews.some((review) => review.status === "CHANGES_REQUESTED")).length})`],
+    ["final", `Final (${rows.filter((row) => /FINAL|APPROVED/i.test(row.answer.status)).length})`],
+  ];
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Apply", href: "/apply" }, { label: "Responses" }]}>
       <main className="space-y-5">
         <PageTitle eyebrow="Response operations" title="Responses" description="All drafted answers across the active workspace. Open the tender workspace to edit, attach evidence, or send an answer for review." />
         <MetricRow values={[["Answers", rows.length], ["Needs review", rows.filter(({ answer }) => /REVIEW|PENDING/i.test(answer.status)).length], ["Evidence linked", rows.filter(({ answer }) => answer.evidenceCount > 0).length]]} />
-        {rows.length ? <TendyyResponsiveDataView desktop={<section className="overflow-hidden rounded-[10px] border border-slate-200 bg-white"><table className="w-full table-fixed text-left text-[13px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-[0.12em] text-slate-500"><tr><th className="w-2/5 px-4 py-3">Response</th><th className="px-4 py-3">Tender</th><th className="px-4 py-3">Evidence</th><th className="px-4 py-3">Confidence</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.map(({ tender, answer }) => <tr key={answer.id} className="hover:bg-slate-50"><td className="px-4 py-3"><Link href={`/tenders/${tender.id}`} className="tendyy-wrap-anywhere font-semibold text-slate-950 hover:text-[#155EEF]">{answer.answerText.slice(0, 92) || "Untitled answer"}</Link><p className="mt-1 text-xs text-slate-500">Updated {formatDate(answer.updatedAt)}</p></td><td className="px-4 py-3"><Link href={`/apply/${tender.id}`} className="tendyy-wrap-anywhere font-medium text-[#155EEF] hover:underline">{tender.title}</Link></td><td className="px-4 py-3 text-slate-600">{answer.evidenceCount} linked</td><td className="px-4 py-3 text-slate-600">{Math.round(answer.confidence * 100)}%</td><td className="px-4 py-3"><RfpStatusBadge tone={statusTone(answer.status)}>{formatLabel(answer.status)}</RfpStatusBadge></td></tr>)}</tbody></table></section>} mobile={<div className="space-y-3">{rows.map(({ tender, answer }) => <article key={answer.id} className="min-w-0 rounded-[10px] border border-slate-200 bg-white p-4"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><Link href={`/tenders/${tender.id}`} className="tendyy-wrap-anywhere min-w-0 flex-1 font-semibold text-slate-950">{answer.answerText.slice(0, 120) || "Untitled answer"}</Link><RfpStatusBadge tone={statusTone(answer.status)}>{formatLabel(answer.status)}</RfpStatusBadge></div><p className="mt-2 tendyy-wrap-anywhere text-xs text-slate-600">{tender.title}</p><dl className="mt-3 grid grid-cols-2 gap-3 text-xs"><CardField label="Evidence" value={`${answer.evidenceCount} linked`} /><CardField label="Confidence" value={`${Math.round(answer.confidence * 100)}%`} /><CardField label="Updated" value={formatDate(answer.updatedAt)} /></dl><Link href={`/apply/${tender.id}`} className="mt-4 inline-flex text-xs font-semibold text-[#155EEF]">Open application</Link></article>)}</div>} /> : <RfpEmptyState title="No responses yet" description="Responses appear here after you answer a tender question." actionHref="/tenders" actionLabel="Open tenders" />}
+        <QueueFilters items={filters} value={filter} onChange={setFilter} />
+        {filteredRows.length ? <TendyyResponsiveDataView desktop={<section className="overflow-hidden rounded-[10px] border border-slate-200 bg-white"><table className="w-full table-fixed text-left text-[13px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-[0.12em] text-slate-500"><tr><th className="w-2/5 px-4 py-3">Response</th><th className="px-4 py-3">Tender</th><th className="px-4 py-3">Evidence</th><th className="px-4 py-3">Confidence</th><th className="px-4 py-3">Review</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredRows.map(({ tender, answer, reviews }) => <tr key={answer.id} className="hover:bg-slate-50"><td className="px-4 py-3"><Link href={`/apply/${tender.id}`} className="tendyy-wrap-anywhere font-semibold text-slate-950 hover:text-[#155EEF]">{answer.answerText.slice(0, 92) || "Untitled answer"}</Link><p className="mt-1 text-xs text-slate-500">Updated {formatDate(answer.updatedAt)}</p></td><td className="px-4 py-3"><Link href={`/apply/${tender.id}`} className="tendyy-wrap-anywhere font-medium text-[#155EEF] hover:underline">{tender.title}</Link></td><td className="px-4 py-3 text-slate-600">{answer.evidenceCount} linked</td><td className="px-4 py-3 text-slate-600">{Math.round(answer.confidence * 100)}%</td><td className="px-4 py-3"><RfpStatusBadge tone={reviews.some((review) => review.status === "CHANGES_REQUESTED") ? "warning" : reviews.some((review) => review.status === "APPROVED") ? "success" : "neutral"}>{reviews[0] ? formatLabel(reviews[0].status) : "Not sent"}</RfpStatusBadge></td><td className="px-4 py-3"><RfpStatusBadge tone={statusTone(answer.status)}>{formatLabel(answer.status)}</RfpStatusBadge></td></tr>)}</tbody></table></section>} mobile={<div className="space-y-3">{filteredRows.map(({ tender, answer, reviews }) => <article key={answer.id} className="min-w-0 rounded-[10px] border border-slate-200 bg-white p-4"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><Link href={`/apply/${tender.id}`} className="tendyy-wrap-anywhere min-w-0 flex-1 font-semibold text-slate-950">{answer.answerText.slice(0, 120) || "Untitled answer"}</Link><RfpStatusBadge tone={statusTone(answer.status)}>{formatLabel(answer.status)}</RfpStatusBadge></div><p className="mt-2 tendyy-wrap-anywhere text-xs text-slate-600">{tender.title}</p><dl className="mt-3 grid grid-cols-2 gap-3 text-xs"><CardField label="Evidence" value={`${answer.evidenceCount} linked`} /><CardField label="Confidence" value={`${Math.round(answer.confidence * 100)}%`} /><CardField label="Review" value={reviews[0] ? formatLabel(reviews[0].status) : "Not sent"} /><CardField label="Updated" value={formatDate(answer.updatedAt)} /></dl><Link href={`/apply/${tender.id}`} className="mt-4 inline-flex text-xs font-semibold text-[#155EEF]">Open application</Link></article>)}</div>} /> : <RfpEmptyState title="No matching responses" description="Try another response queue filter or draft an answer first." actionHref="/tenders" actionLabel="Open tenders" />}
       </main>
     </AppShell>
   );
@@ -79,6 +133,7 @@ export function TemplatesPage() {
 
 function PageTitle({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) { return <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#155EEF]">{eyebrow}</p><h1 className="mt-2 text-[29px] font-semibold tracking-tight text-slate-950">{title}</h1><p className="mt-2 max-w-2xl text-[13px] leading-6 text-slate-600">{description}</p></section>; }
 function MetricRow({ values }: { values: Array<[string, number]> }) { return <section className="grid gap-3 sm:grid-cols-3">{values.map(([label, value]) => <div key={label} className="rounded-[10px] border border-slate-200 bg-white p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p></div>)}</section>; }
+function QueueFilters({ items, value, onChange }: { items: Array<[string, string]>; value: string; onChange: (value: string) => void }) { return <div className="flex flex-wrap gap-2">{items.map(([key, label]) => <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${value === key ? "border-[#155EEF] bg-sky-50 text-[#155EEF]" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{label}</button>)}</div>; }
 function Panel({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]"><h2 className="text-lg font-semibold text-slate-950">{title}</h2><div className="mt-3">{children}</div></section>; }
 function EmptyCopy({ text }: { text: string }) { return <p className="py-4 text-sm text-slate-500">{text}</p>; }
 function CardField({ label, value }: { label: string; value: string }) { return <div className="min-w-0"><dt className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">{label}</dt><dd className="tendyy-wrap-anywhere mt-1 text-slate-700">{value}</dd></div>; }

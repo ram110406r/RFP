@@ -68,6 +68,15 @@ describe("dashboard summary logic", () => {
       },
       pendingReviews: 2,
       totalReviews: 3,
+      latestPackage: {
+        id: "package-1",
+        version: 2,
+        status: "READY",
+        failureReason: null,
+        createdAt: "2026-08-26T00:00:00.000Z",
+        completedAt: "2026-08-26T00:01:00.000Z",
+      },
+      latestSubmission: null,
     };
     const aiActivity: DashboardAiActivity = {
       totalAnswers: 5,
@@ -133,6 +142,7 @@ describe("dashboard summary logic", () => {
     expect(summary.pipeline.find((bucket) => bucket.id === "review")?.count).toBe(1);
     expect(summary.reviewQueue.count).toBe(1);
     expect(summary.activeTenders[0]?.tender.id).toBe("tender-1");
+    expect(summary.activeTenders[0]?.latestPackage?.status).toBe("READY");
     expect(summary.attention[0]?.severity).toBe("CRITICAL");
     expect(summary.aiActivity?.aiAcceptanceRate).toBe(50);
     expect(summary.evidenceHealth?.coverageRate).toBe(60);

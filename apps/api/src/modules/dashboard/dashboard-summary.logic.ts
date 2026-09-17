@@ -47,6 +47,30 @@ export type DashboardTenderCard = {
   highestIssue: DashboardIssue | null;
   pendingReviews: number;
   totalReviews: number;
+  latestRun?: {
+    id: string;
+    status: string;
+    failureReason: string | null;
+    createdAt: string | Date;
+    completedAt: string | Date | null;
+  } | null;
+  latestPackage?: {
+    id: string;
+    version: number;
+    status: "GENERATING" | "READY" | "FAILED" | "STALE" | "APPROVED";
+    failureReason: string | null;
+    createdAt: string | Date;
+    completedAt: string | Date | null;
+  } | null;
+  latestSubmission?: {
+    id: string;
+    packageId: string;
+    portal: string;
+    portalReference: string;
+    submittedAt: string | Date;
+    notes: string;
+    createdAt: string | Date;
+  } | null;
 };
 
 export type DashboardKnowledgeHealth = {

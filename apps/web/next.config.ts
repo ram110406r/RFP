@@ -21,6 +21,12 @@ const nextConfig: NextConfig = {
   output: standaloneOutput ? "standalone" : undefined,
   outputFileTracingRoot: join(configRoot, "../.."),
   transpilePackages: ["@rfp-os/ui", "@rfp-os/types", "@rfp-os/validation"],
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
+      { protocol: "https", hostname: "firebasestorage.googleapis.com" },
+    ],
+  },
   async rewrites() {
     return [
       {

@@ -749,6 +749,36 @@ export async function fetchAnswerEvidence(tenderId: string, answerId: string, in
   return requestJson<{ items: TenderAnswerEvidence[] }>(`/tenders/${tenderId}/answers/${answerId}/evidence`, init);
 }
 
+export async function addAnswerEvidence(
+  tenderId: string,
+  answerId: string,
+  body: {
+    evidenceType: string;
+    evidenceId: string;
+    sourceId?: string;
+    sourceVersion?: string | null;
+    relevance?: number;
+    confidence?: number;
+    freshness?: string;
+    verifiedAt?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+  init?: ApiInit,
+) {
+  return requestJson<TenderAnswerEvidence>(`/tenders/${tenderId}/answers/${answerId}/evidence`, {
+    ...init,
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function removeAnswerEvidence(tenderId: string, answerId: string, evidenceId: string, init?: ApiInit) {
+  return requestJson<TenderAnswerEvidence>(`/tenders/${tenderId}/answers/${answerId}/evidence/${evidenceId}`, {
+    ...init,
+    method: "DELETE",
+  });
+}
+
 export async function fetchRequirementEvidence(tenderId: string, requirementId: string, init?: ApiInit) {
   return requestJson<RequirementEvidenceSearchPayload>(`/tenders/${tenderId}/requirements/${requirementId}/evidence`, init);
 }

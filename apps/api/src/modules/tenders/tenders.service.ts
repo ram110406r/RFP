@@ -43,7 +43,9 @@ import {
   tenderSources,
   tenderValidationRuns,
   tenderStatusHistory,
+  tenderAutomationRuns,
   tenderSubmissionPackages,
+  tenderSubmissions,
   tenderMilestones,
   tenders,
   users,
@@ -432,6 +434,13 @@ export class TendersService {
         .slice(0, 3),
     };
 
+    const tenderIds = tenderRows.map((tender) => tender.id);
+    const [latestRunsByTender, latestPackagesByTender, latestSubmissionsByTender] = await Promise.all([
+      this.latestAutomationRunsByTender(auth.organizationId, tenderIds),
+      this.latestPackagesByTender(auth.organizationId, tenderIds),
+      this.latestSubmissionsByTender(auth.organizationId, tenderIds),
+    ]);
+
     const tenderDetails: DashboardTenderCard[] = await Promise.all(
       tenderRows.map(async (tender) => {
         try {
@@ -457,6 +466,9 @@ export class TendersService {
               (review) => review.status === "PENDING" || review.status === "CHANGES_REQUESTED",
             ).length,
             totalReviews: reviews.items.length,
+            latestRun: latestRunsByTender.get(tender.id) ?? null,
+            latestPackage: latestPackagesByTender.get(tender.id) ?? null,
+            latestSubmission: latestSubmissionsByTender.get(tender.id) ?? null,
           };
         } catch (error) {
           errors.push({
@@ -472,12 +484,14 @@ export class TendersService {
             highestIssue: null,
             pendingReviews: 0,
             totalReviews: 0,
+            latestRun: latestRunsByTender.get(tender.id) ?? null,
+            latestPackage: latestPackagesByTender.get(tender.id) ?? null,
+            latestSubmission: latestSubmissionsByTender.get(tender.id) ?? null,
           };
         }
       }),
     );
 
-    const tenderIds = tenderRows.map((tender) => tender.id);
     let aiActivity: DashboardAiActivity | null = null;
     let evidenceHealth: DashboardEvidenceHealth | null = null;
 
@@ -3855,6 +3869,93 @@ export class TendersService {
       .orderBy(desc(tenderValidationRuns.createdAt))
       .limit(1);
     return row ?? null;
+  }
+
+  private async latestAutomationRunsByTender(organizationId: string, tenderIds: string[]) {
+    const latest = new Map<string, {
+      id: string;
+      status: string;
+      failureReason: string | null;
+      createdAt: string;
+      completedAt: string | null;
+    }>();
+    if (tenderIds.length === 0) return latest;
+    const rows = await this.db
+      .select()
+      .from(tenderAutomationRuns)
+      .where(and(eq(tenderAutomationRuns.organizationId, organizationId), inArray(tenderAutomationRuns.tenderId, tenderIds)))
+      .orderBy(desc(tenderAutomationRuns.createdAt));
+    for (const row of rows) {
+      if (latest.has(row.tenderId)) continue;
+      latest.set(row.tenderId, {
+        id: row.id,
+        status: row.status,
+        failureReason: row.failureReason,
+        createdAt: row.createdAt.toISOString(),
+        completedAt: row.completedAt?.toISOString() ?? null,
+      });
+    }
+    return latest;
+  }
+
+  private async latestPackagesByTender(organizationId: string, tenderIds: string[]) {
+    const latest = new Map<string, {
+      id: string;
+      version: number;
+      status: "GENERATING" | "READY" | "FAILED" | "STALE" | "APPROVED";
+      failureReason: string | null;
+      createdAt: string;
+      completedAt: string | null;
+    }>();
+    if (tenderIds.length === 0) return latest;
+    const rows = await this.db
+      .select()
+      .from(tenderSubmissionPackages)
+      .where(and(eq(tenderSubmissionPackages.organizationId, organizationId), inArray(tenderSubmissionPackages.tenderId, tenderIds)))
+      .orderBy(desc(tenderSubmissionPackages.version));
+    for (const row of rows) {
+      if (latest.has(row.tenderId)) continue;
+      latest.set(row.tenderId, {
+        id: row.id,
+        version: row.version,
+        status: row.status,
+        failureReason: row.failureReason,
+        createdAt: row.createdAt.toISOString(),
+        completedAt: row.completedAt?.toISOString() ?? null,
+      });
+    }
+    return latest;
+  }
+
+  private async latestSubmissionsByTender(organizationId: string, tenderIds: string[]) {
+    const latest = new Map<string, {
+      id: string;
+      packageId: string;
+      portal: string;
+      portalReference: string;
+      submittedAt: string;
+      notes: string;
+      createdAt: string;
+    }>();
+    if (tenderIds.length === 0) return latest;
+    const rows = await this.db
+      .select()
+      .from(tenderSubmissions)
+      .where(and(eq(tenderSubmissions.organizationId, organizationId), inArray(tenderSubmissions.tenderId, tenderIds)))
+      .orderBy(desc(tenderSubmissions.submittedAt));
+    for (const row of rows) {
+      if (latest.has(row.tenderId)) continue;
+      latest.set(row.tenderId, {
+        id: row.id,
+        packageId: row.packageId,
+        portal: row.portal,
+        portalReference: row.portalReference,
+        submittedAt: row.submittedAt.toISOString(),
+        notes: row.notes,
+        createdAt: row.createdAt.toISOString(),
+      });
+    }
+    return latest;
   }
 
   private async computeValidationSnapshot(auth: AuthContext, tender: TenderRow): Promise<TenderValidationSnapshot> {

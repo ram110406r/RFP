@@ -731,6 +731,9 @@ export interface DashboardTenderCard {
   highestIssue: DashboardIssue | null;
   pendingReviews: number;
   totalReviews: number;
+  latestRun?: Pick<TenderAutomationRun, "id" | "status" | "failureReason" | "createdAt" | "completedAt"> | null;
+  latestPackage?: Pick<TenderSubmissionPackage, "id" | "version" | "status" | "failureReason" | "createdAt" | "completedAt"> | null;
+  latestSubmission?: Pick<TenderSubmission, "id" | "packageId" | "portal" | "portalReference" | "submittedAt" | "notes" | "createdAt"> | null;
 }
 
 export interface DashboardKnowledgeHealth {

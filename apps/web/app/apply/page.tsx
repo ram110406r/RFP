@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
@@ -27,22 +26,17 @@ import { AppShell } from "../../components/app-shell";
 import { RfpEmptyState, RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
 import { TendyyResponsiveDataView, TendyyResponsiveNav } from "../../components/tendyy-ui";
-import type { DashboardTenderCard, TenderAutomationRun, TenderSubmissionPackage } from "../../lib/models";
+import type { DashboardTenderCard } from "../../lib/models";
 import { useDashboardSummary } from "../../lib/queries";
-import { fetchTenderAutomationRuns, fetchTenderPackages } from "../../lib/api";
 import { Button } from "@rfp-os/ui";
+import { APPLY_QUEUE_TABS, classifyApplication, matchesApplyQueue, type ApplyQueueTab, type ApplyQueueState } from "../../lib/apply-queues";
 
-type ApplicationTab = "all" | "mine" | "review" | "approval" | "ready" | "submitted" | "closed";
-
-const tabs: Array<{ key: ApplicationTab; label: string }> = [
-  { key: "all", label: "All applications" },
-  { key: "mine", label: "My applications" },
-  { key: "review", label: "Needs review" },
-  { key: "approval", label: "Approval" },
-  { key: "ready", label: "Ready" },
-  { key: "submitted", label: "Submitted" },
-  { key: "closed", label: "Closed" },
-];
+type ApplicationRowModel = {
+  row: DashboardTenderCard;
+  automation: DashboardTenderCard["latestRun"];
+  submissionPackage: DashboardTenderCard["latestPackage"];
+  state: ApplyQueueState;
+};
 
 export default function ApplyPage() {
   return <Suspense fallback={<ApplyLoadingState />}><ApplyInbox /></Suspense>;
@@ -55,36 +49,34 @@ function ApplyInbox() {
   const [status, setStatus] = useState("all");
   const [owner, setOwner] = useState("all");
   const [deadlineOrder, setDeadlineOrder] = useState<"soonest" | "latest">("soonest");
-  const [tab, setTab] = useState<ApplicationTab>("all");
+  const [tab, setTab] = useState<ApplyQueueTab>("all");
   const summary = summaryQuery.data ?? null;
   const sourceRows = useMemo(() => summary?.activeTenders ?? [], [summary]);
-  const automationQueries = useQueries({ queries: sourceRows.map((row) => ({ queryKey: ["tender", row.tender.id, "automation-runs"], queryFn: () => fetchTenderAutomationRuns(row.tender.id) })) });
-  const packageQueries = useQueries({ queries: sourceRows.map((row) => ({ queryKey: ["tender", row.tender.id, "packages"], queryFn: () => fetchTenderPackages(row.tender.id) })) });
   const currentUserId = session?.user?.uid ?? session?.profile?.uid;
+  const applicationRows = useMemo<ApplicationRowModel[]>(() => sourceRows.map((row) => {
+    const automation = row.latestRun ?? null;
+    const submissionPackage = row.latestPackage ?? null;
+    return { row, automation, submissionPackage, state: classifyApplication(row, submissionPackage, automation, currentUserId) };
+  }), [currentUserId, sourceRows]);
   const rows = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return sourceRows
-      .filter((row) => {
+    return applicationRows
+      .filter((item) => {
+        const row = item.row;
         const tender = row.tender;
         const haystack = `${tender.title} ${tender.name} ${tender.referenceNumber ?? ""}`.toLowerCase();
         const matchesSearch = needle.length === 0 || haystack.includes(needle);
         const matchesStatus = status === "all" || tender.status === status;
         const matchesOwner = owner === "all" || tender.ownerId === owner;
-        const matchesTab = tab === "all"
-          || (tab === "mine" && (!currentUserId || tender.ownerId === currentUserId))
-          || (tab === "review" && row.pendingReviews > 0)
-          || (tab === "approval" && tender.status === "APPROVED")
-          || (tab === "ready" && row.ready)
-          || (tab === "submitted" && tender.status === "SUBMITTED")
-          || (tab === "closed" && tender.status === "CLOSED");
+        const matchesTab = matchesApplyQueue(tab, item.state);
         return matchesSearch && matchesStatus && matchesOwner && matchesTab;
       })
       .sort((left, right) => {
-        const leftDate = left.tender.dueAt ? new Date(left.tender.dueAt).getTime() : Number.POSITIVE_INFINITY;
-        const rightDate = right.tender.dueAt ? new Date(right.tender.dueAt).getTime() : Number.POSITIVE_INFINITY;
+        const leftDate = left.row.tender.dueAt ? new Date(left.row.tender.dueAt).getTime() : Number.POSITIVE_INFINITY;
+        const rightDate = right.row.tender.dueAt ? new Date(right.row.tender.dueAt).getTime() : Number.POSITIVE_INFINITY;
         return deadlineOrder === "soonest" ? leftDate - rightDate : rightDate - leftDate;
       });
-  }, [currentUserId, deadlineOrder, owner, search, sourceRows, status, tab]);
+  }, [applicationRows, deadlineOrder, owner, search, status, tab]);
 
   const metrics = summary?.metrics;
   const pipelineCount = (id: string) => summary?.pipeline.find((stage) => stage.id === id)?.count ?? 0;
@@ -101,6 +93,7 @@ function ApplyInbox() {
   ].slice(0, 5);
   const userName = session?.profile?.displayName ?? session?.user?.displayName ?? "Workspace user";
   const ownerOptions = ["all", ...new Set(sourceRows.map((row) => row.tender.ownerId))];
+  const queueCounts = Object.fromEntries(APPLY_QUEUE_TABS.map((item) => [item.key, applicationRows.filter((row) => matchesApplyQueue(item.key, row.state)).length])) as Record<ApplyQueueTab, number>;
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Apply" }]}>
@@ -134,9 +127,9 @@ function ApplyInbox() {
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5" aria-label="Application workflow metrics">
           <WorkflowMetric label="In progress" value={pipelineCount("answering")} detail="Applications" icon={<Clock3 className="h-5 w-5" />} onClick={() => setTab("all")} />
-          <WorkflowMetric label="Needs review" value={metrics?.awaitingReview ?? 0} detail="Questions" icon={<Search className="h-5 w-5" />} onClick={() => setTab("review")} />
-          <WorkflowMetric label="Approval" value={pipelineCount("approval")} detail="Answers" icon={<BadgeCheck className="h-5 w-5" />} onClick={() => setTab("approval")} />
-          <WorkflowMetric label="Ready to submit" value={metrics?.submissionReady ?? 0} detail="Responses" icon={<CheckCircle2 className="h-5 w-5" />} onClick={() => setTab("ready")} />
+          <WorkflowMetric label="Needs review" value={queueCounts.review} detail="Applications" icon={<Search className="h-5 w-5" />} onClick={() => setTab("review")} />
+          <WorkflowMetric label="Needs approval" value={queueCounts.approval} detail="Packages" icon={<BadgeCheck className="h-5 w-5" />} onClick={() => setTab("approval")} />
+          <WorkflowMetric label="Ready to submit" value={queueCounts.ready} detail="Approved packages" icon={<CheckCircle2 className="h-5 w-5" />} onClick={() => setTab("ready")} />
           <WorkflowMetric label="Submitted" value={pipelineCount("submitted")} detail="Responses" icon={<FileCheck2 className="h-5 w-5" />} onClick={() => setTab("submitted")} />
         </section>
 
@@ -152,14 +145,14 @@ function ApplyInbox() {
         </section>
 
         <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="min-w-0 flex-1"><TendyyResponsiveNav label="Application view" value={tab} items={tabs.map((item) => ({ value: item.key, label: item.label }))} onChange={(value) => setTab(value as ApplicationTab)} /></div>
+          <div className="min-w-0 flex-1"><TendyyResponsiveNav label="Application view" value={tab} items={APPLY_QUEUE_TABS.map((item) => ({ value: item.key, label: `${item.label} (${queueCounts[item.key] ?? 0})` }))} onChange={(value) => setTab(value as ApplyQueueTab)} /></div>
           <button type="button" onClick={() => void summaryQuery.refetch()} className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-[8px] border border-[#E4E7EC] px-3 text-xs font-semibold text-[#155EEF]"><RefreshCw className="h-3.5 w-3.5" />Refresh</button>
         </div>
 
         <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.8fr)_minmax(300px,0.8fr)]">
           <section className="min-w-0 border border-[#E4E7EC] bg-white">
             <div className="flex items-center justify-between gap-3 border-b border-[#F2F4F7] px-4 py-4"><h2 className="text-sm font-semibold uppercase tracking-[0.04em] text-[#101828]">Active applications</h2><span className="text-xs text-[#667085]">{rows.length} visible</span></div>
-            {summaryQuery.isError ? <div className="m-4 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">Unable to load applications. <button type="button" onClick={() => void summaryQuery.refetch()} className="font-semibold underline">Retry</button></div> : summaryQuery.isLoading ? <ApplicationSkeleton /> : rows.length > 0 ? <ApplicationTable rows={rows} sourceRows={sourceRows} automation={automationQueries.map((query) => query.data?.items[0] ?? null)} packages={packageQueries.map((query) => query.data?.items[0] ?? null)} /> : <div className="p-5"><RfpEmptyState title={tab === "all" ? "No applications yet" : "No matching applications"} description={tab === "all" ? "Start by creating an application from a tender or importing an RFP." : "Try another workflow tab or clear the filters."} actionHref="/tenders/new" actionLabel="Create application" /></div>}
+            {summaryQuery.isError ? <div className="m-4 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">Unable to load applications. <button type="button" onClick={() => void summaryQuery.refetch()} className="font-semibold underline">Retry</button></div> : summaryQuery.isLoading ? <ApplicationSkeleton /> : rows.length > 0 ? <ApplicationTable items={rows} /> : <div className="p-5"><RfpEmptyState title={tab === "all" ? "No applications yet" : "No matching applications"} description={tab === "all" ? "Start by creating an application from a tender or importing an RFP." : "Try another workflow tab or clear the filters."} actionHref="/tenders/new" actionLabel="Create application" /></div>}
           </section>
           <ApplyRightRail workQueue={workQueue} deadlines={deadlines} />
         </div>
@@ -176,12 +169,12 @@ function FilterSelect({ label, value, options, onChange, icon }: { label: string
   return <label className="inline-flex h-10 items-center gap-2 rounded-[9px] border border-[#E4E7EC] px-3 text-xs text-[#667085]">{icon}{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="max-w-[110px] bg-transparent font-semibold text-[#344054] outline-none">{options.map((option) => <option key={option} value={option}>{option === "all" ? "All" : formatStatus(option)}</option>)}</select></label>;
 }
 
-function ApplicationTable({ rows, sourceRows, automation, packages }: { rows: DashboardTenderCard[]; sourceRows: DashboardTenderCard[]; automation: Array<TenderAutomationRun | null>; packages: Array<TenderSubmissionPackage | null> }) {
-  const resolved = rows.map((row) => { const index = sourceRows.findIndex((item) => item.tender.id === row.tender.id); return { row, automation: automation[index] ?? null, submissionPackage: packages[index] ?? null }; });
+function ApplicationTable({ items }: { items: ApplicationRowModel[] }) {
+  const resolved = items;
   return <TendyyResponsiveDataView desktop={<table className="w-full table-fixed border-collapse text-left"><thead className="border-y border-[#F2F4F7] bg-[#FCFCFD] text-[10px] font-semibold uppercase tracking-[0.08em] text-[#667085]"><tr><th className="w-[25%] px-4 py-3">Application</th><th className="px-3 py-3">Tender / Authority</th><th className="px-3 py-3">Deadline</th><th className="px-3 py-3">Progress</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Risks</th><th className="px-3 py-3">Last activity</th><th className="w-24 px-3 py-3" /></tr></thead><tbody className="divide-y divide-[#F2F4F7]">{resolved.map((item) => <ApplicationRow key={item.row.tender.id} {...item} />)}</tbody></table>} mobile={<div className="space-y-3 p-3 sm:p-4">{resolved.map((item) => <ApplicationCard key={item.row.tender.id} {...item} />)}</div>} />;
 }
 
-function ApplicationCard({ row, automation, submissionPackage }: { row: DashboardTenderCard; automation: TenderAutomationRun | null; submissionPackage: TenderSubmissionPackage | null }) {
+function ApplicationCard({ row, automation, submissionPackage }: { row: DashboardTenderCard; automation: DashboardTenderCard["latestRun"]; submissionPackage: DashboardTenderCard["latestPackage"] }) {
   const tender = row.tender;
   const readiness = Math.max(0, Math.min(100, row.readiness ?? 0));
   return <article className="min-w-0 border border-[#E4E7EC] bg-white p-4"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0 flex-1"><Link href={`/apply/${tender.id}`} className="tendyy-wrap-anywhere block text-sm font-semibold leading-5 text-[#101828]">{tender.title}</Link><p className="tendyy-wrap-anywhere mt-1 text-[11px] text-[#667085]">ID: {tender.referenceNumber ?? tender.id}</p></div><RfpStatusBadge tone={statusTone(tender.status)}>{applicationStatus(tender.status)}</RfpStatusBadge></div><p className="tendyy-wrap-anywhere mt-3 text-xs text-[#344054]">{tender.name}</p><div className="mt-3 grid grid-cols-2 gap-3 text-[11px]"><CardDetail label="Deadline" value={`${formatDate(tender.dueAt)} · ${daysLeftLabel(tender.dueAt)}`} /><CardDetail label="Progress" value={row.readiness === null ? "Not calculated" : `${row.readiness}%`} /><CardDetail label="Reviews" value={`${row.pendingReviews} pending`} /><CardDetail label="Risks" value={`${row.blockingIssueCount} blocking`} /><CardDetail label="Preparation" value={submissionPackage ? `Package v${submissionPackage.version} ${formatStatus(submissionPackage.status)}` : automation ? formatStatus(automation.status) : "Not prepared"} /><CardDetail label="Updated" value={relativeTime(tender.updatedAt)} /></div><div className="mt-3 h-1.5 rounded-full bg-[#E4E7EC]"><div className="h-1.5 rounded-full bg-[#155EEF]" style={{ width: `${readiness}%` }} /></div><Link href={`/apply/${tender.id}`} className="mt-4 inline-flex h-9 items-center rounded-[8px] border border-[#155EEF] px-3 text-xs font-semibold text-[#155EEF]">Continue application</Link></article>;
@@ -189,7 +182,7 @@ function ApplicationCard({ row, automation, submissionPackage }: { row: Dashboar
 
 function CardDetail({ label, value }: { label: string; value: string }) { return <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#98A2B3]">{label}</p><p className="tendyy-wrap-anywhere mt-1 font-medium text-[#344054]">{value}</p></div>; }
 
-function ApplicationRow({ row, automation, submissionPackage }: { row: DashboardTenderCard; automation: TenderAutomationRun | null; submissionPackage: TenderSubmissionPackage | null }) {
+function ApplicationRow({ row, automation, submissionPackage }: { row: DashboardTenderCard; automation: DashboardTenderCard["latestRun"]; submissionPackage: DashboardTenderCard["latestPackage"] }) {
   const tender = row.tender;
   const readiness = row.readiness === null ? 0 : Math.max(0, Math.min(100, row.readiness));
   return <tr className="align-top text-xs text-[#344054] transition hover:bg-[#F8FAFC]"><td className="max-w-[220px] px-4 py-4"><Link href={`/apply/${tender.id}`} className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-[#EFF5FF] text-[#155EEF]"><FileText className="h-4 w-4" /></span><span className="min-w-0"><span className="block font-semibold leading-5 text-[#101828]">{tender.title}</span><span className="mt-1 block truncate text-[11px] text-[#667085]">ID: {tender.referenceNumber ?? tender.id}</span><span className="mt-2 inline-flex gap-1 text-[10px] text-[#667085]"><span className="bg-[#F8FAFC] px-1.5 py-0.5">{formatStatus(tender.tenderType)}</span><span className="bg-[#F8FAFC] px-1.5 py-0.5">{metadataText(tender.metadata, "location")}</span></span></span></Link></td><td className="max-w-[150px] px-3 py-4 leading-5">{tender.name}</td><td className="whitespace-nowrap px-3 py-4">{formatDate(tender.dueAt)}<span className={`mt-1 block text-[10px] ${daysLeft(tender.dueAt) < 7 ? "text-amber-700" : "text-[#98A2B3]"}`}>{daysLeftLabel(tender.dueAt)}</span></td><td className="min-w-[105px] px-3 py-4"><div className="font-semibold text-[#101828]">{row.readiness === null ? "-" : `${row.readiness}%`}</div><div className="mt-1 h-1.5 rounded-full bg-[#E4E7EC]"><div className="h-1.5 rounded-full bg-[#155EEF]" style={{ width: `${readiness}%` }} /></div><p className="mt-1 text-[10px] text-[#667085]">{row.pendingReviews} review{row.pendingReviews === 1 ? "" : "s"}</p></td><td className="px-3 py-4"><RfpStatusBadge tone={statusTone(tender.status)}>{applicationStatus(tender.status)}</RfpStatusBadge><span className="mt-1 block max-w-[120px] text-[10px] leading-4 text-[#667085]">{submissionPackage ? `Package v${submissionPackage.version} ${formatStatus(submissionPackage.status)}` : automation ? `Prepare ${formatStatus(automation.status)}` : "Not prepared"}</span></td><td className="px-3 py-4"><span className={row.blockingIssueCount > 0 ? "font-semibold text-rose-700" : "font-semibold text-emerald-700"}>{row.blockingIssueCount}</span><span className="mt-1 block text-[10px] text-[#667085]">{row.highestIssue?.severity ?? "No high risk"}</span></td><td className="whitespace-nowrap px-3 py-4"><span className="block text-[#344054]">{relativeTime(tender.updatedAt)}</span><span className="mt-1 block max-w-[90px] text-[10px] leading-4 text-[#667085]">Tender record updated</span></td><td className="px-3 py-4"><div className="flex items-center gap-1"><Link href={`/apply/${tender.id}`} className="inline-flex h-8 items-center rounded-[8px] border border-[#E4E7EC] px-2.5 text-xs font-semibold text-[#155EEF] hover:bg-[#EFF5FF]">Continue</Link><button type="button" className="inline-flex h-8 w-7 items-center justify-center text-[#667085]" aria-label="More application actions"><MoreHorizontal className="h-4 w-4" /></button></div></td></tr>;

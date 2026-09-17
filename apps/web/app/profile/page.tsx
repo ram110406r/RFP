@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { updateProfile } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -1037,7 +1038,7 @@ function Avatar({
 
   return (
     <div className={`flex shrink-0 items-center justify-center overflow-hidden bg-[#EFF5FF] font-semibold text-[#155EEF] ${classes}`}>
-      {photoURL ? <img src={photoURL} alt="" className="h-full w-full object-cover" /> : <span>{initials}</span>}
+      {photoURL ? <Image src={photoURL} alt="" width={size === "lg" ? 80 : 44} height={size === "lg" ? 80 : 44} className="h-full w-full object-cover" /> : <span>{initials}</span>}
     </div>
   );
 }
