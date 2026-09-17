@@ -130,7 +130,7 @@ import type {
   TeamMemberSummary,
   AuditLogSummary,
 } from "./models";
-import { useSelectedWorkspaceId } from "./workspace-selection";
+import { resolveSelectedWorkspaceId, useSelectedWorkspaceId } from "./workspace-selection";
 
 export const tenderKeys = {
   detail: (tenderId: string) => ["tender", tenderId] as const,
@@ -474,10 +474,20 @@ export function useWorkspaces(params: { status?: "active" | "archived" | "all" }
   });
 }
 
-export function useTenderDiscovery(params: TenderDiscoveryParams = {}) {
+function useResolvedActiveWorkspaceId(explicitWorkspaceId?: string) {
   const selectedWorkspaceId = useSelectedWorkspaceId();
-  const effectiveParams = { ...params, workspaceId: params.workspaceId ?? selectedWorkspaceId ?? undefined };
-  return useQuery({ queryKey: tenderDiscoveryKeys.list(effectiveParams), queryFn: () => fetchTenderDiscovery(effectiveParams), enabled: Boolean(effectiveParams.workspaceId), placeholderData: keepPreviousData });
+  const workspacesQuery = useWorkspaces();
+  const workspaceId = explicitWorkspaceId ?? (workspacesQuery.isSuccess ? resolveSelectedWorkspaceId(selectedWorkspaceId, workspacesQuery.data.items) ?? undefined : undefined);
+  return {
+    workspaceId,
+    ready: Boolean(explicitWorkspaceId) || workspacesQuery.isSuccess,
+  };
+}
+
+export function useTenderDiscovery(params: TenderDiscoveryParams = {}) {
+  const resolved = useResolvedActiveWorkspaceId(params.workspaceId);
+  const effectiveParams = { ...params, workspaceId: resolved.workspaceId };
+  return useQuery({ queryKey: tenderDiscoveryKeys.list(effectiveParams), queryFn: () => fetchTenderDiscovery(effectiveParams), enabled: resolved.ready && Boolean(effectiveParams.workspaceId), placeholderData: keepPreviousData });
 }
 
 export function useTenderNotice(noticeId: string | null) {
@@ -520,11 +530,11 @@ export function useBulkStartTenderApplications() {
 }
 
 export function useTenderComparison(ids: string[], enabled = true) { const workspaceId = useSelectedWorkspaceId(); return useQuery({ queryKey: tenderDiscoveryKeys.comparison(workspaceId ?? "", ids), queryFn: () => fetchTenderComparison(workspaceId ?? "", ids), enabled: enabled && Boolean(workspaceId) && ids.length >= 2 }); }
-export function useTenderSavedSearches() { const workspaceId = useSelectedWorkspaceId(); return useQuery({ queryKey: tenderDiscoveryKeys.savedSearches(workspaceId ?? ""), queryFn: () => fetchTenderSavedSearches(workspaceId ?? ""), enabled: Boolean(workspaceId) }); }
-export function useCreateTenderSavedSearch() { const workspaceId = useSelectedWorkspaceId(); const client = useQueryClient(); return useMutation({ mutationFn: (input: { name: string; query: Record<string, unknown>; cadence: "IMMEDIATE" | "DAILY" }) => { if (!workspaceId) throw new Error("Select a workspace first."); return createTenderSavedSearch({ workspaceId, ...input, enabled: true }); }, onSuccess: async () => client.invalidateQueries({ queryKey: tenderDiscoveryKeys.savedSearches(workspaceId ?? "") }) }); }
-export function useDeleteTenderSavedSearch() { const workspaceId = useSelectedWorkspaceId(); const client = useQueryClient(); return useMutation({ mutationFn: (id: string) => { if (!workspaceId) throw new Error("Select a workspace first."); return deleteTenderSavedSearch(id, workspaceId); }, onSuccess: async () => client.invalidateQueries({ queryKey: tenderDiscoveryKeys.savedSearches(workspaceId ?? "") }) }); }
+export function useTenderSavedSearches() { const { workspaceId, ready } = useResolvedActiveWorkspaceId(); return useQuery({ queryKey: tenderDiscoveryKeys.savedSearches(workspaceId ?? ""), queryFn: () => fetchTenderSavedSearches(workspaceId ?? ""), enabled: ready && Boolean(workspaceId) }); }
+export function useCreateTenderSavedSearch() { const { workspaceId } = useResolvedActiveWorkspaceId(); const client = useQueryClient(); return useMutation({ mutationFn: (input: { name: string; query: Record<string, unknown>; cadence: "IMMEDIATE" | "DAILY" }) => { if (!workspaceId) throw new Error("Select a workspace first."); return createTenderSavedSearch({ workspaceId, ...input, enabled: true }); }, onSuccess: async () => client.invalidateQueries({ queryKey: tenderDiscoveryKeys.savedSearches(workspaceId ?? "") }) }); }
+export function useDeleteTenderSavedSearch() { const { workspaceId } = useResolvedActiveWorkspaceId(); const client = useQueryClient(); return useMutation({ mutationFn: (id: string) => { if (!workspaceId) throw new Error("Select a workspace first."); return deleteTenderSavedSearch(id, workspaceId); }, onSuccess: async () => client.invalidateQueries({ queryKey: tenderDiscoveryKeys.savedSearches(workspaceId ?? "") }) }); }
 export function useTenderMatchProfile() { return useQuery({ queryKey: tenderDiscoveryKeys.matchProfile(), queryFn: () => fetchTenderMatchProfile() }); }
-export function useTenderDiscoveryAnalytics(days = 30) { const workspaceId = useSelectedWorkspaceId(); return useQuery({ queryKey: tenderDiscoveryKeys.analytics(workspaceId ?? "", days), queryFn: () => fetchTenderDiscoveryAnalytics(workspaceId ?? "", days), enabled: Boolean(workspaceId) }); }
+export function useTenderDiscoveryAnalytics(days = 30) { const { workspaceId, ready } = useResolvedActiveWorkspaceId(); return useQuery({ queryKey: tenderDiscoveryKeys.analytics(workspaceId ?? "", days), queryFn: () => fetchTenderDiscoveryAnalytics(workspaceId ?? "", days), enabled: ready && Boolean(workspaceId) }); }
 export function useUpdateTenderMatchProfile() { const client = useQueryClient(); return useMutation({ mutationFn: (body: import("./models").TenderMatchProfile) => updateTenderMatchProfile(body), onSuccess: async () => Promise.all([client.invalidateQueries({ queryKey: tenderDiscoveryKeys.matchProfile() }), client.invalidateQueries({ queryKey: tenderDiscoveryKeys.all })]) }); }
 
 export function useTenderSourceHealth() {

@@ -5,9 +5,25 @@ import { useEffect, useState } from "react";
 const STORAGE_KEY = "tendyy:selected-workspace";
 const CHANGE_EVENT = "tendyy:workspace-changed";
 
+export interface WorkspaceSelectionOption {
+  id: string;
+  status?: string;
+}
+
 function readSelectedWorkspace() {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(STORAGE_KEY);
+}
+
+export function resolveSelectedWorkspaceId(
+  selectedWorkspaceId: string | null | undefined,
+  workspaces: readonly WorkspaceSelectionOption[],
+) {
+  const activeWorkspaces = workspaces.filter((workspace) => workspace.status === undefined || workspace.status === "active");
+  if (selectedWorkspaceId && activeWorkspaces.some((workspace) => workspace.id === selectedWorkspaceId)) {
+    return selectedWorkspaceId;
+  }
+  return activeWorkspaces[0]?.id ?? null;
 }
 
 export function useSelectedWorkspaceId() {
