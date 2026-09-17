@@ -30,6 +30,7 @@ const dbTest = process.env.DATABASE_URL ? test : test.skip;
 const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
 
 const env = {
+  APP_ENV: "local",
   NODE_ENV: "test",
   API_PORT: 4100,
   CORS_ORIGIN: "http://localhost:3000",
@@ -38,6 +39,7 @@ const env = {
   RATE_LIMIT_LIMIT: 100,
   BETTER_AUTH_SECRET: "test-secret-that-is-long-enough-for-zod-min-32",
   BETTER_AUTH_URL: "http://localhost:4100",
+  AI_PROVIDER: "mock",
   GROQ_API_KEY: undefined,
   GROQ_MODEL: "llama-3.1-8b-instant",
   GROQ_BASE_URL: "https://api.groq.com/openai/v1",

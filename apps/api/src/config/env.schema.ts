@@ -15,7 +15,9 @@ function blankToUndefined<T extends z.ZodTypeAny>(schema: T) {
 }
 
 export const envSchema = z.object({
+  APP_ENV: z.enum(["local", "staging", "production"]).default("local"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   API_PORT: z.coerce.number().int().positive().default(4100),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
   DATABASE_URL: z.string().url().optional(),
@@ -33,6 +35,7 @@ export const envSchema = z.object({
   FIREBASE_PROJECT_ID: z.string().min(1).optional(),
   APP_COMMIT_SHA: z.string().min(1).optional(),
   APP_BUILD_TIME: blankToUndefined(z.string().datetime()),
+  AI_PROVIDER: z.enum(["mock", "groq", "openai", "anthropic", "gemini"]).default("mock"),
   GROQ_API_KEY: blankToUndefined(z.string().min(1)),
   GROQ_MODEL: z.string().min(1).default("openai/gpt-oss-20b"),
   GROQ_BASE_URL: z.string().url().default("https://api.groq.com/openai/v1"),
@@ -67,6 +70,7 @@ export const envSchema = z.object({
   UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   /** Downloads are short-lived: the URL grants the bytes to whoever holds it. */
   DOWNLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  OPENSEARCH_URL: blankToUndefined(z.string().url()),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -91,7 +95,7 @@ export function validateEnv(config: Record<string, unknown>): Env {
    * an ephemeral one and warns), but in production it would silently make every
    * session forgeable. Fail the boot instead.
    */
-  if (result.data.NODE_ENV === "production") {
+  if (result.data.APP_ENV === "production") {
     const missing: string[] = [];
     const hasDatabaseUrl = Boolean(result.data.DATABASE_URL);
     const hasPostgresEnv =
@@ -112,6 +116,9 @@ export function validateEnv(config: Record<string, unknown>): Env {
     if (!result.data.REDIS_URL) {
       missing.push("REDIS_URL: required in production for background jobs");
     }
+    if (result.data.AI_PROVIDER === "mock") {
+      missing.push("AI_PROVIDER: mock is not allowed in production");
+    }
     /*
      * Storage is optional in development so the API boots without MinIO, but
      * in production a missing credential would only surface when someone first
@@ -126,7 +133,9 @@ export function validateEnv(config: Record<string, unknown>): Env {
     }
     if (hasStorage && result.data.STORAGE_PUBLIC_ENDPOINT) {
       try {
-        if (new URL(result.data.STORAGE_PUBLIC_ENDPOINT).protocol !== "https:") {
+        const publicStorageUrl = new URL(result.data.STORAGE_PUBLIC_ENDPOINT);
+        const localHostnames = new Set(["localhost", "127.0.0.1", "::1"]);
+        if (publicStorageUrl.protocol !== "https:" && !localHostnames.has(publicStorageUrl.hostname)) {
           missing.push("STORAGE_PUBLIC_ENDPOINT: must use HTTPS in production");
         }
       } catch {
@@ -137,7 +146,16 @@ export function validateEnv(config: Record<string, unknown>): Env {
     }
     if (missing.length > 0) {
       const issues = missing.map((entry) => `  - ${entry}`).join("\n");
-      throw new Error(`Invalid environment configuration:\n${issues}`);
+      throw new Error(
+        [
+          "TENDYY configuration error:",
+          "",
+          "Missing or invalid:",
+          issues,
+          "",
+          `Environment: ${result.data.APP_ENV}`,
+        ].join("\n"),
+      );
     }
   }
 

@@ -110,6 +110,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      APP_ENV: production
       NODE_ENV: production
       API_PORT: 4000
       CORS_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL is required}
@@ -118,16 +119,17 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-rfp-os_local_auth_secret_20260830_fallback}
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: http://minio:9000
-      # This must be the HTTPS MinIO/S3 URL reachable by the browser. The API
-      # uses STORAGE_ENDPOINT for Docker-internal access and this value only
-      # when signing browser upload/download URLs.
-      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:?STORAGE_PUBLIC_ENDPOINT is required}
+      # Browser uploads/downloads use the public app origin. The web service
+      # proxies /${STORAGE_BUCKET}/... to MinIO over the internal network.
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-${PUBLIC_URL}}
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
       STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
       STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
       STORAGE_FORCE_PATH_STYLE: "true"
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:?AI_PROVIDER is required}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
       APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
       APP_BUILD_TIME: ${APP_BUILD_TIME:-}
     depends_on:
@@ -161,15 +163,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      APP_ENV: production
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: http://minio:9000
-      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:?STORAGE_PUBLIC_ENDPOINT is required}
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-${PUBLIC_URL}}
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
       STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
       STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
       STORAGE_FORCE_PATH_STYLE: "true"
+      AI_PROVIDER: ${AI_PROVIDER:?AI_PROVIDER is required}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
     depends_on:
       redis:
         condition: service_healthy
@@ -184,6 +189,8 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         API_INTERNAL_URL: http://api:4000
+        STORAGE_ENDPOINT: http://minio:9000
+        STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
         NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
         NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
         NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
@@ -201,6 +208,8 @@ services:
     environment:
       PORT: 3000
       API_INTERNAL_URL: http://api:4000
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
       NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
       NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
       NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}

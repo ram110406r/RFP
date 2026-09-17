@@ -1,80 +1,159 @@
-# RFP OS
+# TENDYY RFP Operating System
 
-RFP OS is a modular, multi-tenant, API-first platform for running the RFP
-lifecycle — intake, document processing, requirement intelligence, knowledge
-retrieval, AI-assisted answer generation, evidence, risk detection, human
-review, validation, submission, and outcome learning.
+TENDYY is a modular, multi-tenant platform for running the RFP lifecycle:
+intake, document processing, requirement intelligence, knowledge retrieval,
+AI-assisted answer generation, evidence, review, validation, submission, and
+outcome learning.
 
-This is a Turborepo monorepo built on Bun and TypeScript.
+The same source code runs in local, staging, and production. Environment
+configuration determines which infrastructure it uses.
 
-## Architecture
+## Stack
 
-```text
-apps/
-  web         Next.js App Router — the product frontend
-  api         NestJS — the REST API
-  worker      Bun + BullMQ — background/async job processing
-  mcp         Model Context Protocol server — exposes RFP OS to MCP clients
-  extension   Plasmo — browser extension
+- Bun, TypeScript, Turborepo
+- Next.js App Router frontend in `apps/web`
+- NestJS REST API in `apps/api`
+- BullMQ worker in `apps/worker`
+- PostgreSQL + pgvector with Drizzle in `packages/db`
+- Redis, MinIO/S3, OpenSearch
+- Firebase browser auth with API-side token verification
 
-packages/
-  ui              Shared React component library (consumed by apps/web)
-  types           Shared cross-cutting TypeScript types
-  config          Shared tsconfig bases and ESLint config
-  db              Drizzle ORM schema, migrations, and DB client (Postgres + pgvector)
-  ai              AI provider abstraction and model router — business logic
-                  never calls an AI vendor SDK directly, it goes through here
-  validation      Shared Zod schemas
-  observability   Shared structured logging
-```
-
-### Technology
-
-- **Runtime**: Bun
-- **Language**: TypeScript throughout
-- **Monorepo**: Turborepo + Bun workspaces
-- **Frontend**: Next.js (App Router)
-- **API**: NestJS, REST
-- **Database**: PostgreSQL + pgvector (vector search), via Drizzle ORM
-- **Search**: OpenSearch (hybrid search)
-- **Jobs**: Redis + BullMQ
-- **Object storage**: MinIO (S3-compatible)
-- **AI**: provider-agnostic abstraction + model router in `packages/ai`
-- **Auth**: Better Auth
-- **Authorization**: RBAC + ABAC, with organization isolation enforced on
-  every organization-owned resource
-- **MCP**: separate server app (`apps/mcp`), not embedded in the API
-
-The active target architecture is `apps/web` + `apps/api`; obsolete prototype
-applications have been removed from the workspace.
-
-## Getting started
+## Local Setup
 
 ```bash
 bun install
-cp .env.example .env
-docker compose up -d      # Postgres (pgvector), Redis, MinIO, OpenSearch
-bun run dev                # runs every app via Turborepo
+cp .env.example .env.local
+bun dev
 ```
 
-Root scripts (each fans out to every app via Turborepo):
+`bun dev` starts local infrastructure, applies migrations, ensures seed data,
+then starts the API, worker, and web app in watch mode.
+
+Local URLs:
+
+- Web: `http://localhost:3000`
+- API: `http://localhost:4100`
+- MinIO API: `http://localhost:59000`
+- MinIO Console: `http://localhost:59001`
+- OpenSearch: `http://localhost:45200`
+
+## Commands
 
 ```bash
-bun run dev         # start all apps in watch mode
-bun run build        # build all apps/packages
-bun run test          # run all tests
-bun run lint           # lint all apps/packages
-bun run typecheck       # typecheck all apps/packages
-bun run db:generate      # generate a Drizzle migration (packages/db)
-bun run db:migrate        # apply Drizzle migrations (packages/db)
+bun dev              # infra + migrate + seed + hot-reload API/worker/web
+bun dev:apps         # hot-reload API/worker/web only
+
+bun infra:up         # start PostgreSQL, Redis, MinIO, OpenSearch
+bun infra:down       # stop local infrastructure
+bun infra:logs       # follow local infrastructure logs
+bun infra:reset      # local-only: destroy volumes and recreate infra
+
+bun db:migrate       # apply Drizzle migrations
+bun db:ensure-seed   # seed only when demo data is missing
+bun db:seed          # explicitly seed development data
+bun db:reset         # local-only: drop/recreate DB schema and rerun migrations
+
+bun doctor           # verify local tooling, infra, env, DB, and seed data
+bun build            # production build
+bun test             # tests
+bun lint             # lint
+bun typecheck        # TypeScript checks
 ```
 
-Each app also has its own `.env.example` where its configuration differs
-from the shared root `.env.example`.
+`db:reset` and `infra:reset` refuse to run unless `APP_ENV=local`.
 
-## Status
+## Environment Model
 
-Phase 1 (this phase): monorepo, runtime, and app/package scaffolding only —
-no RFP business logic in `apps/web` / `apps/api` / `apps/worker` / `apps/mcp`
-yet. See `backend_implementation_phase.md` and `backend_prompt.md` for the
-full phased plan.
+Do not edit source code when moving between local, staging, and production.
+Change only environment values.
+
+| Configuration | Local | Staging | Production |
+| --- | --- | --- | --- |
+| Web | `localhost:3000` | staging URL | production URL |
+| API | `localhost:4100` | staging API/internal URL | production API/internal URL |
+| PostgreSQL | Docker `localhost:55432` | staging DB | production DB |
+| Redis | Docker `localhost:56379` | staging Redis | production Redis |
+| Storage | MinIO `localhost:59000` | staging S3/MinIO | production S3/MinIO |
+| Search | OpenSearch `localhost:45200` | staging search | production search |
+| AI | `AI_PROVIDER=mock` or configured provider | configured provider | configured provider, never mock |
+| Auth | Firebase dev/project config | staging Firebase config | production Firebase config |
+
+Important variables:
+
+- `APP_ENV=local|staging|production`
+- `NEXT_PUBLIC_APP_URL`
+- `NEXT_PUBLIC_API_URL`
+- `API_INTERNAL_URL`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `STORAGE_ENDPOINT`
+- `STORAGE_PUBLIC_ENDPOINT`
+- `STORAGE_BUCKET`
+- `OPENSEARCH_URL`
+- `CORS_ORIGIN`
+- `AI_PROVIDER`
+- `FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_*`
+
+`.env.local`, `.env`, `.env.production`, and other real env files are ignored.
+Only example files are committed.
+
+## Local Infrastructure
+
+`docker-compose.yml` runs the local dependencies:
+
+- PostgreSQL with pgvector on host port `55432`
+- Redis on host port `56379`
+- MinIO on host ports `59000` and `59001`
+- OpenSearch on host port `45200`
+
+The MinIO bucket is initialized automatically by `minio-init`.
+
+Application code runs directly on the host for fast hot reload:
+
+```text
+Host:   Next.js, NestJS API, Worker
+Docker: PostgreSQL, Redis, MinIO, OpenSearch
+```
+
+## Health Checks
+
+- `GET /health` checks API liveness.
+- `GET /ready` checks readiness for deployment probes.
+- `GET /health/dependencies` reports database, Redis, storage, and OpenSearch.
+
+## Production Build
+
+Run locally before deployment:
+
+```bash
+bun typecheck
+bun lint
+bun build
+```
+
+Production must provide environment variables through the deployment platform.
+There should be no step that changes localhost URLs or source files before
+deployment.
+
+Local Windows development sets `NEXT_OUTPUT_STANDALONE=false` in `.env.local`
+to avoid standalone trace symlink permission issues. Staging and production can
+omit it and keep Next's standalone output enabled.
+
+## Troubleshooting
+
+- Port already in use: change the host port in `.env.local` and compose only if
+  needed, then restart with `bun infra:down && bun infra:up`.
+- Docker not running: start Docker Desktop, then run `bun infra:up`.
+- Database unavailable: run `bun infra:up`, then `bun doctor`.
+- Redis unavailable: run `bun infra:logs` and check the `redis` service.
+- MinIO upload fails: verify `minio-init` completed, `STORAGE_PUBLIC_ENDPOINT`
+  is browser reachable, and the web service is proxying `/<STORAGE_BUCKET>/...`
+  to MinIO.
+- OpenSearch unavailable: check memory limits and `bun infra:logs`.
+- Missing env variable: copy `.env.example` to `.env.local` and rerun.
+- CORS error: ensure `CORS_ORIGIN` matches the web origin exactly.
+- Auth error: verify `FIREBASE_PROJECT_ID` and `NEXT_PUBLIC_FIREBASE_*`.
+- Worker unavailable: ensure `REDIS_URL` is set and `bun dev:apps` is running.
+- Migration error: run `bun db:migrate`; for local-only rebuilds use
+  `APP_ENV=local bun db:reset && bun db:ensure-seed`.

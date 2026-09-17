@@ -333,10 +333,7 @@ function resolveBaseUrl(baseUrl?: string) {
   if (baseUrl) return baseUrl.replace(/\/$/, "");
   const configuredBaseUrl = getApiBaseUrl().replace(/\/$/, "");
   if (configuredBaseUrl) return configuredBaseUrl;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("API_INTERNAL_URL is required in production.");
-  }
-  return "http://127.0.0.1:4100";
+  throw new Error("TENDYY web configuration error: API_INTERNAL_URL or NEXT_PUBLIC_API_URL is required.");
 }
 
 function buildUrl(path: string, baseUrl?: string) {

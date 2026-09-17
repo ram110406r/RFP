@@ -1,8 +1,20 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "stream",
-  "globalEnv": ["NODE_ENV", "DATABASE_URL"],
-  "globalDependencies": [".env"],
+  "globalEnv": [
+    "APP_ENV",
+    "NODE_ENV",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "STORAGE_ENDPOINT",
+    "STORAGE_PUBLIC_ENDPOINT",
+    "STORAGE_BUCKET",
+    "NEXT_PUBLIC_API_URL",
+    "API_INTERNAL_URL",
+    "CORS_ORIGIN",
+    "AI_PROVIDER"
+  ],
+  "globalDependencies": [".env", ".env.local", ".env.example"],
   "tasks": {
     "dev": {
       "cache": false,
@@ -31,6 +43,10 @@
       "env": ["DATABASE_URL"]
     },
     "db:seed": {
+      "cache": false,
+      "env": ["DATABASE_URL"]
+    },
+    "db:ensure-seed": {
       "cache": false,
       "env": ["DATABASE_URL"]
     },

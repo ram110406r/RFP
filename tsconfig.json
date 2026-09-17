@@ -1,0 +1,14 @@
+{
+  "extends": "./packages/config/base.json",
+  "compilerOptions": {
+    "types": ["bun", "node"]
+  },
+  "include": [
+    "scripts/dev.ts",
+    "scripts/doctor.ts",
+    "scripts/env-utils.ts",
+    "scripts/infra-up.ts",
+    "scripts/infra-reset.ts",
+    "scripts/run-with-env.ts"
+  ]
+}

@@ -2,8 +2,8 @@
 
 This deploys `apps/web` and `apps/api` together with Postgres, Redis, and
 MinIO. The web service is the public entrypoint. It proxies `/api/v1`
-requests to the API service over the internal Docker network, so no separate
-reverse proxy service is needed.
+requests to the API service over the internal Docker network. It also proxies
+the storage bucket path to MinIO, so no separate storage domain is needed.
 
 ## What runs
 
@@ -56,7 +56,7 @@ POSTGRES_DB=rfpos
 BETTER_AUTH_SECRET=<strong secret>
 STORAGE_ACCESS_KEY_ID=<strong storage key>
 STORAGE_SECRET_ACCESS_KEY=<strong storage secret>
-STORAGE_PUBLIC_ENDPOINT=https://storage.example.com
+STORAGE_PUBLIC_ENDPOINT=http://localhost:3000
 
 # Firebase public config used by apps/web
 NEXT_PUBLIC_FIREBASE_API_KEY=
@@ -87,12 +87,12 @@ boots the MinIO container. If Dokploy does not have these set yet, the compose
 files fall back to local-safe defaults so the deploy can start, but you should
 override them with real secrets in production.
 
-`STORAGE_PUBLIC_ENDPOINT` must be an HTTPS URL that the user's browser can
-reach. Uploads are presigned by the API, then the browser sends the file bytes
-directly to MinIO/S3. For Dokploy with bundled MinIO, add a second domain such
-as `https://storage.example.com` and target the `minio` service on port `9000`,
-then set `STORAGE_PUBLIC_ENDPOINT` to that exact URL. Do not point it at the
-MinIO console port `9001`.
+`STORAGE_PUBLIC_ENDPOINT` must be a URL that the user's browser can reach.
+For the bundled MinIO setup, set it to the same origin as `PUBLIC_URL`. The
+signed URLs use the bucket as the route, for example
+`https://app.example.com/rfp-os-documents/...`; the web service forwards that
+route to MinIO over the internal Docker network. Use HTTPS for real staging
+and production domains; plain HTTP is only accepted for localhost testing.
 
 ## Deploying with Dokploy
 
@@ -100,10 +100,8 @@ MinIO console port `9001`.
    `docker-compose.dokploy.yml`.
 2. Set the environment variables from `.env.production`.
 3. Add the application domain and target the `web` service on port `3000`.
-4. Add the storage domain and target the `minio` service on port `9000`.
-5. Set `STORAGE_PUBLIC_ENDPOINT` to the storage domain, for example
-   `https://storage.example.com`.
-6. Deploy.
+4. Set `STORAGE_PUBLIC_ENDPOINT` to the same value as `PUBLIC_URL`.
+5. Deploy.
 
 ## Deploying with plain Docker
 

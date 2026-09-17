@@ -3,6 +3,26 @@ import { describe, expect, test } from "bun:test";
 import { ObjectStorage } from "./object-storage";
 
 describe("ObjectStorage", () => {
+  test("presigned URLs can use the app origin with the bucket as the route", async () => {
+    const storage = new ObjectStorage({
+      region: "us-east-1",
+      bucket: "test-bucket",
+      endpoint: "http://minio:9000",
+      publicEndpoint: "https://app.example.com",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      forcePathStyle: true,
+    });
+
+    const url = await storage.presignPut({
+      objectKey: "docs/test.pdf",
+      mimeType: "application/pdf",
+      expiresInSeconds: 60,
+    });
+
+    expect(url).toStartWith("https://app.example.com/test-bucket/docs/test.pdf?");
+  });
+
   test("readObject returns the full payload bytes", async () => {
     const storage = makeStorage(async () => ({
       Body: {

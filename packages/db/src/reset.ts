@@ -14,6 +14,18 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is required (see .env.example).");
 }
 
+const appEnv = process.env.APP_ENV ?? "local";
+if (appEnv !== "local") {
+  throw new Error(`Refusing to reset database because APP_ENV=${appEnv}. db:reset is local-only.`);
+}
+
+const parsedDatabaseUrl = new URL(databaseUrl);
+const host = parsedDatabaseUrl.hostname.toLowerCase();
+const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+if (!localHosts.has(host)) {
+  throw new Error(`Refusing to reset non-local database host "${parsedDatabaseUrl.hostname}".`);
+}
+
 // Its own single connection rather than the shared getDb() pool: this script
 // drops the schema out from under any prepared statements, so it should not
 // share a pool with anything else.

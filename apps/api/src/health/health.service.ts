@@ -42,12 +42,13 @@ export class HealthService {
    * deployment for an optional dependency teaches people to ignore it.
    */
   async readiness(): Promise<ReadinessResult> {
-    const [database, redis, storage] = await Promise.all([
+    const [database, redis, storage, opensearch] = await Promise.all([
       this.checkDatabase(),
       this.checkRedis(),
       this.checkStorage(),
+      this.checkOpenSearch(),
     ]);
-    const checks: Record<string, CheckStatus> = { database, redis, storage };
+    const checks: Record<string, CheckStatus> = { database, redis, storage, opensearch };
     const status = Object.values(checks).includes("error") ? "degraded" : "ok";
     return { status, checks };
   }
@@ -85,6 +86,20 @@ export class HealthService {
       return "error";
     } finally {
       await redis.quit().catch(() => undefined);
+    }
+  }
+
+  private async checkOpenSearch(): Promise<CheckStatus> {
+    const url = this.config.get("OPENSEARCH_URL", { infer: true });
+    if (!url) {
+      return "skipped";
+    }
+
+    try {
+      const response = await fetch(`${url.replace(/\/$/, "")}/_cluster/health`);
+      return response.ok ? "ok" : "error";
+    } catch {
+      return "error";
     }
   }
 }

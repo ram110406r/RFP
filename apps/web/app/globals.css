@@ -28,7 +28,7 @@
   --radius-xl: 12px;
   --sidebar-width: 248px;
   --sidebar-width-collapsed: 72px;
-  --sidebar-item-height: 36px;
+  --sidebar-item-height: 40px;
   --sidebar-radius: 8px;
   --sidebar-radius-lg: 10px;
   --sidebar-gap: 8px;
@@ -37,7 +37,10 @@
   --sidebar-foreground: #0b1220;
   --sidebar-muted: #667085;
   --sidebar-hover: #f8fafc;
-  --sidebar-active: #eff5ff;
+  --sidebar-active: #155eef;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-active-muted: #eaf1ff;
+  --sidebar-active-soft: #eff5ff;
   --sidebar-accent: #155eef;
   --bg: #ffffff;
   --bg-subtle: #fbfcfe;
@@ -79,7 +82,10 @@
     --sidebar-foreground: #f8fafc;
     --sidebar-muted: #98a2b3;
     --sidebar-hover: #1d2939;
-    --sidebar-active: #172554;
+    --sidebar-active: #155eef;
+    --sidebar-active-foreground: #ffffff;
+    --sidebar-active-muted: #eaf1ff;
+    --sidebar-active-soft: #172554;
     --sidebar-accent: #60a5fa;
   }
 }

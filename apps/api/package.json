@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bun --env-file=../../.env --watch src/main.ts",
+    "dev": "bun ../../scripts/run-with-env.ts bun --watch src/main.ts",
     "build": "nest build",
-    "start": "bun --env-file=../../.env src/main.ts",
+    "start": "bun ../../scripts/run-with-env.ts bun src/main.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "bun test src"

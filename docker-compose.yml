@@ -53,6 +53,34 @@ services:
       timeout: 5s
       retries: 10
 
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: rfp-os-minio-init
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        echo "[minio-init] waiting for MinIO"
+        for i in $$(seq 1 60); do
+          if mc alias set local http://minio:9000 "$${STORAGE_ACCESS_KEY_ID}" "$${STORAGE_SECRET_ACCESS_KEY}"; then
+            mc mb --ignore-existing "local/$${STORAGE_BUCKET}"
+            echo "[minio-init] bucket ready: $${STORAGE_BUCKET}"
+            exit 0
+          fi
+          echo "[minio-init] MinIO not ready, retry $${i}/60"
+          sleep 2
+        done
+        echo "[minio-init] failed to connect to MinIO"
+        exit 1
+    environment:
+      STORAGE_ACCESS_KEY_ID: rfpos
+      STORAGE_SECRET_ACCESS_KEY: rfpos_dev_password
+      STORAGE_BUCKET: rfp-os-documents
+    depends_on:
+      minio:
+        condition: service_started
+
   opensearch:
     image: opensearchproject/opensearch:2.19.0
     container_name: rfp-os-opensearch

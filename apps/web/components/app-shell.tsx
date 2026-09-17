@@ -87,6 +87,11 @@ function isItemActive(pathname: string, item: NavigationItem): boolean {
   return item.children?.some((child) => child.parentActive !== false && isItemActive(pathname, child)) ?? false;
 }
 
+function isItemDirectlyActive(pathname: string, item: NavigationItem) {
+  if (item.matches?.some((match) => matchesHref(pathname, match))) return true;
+  return matchesHref(pathname, item.href, item.exact);
+}
+
 function isChildActive(pathname: string, item: NavigationItem) {
   return item.children?.some((child) => child.parentActive !== false && isItemActive(pathname, child)) ?? false;
 }
@@ -149,10 +154,10 @@ function SidebarSearch({ collapsed = false }: { collapsed?: boolean }) {
       <div className="group relative flex justify-center">
         <button
           type="button"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--sidebar-radius)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] text-[var(--sidebar-muted)] transition hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-[var(--sidebar-radius)] border border-transparent bg-transparent text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]"
           aria-label="Search"
         >
-          <Search className="h-4 w-4" strokeWidth={1.75} />
+          <Search className="h-[18px] w-[18px]" strokeWidth={1.75} />
         </button>
         <SidebarTooltip label="Search" />
       </div>
@@ -160,10 +165,10 @@ function SidebarSearch({ collapsed = false }: { collapsed?: boolean }) {
   }
 
   return (
-    <label className="flex h-9 items-center gap-2 rounded-[var(--sidebar-radius)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] px-3 text-[var(--sidebar-muted)]">
-      <Search className="h-4 w-4 shrink-0 text-[var(--sidebar-muted)]" strokeWidth={1.75} />
+    <label className="flex h-8 items-center gap-2 rounded-[var(--sidebar-radius)] border border-[var(--sidebar-border)] bg-[var(--sidebar-hover)] px-2.5 text-[var(--sidebar-muted)]">
+      <Search className="h-[15px] w-[15px] shrink-0 text-[var(--sidebar-muted)]" strokeWidth={1.75} />
       <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--sidebar-muted)]">Search</span>
-      <span className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--sidebar-border)] bg-[var(--sidebar-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--sidebar-muted)]">
+      <span className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--sidebar-muted)]">
         Ctrl K
       </span>
     </label>
@@ -213,7 +218,7 @@ function SidebarSubItems({
             className={[
               "flex h-8 items-center gap-2 rounded-[7px] px-2 text-[11px] transition-colors",
               active
-                ? "bg-[var(--sidebar-active)] font-semibold text-[var(--sidebar-accent)]"
+                ? "bg-[var(--sidebar-active)] font-semibold text-[var(--sidebar-active-foreground)]"
                 : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
             ].join(" ")}
           >
@@ -255,7 +260,7 @@ function SidebarFlyout({
               className={[
                 "flex h-9 items-center gap-2.5 rounded-[var(--sidebar-radius)] px-2.5 text-[12px] transition-colors",
                 active
-                  ? "bg-[var(--sidebar-active)] font-semibold text-[var(--sidebar-accent)]"
+                  ? "bg-[var(--sidebar-active)] font-semibold text-[var(--sidebar-active-foreground)]"
                   : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
               ].join(" ")}
             >
@@ -290,27 +295,31 @@ function SidebarItem({
   onNavigate?: () => void;
 }) {
   const active = isItemActive(pathname, item);
+  const directlyActive = isItemDirectlyActive(pathname, item);
   const childActive = isChildActive(pathname, item);
   const Icon = item.icon;
   const hasChildren = Boolean(item.children?.length);
   const expanded = hasChildren && (openGroups[item.href] || childActive);
   const flyoutOpen = collapsed && hasChildren && activeFlyout === item.href;
+  const strongActive = collapsed ? active || flyoutOpen : directlyActive || flyoutOpen || (!hasChildren && active);
+  const parentActive = hasChildren && childActive && !strongActive;
   const itemClass = [
-    "relative grid h-9 w-full items-center rounded-[var(--sidebar-radius)] text-[12px] font-medium transition-colors",
-    collapsed ? "grid-cols-1 justify-items-center px-0" : "grid-cols-[18px_minmax(0,1fr)_auto] gap-2.5 px-2.5",
-    active || flyoutOpen
-      ? "bg-[var(--sidebar-active)] text-[var(--sidebar-foreground)]"
-      : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
+    "relative grid h-[var(--sidebar-item-height)] w-full items-center rounded-[var(--sidebar-radius)] text-[13px] font-medium transition-colors",
+    collapsed ? "grid-cols-1 justify-items-center px-0" : "grid-cols-[18px_minmax(0,1fr)_auto] gap-3 px-3",
+    strongActive
+      ? "bg-[var(--sidebar-active)] text-[var(--sidebar-active-foreground)]"
+      : parentActive
+        ? "bg-[var(--sidebar-active-soft)] text-[var(--sidebar-foreground)]"
+        : "text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]",
   ].join(" ");
   const iconClass = [
     "flex h-[18px] w-[18px] shrink-0 items-center justify-center",
-    active || flyoutOpen ? "text-[var(--sidebar-accent)]" : "text-[var(--sidebar-muted)]",
+    strongActive ? "text-[var(--sidebar-active-foreground)]" : parentActive ? "text-[var(--sidebar-accent)]" : "text-[var(--sidebar-muted)]",
   ].join(" ");
 
   if (collapsed) {
     return (
       <div className="group relative">
-        {active ? <span className="absolute left-[-8px] top-1.5 h-6 w-0.5 rounded-full bg-[var(--sidebar-accent)]" aria-hidden="true" /> : null}
         {hasChildren ? (
           <button
             type="button"
@@ -321,7 +330,7 @@ function SidebarItem({
             className={itemClass}
           >
             <span className={iconClass}>
-              <Icon size={16} strokeWidth={1.75} />
+              <Icon size={18} strokeWidth={1.75} />
             </span>
           </button>
         ) : (
@@ -334,7 +343,7 @@ function SidebarItem({
             className={itemClass}
           >
             <span className={iconClass}>
-              <Icon size={16} strokeWidth={1.75} />
+              <Icon size={18} strokeWidth={1.75} />
             </span>
           </Link>
         )}
@@ -356,11 +365,11 @@ function SidebarItem({
           className={itemClass}
         >
           <span className={iconClass}>
-            <Icon size={16} strokeWidth={1.75} />
+            <Icon size={18} strokeWidth={1.75} />
           </span>
           <span className="min-w-0 truncate text-left">{item.label}</span>
           <ChevronDown
-            className={`h-3.5 w-3.5 text-[var(--sidebar-muted)] transition-transform duration-150 ${chevronClass(expanded)}`}
+            className={`h-3.5 w-3.5 transition-transform duration-150 ${strongActive ? "text-[var(--sidebar-active-muted)]" : "text-[var(--sidebar-muted)]"} ${chevronClass(expanded)}`}
             strokeWidth={1.75}
           />
         </button>
@@ -387,7 +396,7 @@ function SidebarItem({
       className={itemClass}
     >
       <span className={iconClass}>
-        <Icon size={16} strokeWidth={1.75} />
+        <Icon size={18} strokeWidth={1.75} />
       </span>
       <span className="min-w-0 truncate">{item.label}</span>
       {item.badge ? <SidebarBadge value={item.badge} /> : null}
@@ -440,11 +449,27 @@ function SidebarSection({
 
 function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
   return (
-    <div className={collapsed ? "flex w-full justify-center" : "flex items-center gap-2"}>
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-accent)] text-[11px] font-semibold text-white">
+    <div className={collapsed ? "flex min-w-0 items-center" : "flex min-w-0 items-center gap-2"}>
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-accent)] text-[11px] font-semibold text-white">
         T
       </div>
       {!collapsed ? <span className="text-[16px] font-semibold tracking-normal text-[var(--sidebar-foreground)]">TENDYY</span> : null}
+    </div>
+  );
+}
+
+function SidebarHeader({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  return (
+    <div className={`flex h-10 items-center justify-between ${collapsed ? "gap-1" : "gap-2"}`}>
+      <BrandMark collapsed={collapsed} />
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`${collapsed ? "h-6 w-6" : "h-7 w-7"} inline-flex shrink-0 items-center justify-center rounded-full border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]`}
+        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+      >
+        {collapsed ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.75} /> : <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.75} />}
+      </button>
     </div>
   );
 }
@@ -465,17 +490,17 @@ function SidebarFooter({
       href="/profile"
       aria-label="Open profile"
       className={[
-        "group relative flex items-center rounded-[var(--sidebar-radius-lg)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] transition-colors hover:bg-[var(--sidebar-hover)]",
-        collapsed ? "justify-center px-0 py-2" : "gap-2.5 px-2.5 py-2",
+        "group relative flex items-center rounded-[var(--sidebar-radius)] transition-colors hover:bg-[var(--sidebar-hover)]",
+        collapsed ? "h-10 justify-center px-0" : "h-12 gap-2.5 px-2",
       ].join(" ")}
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-active)] text-[11px] font-semibold text-[var(--sidebar-accent)]">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--sidebar-radius)] bg-[var(--sidebar-active-soft)] text-[11px] font-semibold text-[var(--sidebar-accent)]">
         {initials}
       </div>
       {!collapsed ? (
         <>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-medium text-[var(--sidebar-foreground)]">{displayLabel}</p>
+            <p className="truncate text-[12px] font-semibold text-[var(--sidebar-foreground)]">{displayLabel}</p>
             <p className="truncate text-[10px] text-[var(--sidebar-muted)]">{subtitle}</p>
           </div>
           <span className="text-[var(--sidebar-muted)]">
@@ -865,33 +890,21 @@ export function AppShell({
           data-sidebar-state={collapsed ? "collapsed" : "expanded"}
           style={{ width: sidebarWidth }}
         >
-          <div className="relative flex h-full w-full flex-col px-3 pb-3 pt-3">
-            <button
-              type="button"
-              onClick={() => {
+          <div className={`flex h-full w-full flex-col pb-3 pt-3 ${collapsed ? "px-2" : "px-[18px]"}`}>
+            <SidebarHeader
+              collapsed={collapsed}
+              onToggle={() => {
                 setActiveFlyout(null);
                 setSidebarCollapsed((current) => !current);
               }}
-              className="absolute -right-3 top-[18px] inline-flex h-[26px] w-[26px] items-center justify-center rounded-full border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-foreground)]"
-              aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-            >
-              {collapsed ? (
-                <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.75} />
-              ) : (
-                <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
-              )}
-            </button>
-
-            <div className="flex h-11 items-center">
-              <BrandMark collapsed={collapsed} />
-            </div>
+            />
 
             <div className="mt-3">
               <SidebarSearch collapsed={collapsed} />
             </div>
 
             <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-visible pr-1">
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-visible pr-0">
                 {navigation.map((group) => (
                   <SidebarSection
                     key={group.label}

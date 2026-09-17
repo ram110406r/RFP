@@ -5,17 +5,20 @@ import type { NextConfig } from "next";
 
 const configuredApiTarget =
   process.env.API_INTERNAL_URL ?? process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL;
-if (process.env.NODE_ENV === "production" && !configuredApiTarget) {
-  throw new Error("API_INTERNAL_URL is required in production.");
+if (!configuredApiTarget) {
+  throw new Error("TENDYY web configuration error: API_INTERNAL_URL or NEXT_PUBLIC_API_URL is required.");
 }
-const apiTarget = (configuredApiTarget ?? "http://127.0.0.1:4100").replace(/\/$/, "");
+const apiTarget = configuredApiTarget.replace(/\/$/, "");
+const storageTarget = (process.env.MINIO_INTERNAL_URL ?? process.env.STORAGE_ENDPOINT ?? "http://minio:9000").replace(/\/$/, "");
+const storageBucket = process.env.STORAGE_BUCKET ?? "rfp-os-documents";
 const configRoot = dirname(fileURLToPath(import.meta.url));
+const standaloneOutput = process.env.NEXT_OUTPUT_STANDALONE !== "false";
 
 const nextConfig: NextConfig = {
   // Allow a clean local runtime to use isolated generated artifacts when a
   // stale Windows process cannot release the default .next directory.
   distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
-  output: "standalone",
+  output: standaloneOutput ? "standalone" : undefined,
   outputFileTracingRoot: join(configRoot, "../.."),
   transpilePackages: ["@rfp-os/ui", "@rfp-os/types", "@rfp-os/validation"],
   async rewrites() {
@@ -23,6 +26,10 @@ const nextConfig: NextConfig = {
       {
         source: "/api/v1/:path*",
         destination: `${apiTarget}/api/v1/:path*`,
+      },
+      {
+        source: `/${storageBucket}/:path*`,
+        destination: `${storageTarget}/${storageBucket}/:path*`,
       },
     ];
   },

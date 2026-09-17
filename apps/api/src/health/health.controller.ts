@@ -19,4 +19,9 @@ export class HealthController {
   check() {
     return this.health.liveness();
   }
+
+  @Get("dependencies")
+  dependencies() {
+    return this.health.readiness();
+  }
 }
