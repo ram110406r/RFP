@@ -688,14 +688,26 @@ export async function createTenderSourceUploadIntent(
   });
 }
 
-export async function uploadTenderSourceBytes(uploadUrl: string, file: File, mimeType: string) {
-  const response = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": mimeType },
-    body: file,
-  });
-  if (!response.ok) {
-    throw new ApiError("Object storage rejected the document upload.", response.status, "SOURCE_UPLOAD_FAILED");
+export async function uploadTenderSourceBytes(uploadUrl: string, file: File, mimeType: string, timeoutMs = 60_000) {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": mimeType },
+      body: file,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new ApiError("Object storage rejected the document upload.", response.status, "SOURCE_UPLOAD_FAILED");
+    }
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new ApiError("Document upload timed out. Check that local object storage is running and reachable.", 408, "SOURCE_UPLOAD_TIMEOUT");
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeout);
   }
 }
 

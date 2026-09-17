@@ -24,7 +24,8 @@ import { useFirebaseSession } from "./firebase-auth-gate";
 
 type Step = 1 | 2 | 3 | 4;
 type Mode = "create" | "import";
-type Upload = { id: string; name: string; size: number; status: "uploading" | "parsed" | "failed"; source?: TenderSource; error?: string };
+type UploadStatus = "registering" | "uploading" | "completing" | "parsing" | "parsed" | "failed";
+type Upload = { id: string; name: string; size: number; status: UploadStatus; source?: TenderSource; error?: string };
 
 const STEPS = ["Details", "Documents", "Configure", "Analyze"];
 const CATEGORIES = ["Technical", "Security", "Commercial", "Legal", "Compliance", "Product", "Implementation"];
@@ -32,6 +33,8 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
+const UPLOAD_FINALIZE_TIMEOUT_MS = 60_000;
+const UPLOAD_PARSE_TIMEOUT_MS = 120_000;
 
 export function RfpIntakeWizard({ mode }: { mode: Mode }) {
   const router = useRouter();
@@ -55,6 +58,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
   const workspaces = workspacesQuery.data?.items ?? [];
   const defaultWorkspaceId = workspaces[0]?.id ?? "";
   const parsedUploads = uploads.filter((upload) => upload.status === "parsed");
+  const hasUploadsInProgress = uploads.some((upload) => isUploadInProgress(upload.status));
   const owner = session?.profile?.displayName || session?.user?.displayName || session?.user?.email || "Signed-in user";
 
   useEffect(() => {
@@ -141,12 +145,15 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
       setUploads((current) => [...current, { id, name: file.name, size: file.size, status: "failed", error: "Unsupported file type." }]);
       return;
     }
-    setUploads((current) => [...current, { id, name: file.name, size: file.size, status: "uploading" }]);
+    setUploads((current) => [...current, { id, name: file.name, size: file.size, status: "registering" }]);
     try {
       const intent = await createTenderSourceUploadIntent(tenderId, { sourceType: "DOCUMENT", name: file.name, filename: file.name, mimeType, sizeBytes: file.size, metadata: { intakeMode: mode } });
+      setUploads((current) => current.map((upload) => upload.id === id ? { ...upload, status: "uploading" } : upload));
       await uploadTenderSourceBytes(intent.uploadUrl, file, mimeType);
-      await completeTenderSourceUpload(tenderId, intent.sourceId);
-      const source = await parseTenderSource(tenderId, intent.sourceId);
+      setUploads((current) => current.map((upload) => upload.id === id ? { ...upload, status: "completing" } : upload));
+      await withTimeout(completeTenderSourceUpload(tenderId, intent.sourceId), UPLOAD_FINALIZE_TIMEOUT_MS, "Upload finalization timed out. Check that local object storage is reachable.");
+      setUploads((current) => current.map((upload) => upload.id === id ? { ...upload, status: "parsing" } : upload));
+      const source = await withTimeout(parseTenderSource(tenderId, intent.sourceId), UPLOAD_PARSE_TIMEOUT_MS, "Document parsing timed out. Try a smaller PDF/DOCX or check the API parser logs.");
       setUploads((current) => current.map((upload) => upload.id === id ? { ...upload, status: "parsed", source } : upload));
     } catch (cause) {
       setUploads((current) => current.map((upload) => upload.id === id ? { ...upload, status: "failed", error: errorMessage(cause) } : upload));
@@ -254,7 +261,7 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
         {!busy && tenderId ? <div className="flex justify-center gap-3">{!analysis && preferences.analyzeRequirements ? <button type="button" onClick={() => void startAnalysis(tenderId)} className={primary}>Retry analysis</button> : null}<Link href={`/tenders/${tenderId}`} className={primary}>Open RFP workspace</Link></div> : null}
       </div> : null}
 
-      {step !== 4 ? <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-2"><Link href="/tenders" className={ghost}>Cancel</Link><button type="button" disabled={busy} onClick={() => void saveDraft()} className={secondary}>Save draft</button></div><div className="flex gap-2">{step > 1 ? <button type="button" onClick={() => { setError(null); setStep((step - 1) as Step); }} className={secondary}>Back</button> : null}<button type="button" disabled={busy || uploads.some((upload) => upload.status === "uploading")} onClick={() => void next()} className={primary}>{busy ? "Saving..." : "Continue"}</button></div></footer> : null}
+      {step !== 4 ? <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-2"><Link href="/tenders" className={ghost}>Cancel</Link><button type="button" disabled={busy} onClick={() => void saveDraft()} className={secondary}>Save draft</button></div><div className="flex gap-2">{step > 1 ? <button type="button" onClick={() => { setError(null); setStep((step - 1) as Step); }} className={secondary}>Back</button> : null}<button type="button" disabled={busy || hasUploadsInProgress} onClick={() => void next()} className={primary}>{busy ? "Saving..." : "Continue"}</button></div></footer> : null}
     </div>
   );
 }
@@ -263,12 +270,29 @@ function Stepper({ current }: { current: Step }) { return <ol className="flex it
 function Panel({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) { return <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-white p-4 shadow-[var(--shadow-card)] sm:p-5"><h2 className="text-[19px] font-semibold text-[var(--text)]">{title}</h2>{description ? <p className="mt-1 text-[13px] leading-6 text-[var(--muted)]">{description}</p> : null}<div className="mt-4">{children}</div></section>; }
 function Field({ label, required, wide, children }: { label: string; required?: boolean; wide?: boolean; children: React.ReactNode }) { return <label className={wide ? "block sm:col-span-2" : "block"}><span className="mb-2 block text-sm font-semibold text-slate-900">{label}{required ? <span className="text-rose-600"> *</span> : null}</span>{children}</label>; }
 function Summary({ label, value }: { label: string; value: string }) { return <div className="flex justify-between gap-4 py-2 text-sm"><span className="text-slate-500">{label}</span><span className="max-w-[60%] text-right font-semibold text-slate-900">{value || "-"}</span></div>; }
-function UploadRow({ upload }: { upload: Upload }) { return <div className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border)] px-4 py-3"><span className={`h-2.5 w-2.5 ${upload.status === "parsed" ? "bg-emerald-500" : upload.status === "failed" ? "bg-rose-500" : "animate-pulse bg-blue-500"}`} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-[var(--text)]">{upload.name}</p><p className="text-xs text-[var(--muted)]">{formatBytes(upload.size)}{upload.error ? ` - ${upload.error}` : ""}</p></div><span className="text-xs font-bold uppercase text-[var(--muted)]">{upload.status}</span></div>; }
+function UploadRow({ upload }: { upload: Upload }) { return <div className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border)] px-4 py-3"><span className={`h-2.5 w-2.5 ${upload.status === "parsed" ? "bg-emerald-500" : upload.status === "failed" ? "bg-rose-500" : "animate-pulse bg-blue-500"}`} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-[var(--text)]">{upload.name}</p><p className="text-xs text-[var(--muted)]">{formatBytes(upload.size)}{upload.error ? ` - ${upload.error}` : ""}</p></div><span className="text-xs font-bold uppercase text-[var(--muted)]">{uploadStatusLabel(upload.status)}</span></div>; }
 function Preference({ label, text, value, toggle }: { label: string; text: string; value: boolean; toggle: () => void }) { return <div className="flex items-center justify-between gap-5 border-b border-slate-200 py-4 last:border-0"><div><p className="text-sm font-semibold text-slate-950">{label}</p><p className="mt-1 text-sm text-slate-500">{text}</p></div><button type="button" role="switch" aria-checked={value} onClick={toggle} className={`relative h-7 w-12 shrink-0 rounded-[999px] ${value ? "bg-[var(--primary)]" : "bg-slate-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-[999px] bg-white shadow transition-[left] ${value ? "left-6" : "left-1"}`} /></button></div>; }
 function Stage({ label, state, count }: { label: string; state: "done" | "active" | "pending" | "empty" | "error"; count?: number }) { return <div className="flex items-center gap-3 text-sm"><span className={`flex h-5 min-w-5 items-center justify-center rounded-[5px] border px-1 text-[10px] ${state === "done" ? "border-emerald-600 text-emerald-700" : state === "active" ? "animate-pulse border-[var(--primary)] bg-[var(--primary)] text-white" : state === "error" ? "border-rose-500 text-rose-600" : "border-slate-300 text-slate-300"}`}>{state === "done" ? "OK" : state === "active" ? "..." : state === "error" ? "!" : ""}</span><span className={state === "pending" || state === "empty" ? "text-slate-400" : "font-medium text-slate-800"}>{label}</span>{count !== undefined ? <span className="ml-auto font-bold">{count}</span> : null}</div>; }
 function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded-[10px] border border-slate-200 bg-white p-4"><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{label}</p><p className="mt-2 text-[24px] font-semibold text-slate-950">{value}</p></div>; }
 function UploadIcon() { return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-8 w-8 fill-none stroke-slate-500" strokeWidth="1.7"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>; }
 function formatBytes(bytes: number) { return bytes < 1_000_000 ? `${Math.max(1, Math.round(bytes / 1_000))} KB` : `${(bytes / 1_000_000).toFixed(1)} MB`; }
+function isUploadInProgress(status: UploadStatus) { return status !== "parsed" && status !== "failed"; }
+function uploadStatusLabel(status: UploadStatus) {
+  if (status === "registering") return "Preparing";
+  if (status === "uploading") return "Uploading";
+  if (status === "completing") return "Finalizing";
+  if (status === "parsing") return "Parsing";
+  return status;
+}
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+  const timer = new Promise<never>((_, reject) => {
+    timeout = globalThis.setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timer]).finally(() => {
+    if (timeout) globalThis.clearTimeout(timeout);
+  });
+}
 
 const input = "min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-2.5 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]";
 const primary = "inline-flex min-h-10 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--primary)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--primary-hover)] disabled:opacity-50";
