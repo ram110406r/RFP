@@ -112,7 +112,7 @@ services:
       retries: 10
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: minio/minio:latest
     container_name: rfp-os-minio
     restart: unless-stopped
     profiles:
@@ -136,7 +136,7 @@ services:
       retries: 10
 
   minio-init:
-    image: quay.io/minio/mc:latest
+    image: minio/mc:latest
     container_name: rfp-os-minio-init
     restart: "no"
     profiles:
