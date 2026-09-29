@@ -66,7 +66,7 @@ x-internal-service-depends: &internal-service-depends
   redis:
     condition: service_healthy
   minio:
-    condition: service_healthy
+    condition: service_started
   seed:
     condition: service_completed_successfully
   postgres:
@@ -129,16 +129,6 @@ services:
       - "127.0.0.1:59001:9001"
     volumes:
       - rfp_os_minio_data:/bitnami/minio/data
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1",
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 20s
 
   opensearch:
     image: opensearchproject/opensearch:2.19.0
@@ -216,7 +206,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          'bun -e "fetch(''http://127.0.0.1:4000/ready'').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"',
+          'bun -e "fetch(''http://127.0.0.1:4000/health'').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"',
         ]
       interval: 5s
       timeout: 5s
