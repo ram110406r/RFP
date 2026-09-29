@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { PdfDocumentParser } from "./pdf-document-parser";
+import { PdfDocumentParser } from "@rfp-os/document-processing";
 
 const parser = new PdfDocumentParser();
 

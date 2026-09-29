@@ -6,9 +6,10 @@ type Check = {
 };
 
 const env = loadTendyyEnv();
+const composeEnv = { ...env, COMPOSE_PROFILES: "local" };
 
 async function commandOk(command: string[]) {
-  const proc = Bun.spawn(command, { env, stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn(command, { env: composeEnv, stdout: "pipe", stderr: "pipe" });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
     const stderr = await new Response(proc.stderr).text();

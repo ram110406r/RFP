@@ -1,7 +1,4 @@
 {
-  "extends": "@rfp-os/config/base.json",
-  "compilerOptions": {
-    "types": ["bun"]
-  },
+  "extends": "@rfp-os/config/bun.json",
   "include": ["src"]
 }

@@ -74,7 +74,7 @@ describe("Health endpoints", () => {
 
     await expect(controller.check()).resolves.toEqual({
       status: "ok",
-      checks: { database: "ok", redis: "skipped", storage: "ok" },
+      checks: { database: "ok", redis: "skipped", storage: "ok", opensearch: "skipped" },
     });
   });
 });

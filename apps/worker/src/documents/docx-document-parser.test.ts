@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DocxDocumentParser } from "./docx-document-parser";
+import { DocxDocumentParser } from "@rfp-os/document-processing";
 import {
   buildDocx,
   docxHeading,

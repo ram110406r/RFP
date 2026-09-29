@@ -32,6 +32,7 @@ apps/extension/build/
 # NestJS
 apps/api/dist/
 apps/web/.auth/
+apps/web/test-results/.last-run.json
 apps/web/test-results/*.png
 apps/web/test-results/*/
 

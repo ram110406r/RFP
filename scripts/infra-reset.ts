@@ -4,8 +4,9 @@ const env = loadTendyyEnv();
 
 async function main() {
   requireLocal(env, "bun infra:reset");
-  await run(["docker", "compose", "-f", "docker-compose.yml", "down", "-v"], { env });
-  await run(["docker", "compose", "-f", "docker-compose.yml", "up", "-d", "--wait"], { env });
+  const composeEnv = { ...env, COMPOSE_PROFILES: "local" };
+  await run(["docker", "compose", "-f", "docker-compose.yml", "down", "-v"], { env: composeEnv });
+  await run(["docker", "compose", "-f", "docker-compose.yml", "up", "-d", "--wait"], { env: composeEnv });
 }
 
 main().catch((error) => {

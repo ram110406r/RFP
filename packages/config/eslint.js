@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import globals from "globals";
 import tseslint from "typescript-eslint";
 
 /**
@@ -15,6 +16,16 @@ export const baseConfig = tseslint.config(
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 );
+
+export const nodeConfig = [
+  ...baseConfig,
+  {
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+];

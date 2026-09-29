@@ -1,20 +1,94 @@
+# One Compose file covers local infrastructure and the Dokploy production stack.
+#
+# Local development:
+#   COMPOSE_PROFILES=local docker compose up -d --wait postgres redis minio opensearch
+#
+# Dokploy production, with bundled Postgres:
+#   COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production up -d --build
+
+networks:
+  dokploy-network:
+    external: true
+  internal:
+
+x-postgres-env: &postgres-env
+  POSTGRES_USER: ${POSTGRES_USER:-rfpos}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rfpos_dev_password}
+  POSTGRES_DB: ${POSTGRES_DB:-rfpos}
+
+x-database-url: &database-url
+  DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-rfpos}:${POSTGRES_PASSWORD:-rfpos_dev_password}@postgres:5432/${POSTGRES_DB:-rfpos}}
+
+x-app-env: &app-env
+  APP_ENV: ${APP_ENV:-production}
+  NODE_ENV: production
+  <<: *database-url
+  REDIS_URL: redis://redis:6379
+  STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+  STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-http://localhost:3000}
+  STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+  STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
+  STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+  STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
+  STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
+  AI_PROVIDER: ${AI_PROVIDER:-mock}
+  OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+
+x-firebase-build-args: &firebase-build-args
+  NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:-}
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+  NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+  NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID:-}
+  NEXT_PUBLIC_FIREBASE_USE_EMULATORS: ${NEXT_PUBLIC_FIREBASE_USE_EMULATORS:-false}
+  NEXT_PUBLIC_APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
+  NEXT_PUBLIC_APP_BUILD_TIME: ${APP_BUILD_TIME:-}
+
+x-firebase-runtime-env: &firebase-runtime-env
+  NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:-}
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+  NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+  NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID:-}
+  NEXT_PUBLIC_FIREBASE_USE_EMULATORS: ${NEXT_PUBLIC_FIREBASE_USE_EMULATORS:-false}
+  NEXT_PUBLIC_ALLOW_GUEST_UI: ${NEXT_PUBLIC_ALLOW_GUEST_UI:-false}
+  NEXT_PUBLIC_APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
+  NEXT_PUBLIC_APP_BUILD_TIME: ${APP_BUILD_TIME:-}
+
+x-app-profiles: &app-profiles
+  - dokploy-bundled
+
+x-internal-service-depends: &internal-service-depends
+  redis:
+    condition: service_healthy
+  minio-init:
+    condition: service_completed_successfully
+  seed:
+    condition: service_completed_successfully
+  postgres:
+    condition: service_healthy
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: rfp-os-postgres
     restart: unless-stopped
+    profiles:
+      - local
+      - dokploy-bundled
+    networks: [internal]
     environment:
-      POSTGRES_USER: rfpos
-      POSTGRES_PASSWORD: rfpos_dev_password
-      POSTGRES_DB: rfpos
+      <<: *postgres-env
     ports:
-      # Mapped to a non-default host port so this doesn't collide with a
-      # Postgres instance you might already have running locally.
-      - "55432:5432"
+      - "127.0.0.1:55432:5432"
     volumes:
       - rfp_os_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rfpos -d rfpos"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -23,8 +97,12 @@ services:
     image: redis:7-alpine
     container_name: rfp-os-redis
     restart: unless-stopped
+    profiles:
+      - local
+      - dokploy-bundled
+    networks: [internal]
     ports:
-      - "56379:6379"
+      - "127.0.0.1:56379:6379"
     volumes:
       - rfp_os_redis_data:/data
     healthcheck:
@@ -34,17 +112,21 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: rfp-os-minio
     restart: unless-stopped
+    profiles:
+      - local
+      - dokploy-bundled
+    networks: [internal]
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: rfpos
-      MINIO_ROOT_PASSWORD: rfpos_dev_password
-      MINIO_API_CORS_ALLOW_ORIGIN: http://localhost:3000,http://localhost:3001
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-http://localhost:3000}
     ports:
-      - "59000:9000"
-      - "59001:9001"
+      - "127.0.0.1:59000:9000"
+      - "127.0.0.1:59001:9001"
     volumes:
       - rfp_os_minio_data:/data
     healthcheck:
@@ -57,6 +139,10 @@ services:
     image: quay.io/minio/mc:latest
     container_name: rfp-os-minio-init
     restart: "no"
+    profiles:
+      - local
+      - dokploy-bundled
+    networks: [internal]
     entrypoint:
       - /bin/sh
       - -ec
@@ -64,19 +150,20 @@ services:
         echo "[minio-init] waiting for MinIO"
         for i in $$(seq 1 60); do
           if mc alias set local http://minio:9000 "$${STORAGE_ACCESS_KEY_ID}" "$${STORAGE_SECRET_ACCESS_KEY}"; then
+            echo "[minio-init] connected"
             mc mb --ignore-existing "local/$${STORAGE_BUCKET}"
             echo "[minio-init] bucket ready: $${STORAGE_BUCKET}"
             exit 0
           fi
-          echo "[minio-init] MinIO not ready, retry $${i}/60"
+          echo "[minio-init] MinIO not ready or credentials rejected, retry $${i}/60"
           sleep 2
         done
-        echo "[minio-init] failed to connect to MinIO"
+        echo "[minio-init] failed to connect to MinIO after retries"
         exit 1
     environment:
-      STORAGE_ACCESS_KEY_ID: rfpos
-      STORAGE_SECRET_ACCESS_KEY: rfpos_dev_password
-      STORAGE_BUCKET: rfp-os-documents
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
     depends_on:
       minio:
         condition: service_started
@@ -85,12 +172,15 @@ services:
     image: opensearchproject/opensearch:2.19.0
     container_name: rfp-os-opensearch
     restart: unless-stopped
+    profiles:
+      - local
+    networks: [internal]
     environment:
       discovery.type: single-node
       DISABLE_SECURITY_PLUGIN: "true"
       OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
     ports:
-      - "45200:9200"
+      - "127.0.0.1:45200:9200"
     volumes:
       - rfp_os_opensearch_data:/usr/share/opensearch/data
     healthcheck:
@@ -98,6 +188,115 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    working_dir: /repo/packages/db
+    command: ["bun", "run", "db:migrate"]
+    restart: "no"
+    profiles: *app-profiles
+    networks: [internal]
+    environment:
+      <<: *database-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  seed:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    working_dir: /repo/packages/db
+    command: ["bun", "run", "db:ensure-seed"]
+    restart: "no"
+    profiles: *app-profiles
+    networks: [internal]
+    environment:
+      <<: *database-url
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    profiles: *app-profiles
+    networks: [internal]
+    environment:
+      <<: *app-env
+      API_PORT: 4000
+      CORS_ORIGIN: ${PUBLIC_URL:-http://localhost:3000}
+      FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-tendyy}
+      BETTER_AUTH_URL: ${PUBLIC_URL:-http://localhost:3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-rfp-os_dokploy_auth_secret_20260830_fallback}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
+      APP_BUILD_TIME: ${APP_BUILD_TIME:-}
+    depends_on:
+      <<: *internal-service-depends
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'bun -e "fetch(''http://127.0.0.1:4000/ready'').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    profiles: *app-profiles
+    networks: [internal]
+    environment:
+      <<: *app-env
+    depends_on:
+      <<: *internal-service-depends
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_INTERNAL_URL: http://api:4000
+        STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+        STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
+        <<: *firebase-build-args
+    restart: unless-stopped
+    profiles: *app-profiles
+    networks:
+      - dokploy-network
+      - internal
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_INTERNAL_URL: http://api:4000
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
+      <<: *firebase-runtime-env
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:3000'').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
 volumes:
   rfp_os_postgres_data:

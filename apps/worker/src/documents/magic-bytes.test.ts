@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { contradictsDeclaredType, sniffFormat } from "./magic-bytes";
+import { contradictsDeclaredType, sniffFormat } from "@rfp-os/document-processing";
 
 const bytes = (...values: number[]) => new Uint8Array(values);
 const text = (value: string) => new TextEncoder().encode(value);

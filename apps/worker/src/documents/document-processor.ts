@@ -1,12 +1,16 @@
 import { getDb, rfpDocuments, withTransaction } from "@rfp-os/db";
+import {
+  contradictsDeclaredType,
+  DocxDocumentParser,
+  PdfDocumentParser,
+  SNIFF_LENGTH,
+  sniffFormat,
+} from "@rfp-os/document-processing";
 import { and, eq, isNull } from "drizzle-orm";
 import { DOCUMENT_JOBS, type DocumentJobName, type DocumentJobPayload } from "@rfp-os/jobs";
 import type { ObjectStorage } from "@rfp-os/storage";
 
 import { ExtractionRepository } from "./extraction.repository";
-import { contradictsDeclaredType, SNIFF_LENGTH, sniffFormat } from "./magic-bytes";
-import { DocxDocumentParser } from "./docx-document-parser";
-import { PdfDocumentParser } from "./pdf-document-parser";
 import type { ExtractionResult } from "./extraction.repository";
 
 /**

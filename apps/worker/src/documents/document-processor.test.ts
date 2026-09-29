@@ -17,7 +17,7 @@ import type { ObjectStorage } from "@rfp-os/storage";
 import { asc, eq, inArray, and } from "drizzle-orm";
 
 import { DocumentProcessor, isOcrRequired, isPermanent } from "./document-processor";
-import { DocxDocumentParser } from "./docx-document-parser";
+import { DocxDocumentParser } from "@rfp-os/document-processing";
 import {
   DOCX_MIME,
   buildDocx,

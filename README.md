@@ -140,6 +140,35 @@ Local Windows development sets `NEXT_OUTPUT_STANDALONE=false` in `.env.local`
 to avoid standalone trace symlink permission issues. Staging and production can
 omit it and keep Next's standalone output enabled.
 
+## Deployment
+
+Dokploy is the supported production deployment target. The single
+`docker-compose.yml` uses profiles:
+
+- `local`: local PostgreSQL, Redis, MinIO, and OpenSearch only.
+- `dokploy-bundled`: app containers plus bundled PostgreSQL, Redis, and MinIO.
+
+Use `COMPOSE_PROFILES=dokploy-bundled` in Dokploy. See `DEPLOY.md` for the
+full environment contract and the backup/restore flow for migrating data from a
+separate Dokploy Postgres service.
+
+## Authentication Direction
+
+Production currently uses Firebase browser auth with API-side token
+verification. Keep that path for now; switching providers only for cost would
+add migration risk without simplifying this codebase.
+
+If a fully self-hosted/free auth path becomes important, finish the existing
+Better Auth integration and remove Firebase after migration. Better Auth is
+already installed, uses the existing Postgres/Drizzle model, and fits the
+Nest API plus Next web split better than adding another hosted platform.
+
+## Documentation Layout
+
+Current setup and operational docs stay at the repository root or in `docs/`.
+Historical prompts, audits, investigations, and feature-planning notes live in
+`docs/archive/`.
+
 ## Troubleshooting
 
 - Port already in use: change the host port in `.env.local` and compose only if

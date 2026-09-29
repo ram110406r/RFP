@@ -1,12 +1,3 @@
-import globals from "globals";
+import { nodeConfig } from "@rfp-os/config/eslint";
 
-import { baseConfig } from "@rfp-os/config/eslint";
-
-export default [
-  ...baseConfig,
-  {
-    languageOptions: {
-      globals: globals.node,
-    },
-  },
-];
+export default nodeConfig;

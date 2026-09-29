@@ -4,6 +4,7 @@ const env = loadTendyyEnv();
 
 async function main() {
   requireLocal(env, "bun infra:up");
+  const composeEnv = { ...env, COMPOSE_PROFILES: "local" };
 
   await run(
     [
@@ -19,11 +20,11 @@ async function main() {
       "minio",
       "opensearch",
     ],
-    { env },
+    { env: composeEnv },
   );
 
   await run(["docker", "compose", "-f", "docker-compose.yml", "up", "--force-recreate", "minio-init"], {
-    env,
+    env: composeEnv,
   });
 }
 

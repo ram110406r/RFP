@@ -1,9 +1,9 @@
-# Deploying the production stack
+# Deploying with Dokploy
 
-This deploys `apps/web` and `apps/api` together with Postgres, Redis, and
-MinIO. The web service is the public entrypoint. It proxies `/api/v1`
-requests to the API service over the internal Docker network. It also proxies
-the storage bucket path to MinIO, so no separate storage domain is needed.
+Dokploy is the supported production deployment path for this repository. The
+web service is the public entrypoint. It proxies `/api/v1` requests to the API
+service over the internal Docker network. It also proxies the storage bucket
+path to MinIO, so no separate storage domain is needed.
 
 ## What runs
 
@@ -18,24 +18,23 @@ the storage bucket path to MinIO, so no separate storage domain is needed.
 | `migrate` | one-shot, applies migrations then exits | - |
 | `seed` | one-shot, seeds demo data then exits | - |
 
-## Compose files
+## Compose profiles
 
-Use `docker-compose.prod.yml` for a plain Docker host.
+This repository has one canonical Compose file: `docker-compose.yml`.
 
-Use `docker-compose.dokploy.yml` for Dokploy when the stack should include
-Postgres, Redis, and MinIO. In that variant, point the application domain at
-the `web` service on port `3000`.
+- `local`: local infrastructure only. Used by `bun infra:up`,
+  `bun infra:down`, `bun infra:logs`, and `bun infra:reset`.
+- `dokploy-bundled`: app containers plus bundled Postgres, Redis, and MinIO.
 
-Use `docker-compose.dokploy-app.yml` only when Postgres is supplied by a
-separate Dokploy database resource. That file now still includes Redis and
-MinIO because uploads require S3-compatible object storage.
+Dokploy should point at `docker-compose.yml`. Set
+`COMPOSE_PROFILES=dokploy-bundled` in the deployment environment.
 
 ## Prerequisites
 
-- Docker Engine and the Compose plugin.
-- A server or platform where port `3000` is reachable, or an ingress pointing
-  at the `web` service.
-- A database password, a Better Auth secret, and storage credentials.
+- Docker Engine and Docker Compose plugin v2.20 or newer.
+- A Dokploy application domain targeting the `web` service on port `3000`.
+- A database password, a Better Auth secret, storage credentials, Firebase
+  public config, and a non-mock AI provider.
 
 ## Configure environment
 
@@ -48,17 +47,20 @@ cp .env.production.example .env.production
 Then fill in the values:
 
 ```ini
-PUBLIC_URL=http://localhost:3000
+PUBLIC_URL=https://app.example.com
 API_INTERNAL_URL=http://api:4000
-POSTGRES_USER=rfpos
-POSTGRES_PASSWORD=<strong secret>
-POSTGRES_DB=rfpos
+BETTER_AUTH_URL=https://app.example.com
 BETTER_AUTH_SECRET=<strong secret>
+
+# Bundled Postgres
+POSTGRES_USER=rfpos
+POSTGRES_PASSWORD=<strong-url-safe-secret>
+POSTGRES_DB=rfpos
+
 STORAGE_ACCESS_KEY_ID=<strong storage key>
 STORAGE_SECRET_ACCESS_KEY=<strong storage secret>
-STORAGE_PUBLIC_ENDPOINT=http://localhost:3000
+STORAGE_PUBLIC_ENDPOINT=https://app.example.com
 
-# Firebase public config used by apps/web
 NEXT_PUBLIC_FIREBASE_API_KEY=
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=tendyy.firebaseapp.com
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=tendyy
@@ -69,87 +71,80 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
 NEXT_PUBLIC_FIREBASE_USE_EMULATORS=false
 ```
 
-`PUBLIC_URL` must match the URL users will actually open. For a raw Docker
-host, use `http://localhost:3000` or `http://server-ip:3000`. For an ingress or
-load balancer, use the public domain.
+`PUBLIC_URL` must match the URL users will actually open. `API_INTERNAL_URL`
+should stay `http://api:4000` in Docker/Dokploy deployments.
 
-`API_INTERNAL_URL` is the address the Next.js server uses to reach the API
-container. In Dokploy and the bundled Docker compose files, leave it as
-`http://api:4000`.
+The bundled profile derives `DATABASE_URL` from `POSTGRES_USER`,
+`POSTGRES_PASSWORD`, and `POSTGRES_DB`. If the password contains URL-reserved
+characters, URL-encode it or set `DATABASE_URL` explicitly.
 
-`BETTER_AUTH_SECRET` signs the session cookies. The compose files now fall back
-to a 32+ character local-safe default if Dokploy does not provide one, but you
-should still set a real secret in production as soon as the deploy is stable.
-
-`STORAGE_ACCESS_KEY_ID` and `STORAGE_SECRET_ACCESS_KEY` are the credentials the
-API uses to talk to MinIO. In the bundled compose files, the same pair also
-boots the MinIO container. If Dokploy does not have these set yet, the compose
-files fall back to local-safe defaults so the deploy can start, but you should
-override them with real secrets in production.
-
-`STORAGE_PUBLIC_ENDPOINT` must be a URL that the user's browser can reach.
-For the bundled MinIO setup, set it to the same origin as `PUBLIC_URL`. The
-signed URLs use the bucket as the route, for example
+`STORAGE_PUBLIC_ENDPOINT` should usually match `PUBLIC_URL`. Signed URLs use
+the bucket as the route, for example
 `https://app.example.com/rfp-os-documents/...`; the web service forwards that
-route to MinIO over the internal Docker network. Use HTTPS for real staging
-and production domains; plain HTTP is only accepted for localhost testing.
+route to MinIO over the internal Docker network.
 
-## Deploying with Dokploy
+## Deploying
 
-1. Create a Compose application in Dokploy and point it at
-   `docker-compose.dokploy.yml`.
-2. Set the environment variables from `.env.production`.
-3. Add the application domain and target the `web` service on port `3000`.
-4. Set `STORAGE_PUBLIC_ENDPOINT` to the same value as `PUBLIC_URL`.
+1. Create a Compose application in Dokploy and point it at `docker-compose.yml`.
+2. Set `COMPOSE_PROFILES=dokploy-bundled`.
+3. Set the environment variables from `.env.production`.
+4. Add the application domain and target the `web` service on port `3000`.
 5. Deploy.
 
-## Deploying with plain Docker
-
-1. Get the code onto the server.
+From a shell:
 
 ```bash
-git clone <your-repo-url> rfp-os && cd rfp-os
+COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production up -d --build
 ```
 
-2. Create the environment file as shown above.
+## Migrating an existing Dokploy database
 
-3. Bring it up:
+If production currently uses a separate Dokploy Postgres service, migrate it
+before retiring that service.
+
+1. Back up the current database from the existing Dokploy Postgres service:
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+pg_dump "$OLD_DATABASE_URL" | gzip > rfp-os-backup-$(date +%F).sql.gz
 ```
 
-4. Seed the demo data:
+2. Deploy the single Compose stack with bundled Postgres:
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production \
-  run --rm -w /repo/packages/db migrate bun run src/seed/index.ts
+COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production up -d --build postgres
 ```
 
-5. Open the public web URL.
+3. Restore the dump into the new Compose-managed Postgres service:
+
+```bash
+gunzip -c rfp-os-backup-YYYY-MM-DD.sql.gz | \
+  COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production exec -T postgres \
+  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+4. Start or redeploy the full stack so migrations and seed checks run:
+
+```bash
+COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production up -d --build
+```
+
+5. Confirm the runtime services are healthy:
+
+```bash
+COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production ps web api worker postgres redis minio
+```
 
 ## Operations
 
 ```bash
 # Logs
-docker compose -f docker-compose.prod.yml logs -f web api
+COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production logs -f web api
 
 # Deploy an update
 git pull
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production up -d --build
 
-# Back up the database
-docker compose -f docker-compose.prod.yml exec -T postgres \
+# Back up a bundled database
+COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production exec -T postgres \
   pg_dump -U rfpos rfpos | gzip > backup-$(date +%F).sql.gz
 ```
-
-## Testing locally without a domain
-
-Set `PUBLIC_URL=http://localhost:3000` and `API_INTERNAL_URL=http://api:4000`
-in `.env.production`, then run:
-
-```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
-```
-
-Browse to `http://localhost:3000`.

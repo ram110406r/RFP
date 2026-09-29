@@ -703,7 +703,10 @@ export async function uploadTenderSourceBytes(uploadUrl: string, file: File, mim
     }
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new ApiError("Document upload timed out. Check that local object storage is running and reachable.", 408, "SOURCE_UPLOAD_TIMEOUT");
+      throw new ApiError("Document upload timed out. Check that object storage is reachable from this browser and that MinIO CORS allows this app origin.", 408, "SOURCE_UPLOAD_TIMEOUT");
+    }
+    if (error instanceof TypeError) {
+      throw new ApiError("The browser could not reach object storage. Check STORAGE_PUBLIC_ENDPOINT and MinIO CORS for this app origin.", 0, "SOURCE_UPLOAD_UNREACHABLE");
     }
     throw error;
   } finally {

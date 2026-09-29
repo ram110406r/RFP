@@ -1,9 +1,8 @@
-# Production image for the updated Nest API.
+# Production image for the Nest API and database one-shot jobs.
 #
-# The API depends on workspace packages from the monorepo, so the image is
-# built from the repository root. Bun installs the workspace graph, Nest builds
-# the API into dist/, and the runtime image keeps the copied workspace source so
-# Bun can still resolve `@rfp-os/*` packages at runtime.
+# The API depends on workspace packages from the monorepo. Build from the repo
+# root, then copy only runtime dependencies, workspace packages, and API output
+# into the final image.
 FROM oven/bun:1.3.13-slim AS build
 
 WORKDIR /repo
@@ -19,7 +18,12 @@ WORKDIR /repo
 ENV NODE_ENV=production
 ENV API_PORT=4000
 
-COPY --from=build /repo /repo
+COPY --from=build /repo/package.json /repo/package.json
+COPY --from=build /repo/bun.lock /repo/bun.lock
+COPY --from=build /repo/node_modules /repo/node_modules
+COPY --from=build /repo/packages /repo/packages
+COPY --from=build /repo/apps/api/package.json /repo/apps/api/package.json
+COPY --from=build /repo/apps/api/dist /repo/apps/api/dist
 
 WORKDIR /repo/apps/api
 EXPOSE 4000

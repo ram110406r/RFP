@@ -13,12 +13,21 @@ while (args[0]?.startsWith("--")) {
     env.APP_ENV = option.slice("--app-env=".length);
     continue;
   }
+  if (option === "--without-database") {
+    delete env.DATABASE_URL;
+    delete env.POSTGRES_HOST;
+    delete env.POSTGRES_PORT;
+    delete env.POSTGRES_USER;
+    delete env.POSTGRES_PASSWORD;
+    delete env.POSTGRES_DB;
+    continue;
+  }
   throw new Error(`Unknown option: ${option}`);
 }
 
 const command = args;
 if (command.length === 0) {
-  console.error("Usage: bun scripts/run-with-env.ts [--node-env=value] [--app-env=value] <command> [...args]");
+  console.error("Usage: bun scripts/run-with-env.ts [--node-env=value] [--app-env=value] [--without-database] <command> [...args]");
   process.exit(1);
 }
 
