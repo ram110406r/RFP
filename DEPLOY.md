@@ -14,7 +14,6 @@ path to MinIO, so no separate storage domain is needed.
 | `postgres` | pgvector database | internal only |
 | `redis` | queue backend | internal only |
 | `minio` | S3-compatible document storage | internal only |
-| `minio-init` | one-shot, creates the storage bucket | - |
 | `migrate` | one-shot, applies migrations then exits | - |
 | `seed` | one-shot, seeds demo data then exits | - |
 
@@ -78,8 +77,9 @@ The bundled profile derives `DATABASE_URL` from `POSTGRES_USER`,
 `POSTGRES_PASSWORD`, and `POSTGRES_DB`. If the password contains URL-reserved
 characters, URL-encode it or set `DATABASE_URL` explicitly.
 
-`STORAGE_PUBLIC_ENDPOINT` should usually match `PUBLIC_URL`. Signed URLs use
-the bucket as the route, for example
+`STORAGE_BUCKET` is created automatically when the bundled MinIO volume is
+initialized. `STORAGE_PUBLIC_ENDPOINT` should usually match `PUBLIC_URL`.
+Signed URLs use the bucket as the route, for example
 `https://app.example.com/rfp-os-documents/...`; the web service forwards that
 route to MinIO over the internal Docker network.
 

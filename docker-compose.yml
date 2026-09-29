@@ -59,18 +59,14 @@ x-firebase-runtime-env: &firebase-runtime-env
   NEXT_PUBLIC_APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
   NEXT_PUBLIC_APP_BUILD_TIME: ${APP_BUILD_TIME:-}
 
-x-minio-build: &minio-build
-  context: .
-  dockerfile: deploy/minio/Dockerfile
-
 x-app-profiles: &app-profiles
   - dokploy-bundled
 
 x-internal-service-depends: &internal-service-depends
   redis:
     condition: service_healthy
-  minio-init:
-    condition: service_completed_successfully
+  minio:
+    condition: service_healthy
   seed:
     condition: service_completed_successfully
   postgres:
@@ -116,63 +112,28 @@ services:
       retries: 10
 
   minio:
-    image: rfp-os-minio:2025-09-07
-    build: *minio-build
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r4
     container_name: rfp-os-minio
     restart: unless-stopped
     profiles:
       - local
       - dokploy-bundled
     networks: [internal]
-    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-rfpos}
       MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
       MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-http://localhost:3000}
+      MINIO_DEFAULT_BUCKETS: ${STORAGE_BUCKET:-rfp-os-documents}
     ports:
       - "127.0.0.1:59000:9000"
       - "127.0.0.1:59001:9001"
     volumes:
-      - rfp_os_minio_data:/data
+      - rfp_os_minio_data:/bitnami/minio/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 10
-
-  minio-init:
-    image: rfp-os-minio:2025-09-07
-    build: *minio-build
-    container_name: rfp-os-minio-init
-    restart: "no"
-    profiles:
-      - local
-      - dokploy-bundled
-    networks: [internal]
-    entrypoint:
-      - /bin/sh
-      - -ec
-      - |
-        echo "[minio-init] waiting for MinIO"
-        for i in $$(seq 1 60); do
-          if mc alias set local http://minio:9000 "$${STORAGE_ACCESS_KEY_ID}" "$${STORAGE_SECRET_ACCESS_KEY}"; then
-            echo "[minio-init] connected"
-            mc mb --ignore-existing "local/$${STORAGE_BUCKET}"
-            echo "[minio-init] bucket ready: $${STORAGE_BUCKET}"
-            exit 0
-          fi
-          echo "[minio-init] MinIO not ready or credentials rejected, retry $${i}/60"
-          sleep 2
-        done
-        echo "[minio-init] failed to connect to MinIO after retries"
-        exit 1
-    environment:
-      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
-      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
-      STORAGE_BUCKET: ${STORAGE_BUCKET:-rfp-os-documents}
-    depends_on:
-      minio:
-        condition: service_started
 
   opensearch:
     image: opensearchproject/opensearch:2.19.0

@@ -107,7 +107,7 @@ Only example files are committed.
 - MinIO on host ports `59000` and `59001`
 - OpenSearch on host port `45200`
 
-The MinIO bucket is initialized automatically by `minio-init`.
+The MinIO bucket is initialized automatically from `MINIO_DEFAULT_BUCKETS`.
 
 Application code runs directly on the host for fast hot reload:
 
@@ -176,9 +176,9 @@ Historical prompts, audits, investigations, and feature-planning notes live in
 - Docker not running: start Docker Desktop, then run `bun infra:up`.
 - Database unavailable: run `bun infra:up`, then `bun doctor`.
 - Redis unavailable: run `bun infra:logs` and check the `redis` service.
-- MinIO upload fails: verify `minio-init` completed, `STORAGE_PUBLIC_ENDPOINT`
-  is browser reachable, and the web service is proxying `/<STORAGE_BUCKET>/...`
-  to MinIO.
+- MinIO upload fails: verify the `minio` service is healthy, the configured
+  bucket exists, `STORAGE_PUBLIC_ENDPOINT` is browser reachable, and the web
+  service is proxying `/<STORAGE_BUCKET>/...` to MinIO.
 - OpenSearch unavailable: check memory limits and `bun infra:logs`.
 - Missing env variable: copy `.env.example` to `.env.local` and rerun.
 - CORS error: ensure `CORS_ORIGIN` matches the web origin exactly.
