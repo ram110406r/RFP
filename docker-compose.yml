@@ -59,6 +59,10 @@ x-firebase-runtime-env: &firebase-runtime-env
   NEXT_PUBLIC_APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
   NEXT_PUBLIC_APP_BUILD_TIME: ${APP_BUILD_TIME:-}
 
+x-minio-build: &minio-build
+  context: .
+  dockerfile: deploy/minio/Dockerfile
+
 x-app-profiles: &app-profiles
   - dokploy-bundled
 
@@ -112,7 +116,8 @@ services:
       retries: 10
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: rfp-os-minio:2025-09-07
+    build: *minio-build
     container_name: rfp-os-minio
     restart: unless-stopped
     profiles:
@@ -136,7 +141,8 @@ services:
       retries: 10
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: rfp-os-minio:2025-09-07
+    build: *minio-build
     container_name: rfp-os-minio-init
     restart: "no"
     profiles:
