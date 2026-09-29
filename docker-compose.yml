@@ -133,7 +133,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          'mc alias set local http://127.0.0.1:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && mc ready local',
+          "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1",
         ]
       interval: 5s
       timeout: 5s
@@ -269,7 +269,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
-
 volumes:
   rfp_os_postgres_data:
   rfp_os_redis_data:
