@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { closeDb, getDb } from "./client";
+import { closeDb, getDb, resolveDatabaseUrl } from "./client";
 
 const migrationsFolder = join(import.meta.dir, "..", "migrations");
 
@@ -78,27 +78,24 @@ function readJournalTags(): Map<number, string> {
 }
 
 function describeDatabaseTarget(env: NodeJS.ProcessEnv = process.env) {
-  const user = env.POSTGRES_USER?.trim();
-  const database = env.POSTGRES_DB?.trim();
-  if (user && database) {
-    const host = env.POSTGRES_HOST?.trim() || "postgres";
-    const port = env.POSTGRES_PORT?.trim() || "5432";
-    return `POSTGRES_* -> ${user}@${host}:${port}/${database}`;
-  }
-
-  if (env.DATABASE_URL?.trim()) {
+  const databaseUrl = resolveDatabaseUrl(env as Parameters<typeof resolveDatabaseUrl>[0]);
+  if (databaseUrl) {
     try {
-      const url = new URL(env.DATABASE_URL.trim());
+      const url = new URL(databaseUrl);
       if (url.password) {
         url.password = "***";
       }
-      return `DATABASE_URL -> ${url.toString()}`;
+      return `${targetSource(env, databaseUrl)} -> ${url.toString()}`;
     } catch {
-      return "DATABASE_URL -> <unparseable>";
+      return `${targetSource(env, databaseUrl)} -> <unparseable>`;
     }
   }
 
   return "<unconfigured>";
+}
+
+function targetSource(env: NodeJS.ProcessEnv, databaseUrl: string) {
+  return databaseUrl === env.DATABASE_URL?.trim() ? "DATABASE_URL" : "POSTGRES_*";
 }
 
 function logError(error: unknown, depth = 0) {

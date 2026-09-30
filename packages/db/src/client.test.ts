@@ -19,7 +19,20 @@ describe("resolveDatabaseUrl", () => {
     ).toBe("postgres://demo%20user:p%40ss%3Aword%2Fwith%23chars@postgres:5432/rfp%20db");
   });
 
-  test("prefers explicit postgres parts over DATABASE_URL", () => {
+  test("prefers a non-local DATABASE_URL over postgres parts", () => {
+    expect(
+      resolveDatabaseUrl({
+        DATABASE_URL: "postgresql://rfpos:secret@178.16.137.247:5431/rfpos",
+        POSTGRES_USER: "rfpos",
+        POSTGRES_PASSWORD: "bundled-secret",
+        POSTGRES_DB: "rfpos",
+        POSTGRES_HOST: "postgres",
+        POSTGRES_PORT: "5432",
+      }),
+    ).toBe("postgresql://rfpos:secret@178.16.137.247:5431/rfpos");
+  });
+
+  test("prefers postgres parts over an inherited localhost DATABASE_URL", () => {
     expect(
       resolveDatabaseUrl({
         DATABASE_URL: "postgres://wrong:wrong@localhost:55432/wrong",

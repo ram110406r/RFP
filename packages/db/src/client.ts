@@ -62,12 +62,17 @@ export async function closeDb() {
 /**
  * Resolves the database connection string for the runtime path.
  *
- * Deployment compose files pass POSTGRES_* explicitly, and those values must
- * win over any inherited DATABASE_URL so containers do not accidentally keep
- * pointing at a developer localhost. Local dev and tests still work with a
- * bare DATABASE_URL when the individual parts are absent.
+ * A production deployment may either point at an external DATABASE_URL or use
+ * the bundled Compose Postgres via POSTGRES_*. Prefer an explicit non-local
+ * DATABASE_URL, but ignore inherited localhost URLs inside containers so a
+ * developer .env cannot make Dokploy try to connect back to itself.
  */
 export function resolveDatabaseUrl(env: DatabaseEnv = process.env as DatabaseEnv) {
+  const explicitDatabaseUrl = env.DATABASE_URL?.trim();
+  if (explicitDatabaseUrl && !isLocalhostDatabaseUrl(explicitDatabaseUrl)) {
+    return explicitDatabaseUrl;
+  }
+
   const user = env.POSTGRES_USER?.trim();
   const password = env.POSTGRES_PASSWORD ?? "";
   const database = env.POSTGRES_DB?.trim();
@@ -79,6 +84,15 @@ export function resolveDatabaseUrl(env: DatabaseEnv = process.env as DatabaseEnv
   }
 
   return env.DATABASE_URL?.trim();
+}
+
+function isLocalhostDatabaseUrl(databaseUrl: string) {
+  try {
+    const hostname = new URL(databaseUrl).hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
 }
 
 export type Database = ReturnType<typeof getDb>;
