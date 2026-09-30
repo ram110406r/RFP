@@ -24,11 +24,17 @@ describe("envBoolean flags", () => {
     ["true", true],
     ['"true"', true],
     ["'true'", true],
+    ['\\"true\\"', true],
+    ["`true`", true],
+    [1, true],
     [" True ", true],
     ["1", true],
     ["yes", true],
     ['"false"', false],
     ["'false'", false],
+    ['\\"false\\"', false],
+    ["`false`", false],
+    [0, false],
   ])("parses %p as %p", (raw, expected) => {
     const env = envSchema.parse({ ENABLE_FIREBASE_AUTH_COMPAT: raw, STORAGE_FORCE_PATH_STYLE: raw });
     expect(env.ENABLE_FIREBASE_AUTH_COMPAT).toBe(expected);

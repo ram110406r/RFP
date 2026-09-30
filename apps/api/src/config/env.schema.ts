@@ -48,12 +48,16 @@ export function envBoolean(defaultValue: boolean) {
     (value) => {
       if (typeof value === "boolean") return value;
       if (value === undefined || value === null) return undefined;
-      const trimmed = String(value).trim();
-      const normalized =
-        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-        (trimmed.startsWith("'") && trimmed.endsWith("'"))
-          ? trimmed.slice(1, -1).trim().toLowerCase()
-          : trimmed.toLowerCase();
+      if (typeof value === "number") {
+        if (value === 1) return true;
+        if (value === 0) return false;
+      }
+      const normalized = String(value)
+        .trim()
+        .replace(/^\\+|\\+$/g, "")
+        .replace(/^[\s"'`\\]+|[\s"'`\\]+$/g, "")
+        .trim()
+        .toLowerCase();
       if (normalized === "") return undefined;
       if (["true", "1", "yes", "on"].includes(normalized)) return true;
       if (["false", "0", "no", "off"].includes(normalized)) return false;
