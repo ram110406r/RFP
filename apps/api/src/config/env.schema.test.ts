@@ -79,6 +79,21 @@ describe("validateEnv production checks", () => {
     );
   });
 
+  it("treats blank mail settings from docker-compose as unset, with a clear production error", () => {
+    // docker-compose passes unset variables as "" (`${MAIL_FROM:-}`).
+    const blank = { ...productionBase, SMTP_HOST: "", MAIL_FROM: "", SMTP_PORT: "", WEB_APP_URL: "" };
+    expect(() => validateEnv(blank)).toThrow(/MAIL_FROM: required in production/);
+    expect(() => validateEnv(blank)).toThrow(/SMTP_HOST: required in production/);
+    expect(() => validateEnv(blank)).not.toThrow(/at least 3 character/);
+  });
+
+  it("accepts blank optional mail settings outside production", () => {
+    const env = validateEnv({ APP_ENV: "local", MAIL_FROM: "", SMTP_PORT: "", WEB_APP_URL: "" });
+    expect(env.MAIL_FROM).toBe("TENDYY <no-reply@tendyy.local>");
+    expect(env.SMTP_PORT).toBe(51025);
+    expect(env.WEB_APP_URL).toBe("http://localhost:3000");
+  });
+
   it("requires GROQ_API_KEY when AI_PROVIDER=groq", () => {
     expect(() => validateEnv({ ...productionBase, GROQ_API_KEY: "" })).toThrow(/GROQ_API_KEY/);
   });

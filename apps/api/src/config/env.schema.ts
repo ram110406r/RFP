@@ -36,6 +36,15 @@ function blankToUndefined<T extends z.ZodTypeAny>(schema: T) {
 }
 
 /**
+ * Like blankToUndefined, but the field keeps a default. docker-compose passes
+ * unset variables as `${VAR:-}`, i.e. an empty string, which must mean "use
+ * the default" rather than fail validation as a malformed value.
+ */
+function blankToDefault<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((value) => (typeof value === "string" && value.trim() === "" ? undefined : value), schema);
+}
+
+/**
  * Parses a boolean flag from its env-string form.
  *
  * z.coerce.boolean() is Boolean(value), so the string "false" becomes true —
@@ -122,18 +131,18 @@ export const envSchema = z.object({
    * The browser-facing web app origin. Links in emails (verification, join)
    * point here. Distinct from CORS_ORIGIN, which may list several origins.
    */
-  WEB_APP_URL: z.string().url().default("http://localhost:3000"),
+  WEB_APP_URL: blankToDefault(z.string().url().default("http://localhost:3000")),
   /*
    * Outbound mail. Email ownership is what makes an invitation safe to accept,
    * so production refuses to boot without a transport. Locally these default
    * to the Mailpit container (docker-compose, profile "local").
    */
   SMTP_HOST: blankToUndefined(z.string().min(1)),
-  SMTP_PORT: z.coerce.number().int().positive().default(51025),
+  SMTP_PORT: blankToDefault(z.coerce.number().int().positive().default(51025)),
   SMTP_SECURE: envBoolean(false, { fallbackOnInvalid: true }),
   SMTP_USER: blankToUndefined(z.string().min(1)),
   SMTP_PASS: blankToUndefined(z.string().min(1)),
-  MAIL_FROM: z.string().min(3).default("TENDYY <no-reply@tendyy.local>"),
+  MAIL_FROM: blankToDefault(z.string().min(3).default("TENDYY <no-reply@tendyy.local>")),
 
   /*
    * Object storage (Phase 6a). Declared in .env.example since Phase 1 but not
@@ -221,10 +230,10 @@ export function validateEnv(config: Record<string, unknown>): Env {
     if (!result.data.SMTP_HOST) {
       missing.push("SMTP_HOST: required in production so users can verify their email");
     }
-    if (!config.MAIL_FROM) {
+    if (typeof config.MAIL_FROM !== "string" || config.MAIL_FROM.trim() === "") {
       missing.push("MAIL_FROM: required in production (e.g. \"TENDYY <no-reply@example.com>\")");
     }
-    if (!config.WEB_APP_URL) {
+    if (typeof config.WEB_APP_URL !== "string" || config.WEB_APP_URL.trim() === "") {
       missing.push("WEB_APP_URL: required in production (the public web app origin)");
     } else if (!result.data.WEB_APP_URL.startsWith("https://")) {
       missing.push("WEB_APP_URL: must use HTTPS in production");
