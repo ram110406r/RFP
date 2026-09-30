@@ -7,6 +7,13 @@ import { RfpRepository } from "./rfp.repository";
 import { RfpService } from "./rfp.service";
 
 /**
+ * Legacy compatibility surface.
+ *
+ * `tenders` is the canonical active product domain. Keep this module working
+ * for migration compatibility, but do not add new product behavior here.
+ */
+
+/**
  * The RFP domain module. Consumes the platform services (database, auth,
  * audit, events) rather than providing its own — those are all global modules
  * registered in AppModule.

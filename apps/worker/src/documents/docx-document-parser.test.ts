@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { DocxDocumentParser } from "@rfp-os/document-processing";
+import { strToU8 } from "fflate";
+
+import {
+  DocxDocumentParser,
+  DocxParseError,
+  MAX_DOCX_ENTRIES,
+  MAX_DOCX_XML_BYTES,
+} from "@rfp-os/document-processing";
 import {
   buildDocx,
   docxHeading,
@@ -148,5 +155,42 @@ describe("DocxDocumentParser", () => {
     );
 
     expect(error).toBeInstanceOf(Error);
+  });
+
+  test("rejects a document.xml that inflates past the size limit without inflating it", async () => {
+    // A few kilobytes compressed, over 50 MB declared: the classic zip bomb shape.
+    const padding = " ".repeat(MAX_DOCX_XML_BYTES + 1);
+    const bomb = buildDocx([], {
+      documentXml: `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${padding}</w:body></w:document>`,
+    });
+    expect(bomb.byteLength).toBeLessThan(1024 * 1024);
+
+    const error = await parser.parse(bomb).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(DocxParseError);
+    expect((error as Error).message).toContain("exceeds");
+  });
+
+  test("does not inflate parts other than document.xml", async () => {
+    const result = await parser.parse(
+      buildDocx([docxParagraph("Small body")], {
+        extraEntries: { "word/media/huge.bin": strToU8("0".repeat(MAX_DOCX_XML_BYTES + 1)) },
+      }),
+    );
+
+    expect(result.pages.map((page) => page.text)).toEqual(["Small body"]);
+  });
+
+  test("rejects packages with too many entries", async () => {
+    const extraEntries = Object.fromEntries(
+      Array.from({ length: MAX_DOCX_ENTRIES }, (_, index) => [`customXml/item${index}.xml`, strToU8("<x/>")]),
+    );
+
+    const error = await parser
+      .parse(buildDocx([docxParagraph("Body")], { extraEntries }))
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(DocxParseError);
+    expect((error as Error).message).toContain("entries");
   });
 });

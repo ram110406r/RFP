@@ -2,19 +2,26 @@ import type {
   AnswerAnalysisResult,
   AnswerImprovementResult,
 } from "@rfp-os/types";
-import type { User } from "firebase/auth";
 
 import type {
   AnswerGenerationPayload,
   AuditLogSummary,
+  KnowledgeIssuesPayload,
   KnowledgeItem,
   KnowledgeListPayload,
+  ResponseTemplate,
+  ResponseTemplatesPayload,
   DashboardOverview,
+  PipelinePayload,
   OrganizationInvitationSummary,
   OrganizationInvitationCreated,
   OrganizationMemberSummary,
   OrganizationSummary,
   RoleSummary,
+  RequirementsQueuePayload,
+  ResponsesQueuePayload,
+  ReviewQueuePayload,
+  SubmissionsQueuePayload,
   RequirementEvidenceSearchPayload,
   TenderAnswer,
   TenderAnswerEvidence,
@@ -70,6 +77,46 @@ export interface TenderDiscoveryParams {
   pageSize?: number;
   cursor?: string;
 }
+
+export interface KnowledgeListParams {
+  status?: string | null;
+  category?: string;
+  type?: string;
+  authority?: "high" | "medium" | "low";
+  ownerId?: string;
+  sourceKind?: string;
+  expires?: "expired" | "expiring" | "active" | "all";
+  reviewState?: "draft" | "stale" | "expired" | "expiring" | "healthy" | "all";
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export type KnowledgeSourceInput = {
+  name: string;
+  type: string;
+  category: string;
+  version?: string;
+  authority?: "high" | "medium" | "low";
+  ownerId?: string;
+  summary?: string;
+  lastVerified?: string;
+  expiresAt?: string | null;
+  sourceKind?: string;
+  metadata?: Record<string, unknown>;
+  claims?: Array<{ label: string; value: string; confidence?: number }>;
+};
+
+export type ResponseTemplateInput = {
+  name: string;
+  category: string;
+  ownerId?: string;
+  description?: string;
+  sections: Array<{ id?: string; title: string; body: string }>;
+  variables?: Array<{ key: string; label: string; required?: boolean; defaultValue?: string }>;
+  version?: string;
+  usageMetadata?: Record<string, unknown>;
+};
 
 const VERSION_PREFIX = "/api/v1";
 
@@ -129,6 +176,68 @@ export type OnboardingStatus = {
   invitations: Array<{ id: string; organizationId: string; organizationName: string; workspaceId: string | null; workspaceName: string | null; proposedTeamId: string | null; proposedTeamName: string | null; proposedDepartment: string | null; role: string; status: string; expiresAt: string }>;
   controlledValues: { departments: string[]; jobTitles: string[] };
 };
+
+export type CurrentProfile = {
+  id: string;
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  name: string | null;
+  preferredName: string | null;
+  accountType: string | null;
+  jobTitle: string;
+  department: string;
+  timezone: string;
+  phone: string;
+  location: string;
+  language: string;
+  bio: string;
+  skills: string[];
+  notificationPreferences: Record<string, boolean>;
+  photoURL: string | null;
+  image: string | null;
+  emailVerified: boolean;
+  status: string;
+  lastLoginAt: string | null;
+  organizationId: string | null;
+  organizationName: string | null;
+  role: string | null;
+  memberships: Array<{
+    id: string;
+    organizationId: string;
+    organizationName: string;
+    role: string;
+    status: string;
+    joinedAt: string;
+    workspaces: Array<{ id: string; workspaceId: string; workspaceName: string; status: string }>;
+  }>;
+};
+
+export type ProfileUpdateInput = Partial<{
+  displayName: string;
+  preferredName: string;
+  jobTitle: string;
+  department: string;
+  timezone: string;
+  phone: string;
+  location: string;
+  language: string;
+  bio: string;
+  skills: string[];
+  notificationPreferences: Record<string, boolean>;
+}>;
+
+export function fetchCurrentProfile(init?: ApiInit) {
+  return requestJson<CurrentProfile>("/profile", init);
+}
+
+export function updateCurrentProfile(body: ProfileUpdateInput, init?: ApiInit) {
+  return requestJson<CurrentProfile>("/profile", {
+    ...init,
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
 
 export function fetchOnboardingStatus(init?: ApiInit) {
   return requestJson<OnboardingStatus>("/onboarding/status", init);
@@ -350,22 +459,6 @@ async function requestJson<T>(path: string, init: ApiInit = {}): Promise<T> {
     headers.set("cookie", init.cookie);
   }
 
-  let firebaseUser: User | null = null;
-  const usesFirebaseBrowserAuth = typeof window !== "undefined" && !headers.has("authorization");
-
-  // Firebase restores persisted sessions asynchronously. Waiting here prevents
-  // authenticated screens from racing an anonymous API request during startup.
-  if (usesFirebaseBrowserAuth) {
-    const { getFirebaseAuth } = await import("./firebase");
-    const firebaseAuth = getFirebaseAuth();
-    await firebaseAuth.authStateReady();
-    firebaseUser = firebaseAuth.currentUser;
-    if (!firebaseUser) {
-      throw new ApiError("Your Firebase session is not ready. Please sign in again.", 401, "FIREBASE_SESSION_MISSING");
-    }
-    headers.set("authorization", `Bearer ${await firebaseUser.getIdToken()}`);
-  }
-
   const requestUrl = buildUrl(path, init.baseUrl);
   const requestOptions: RequestInit = {
     ...init,
@@ -373,14 +466,7 @@ async function requestJson<T>(path: string, init: ApiInit = {}): Promise<T> {
     credentials: "include",
     cache: init.cache ?? "no-store",
   };
-  let response = await fetch(requestUrl, requestOptions);
-
-  // A token may expire between restoration and the request. Firebase refreshes
-  // it once; the API still remains authoritative and no anonymous fallback occurs.
-  if (response.status === 401 && usesFirebaseBrowserAuth && firebaseUser) {
-    headers.set("authorization", `Bearer ${await firebaseUser.getIdToken(true)}`);
-    response = await fetch(requestUrl, requestOptions);
-  }
+  const response = await fetch(requestUrl, requestOptions);
 
   if (!response.ok) {
     let details: unknown = null;
@@ -458,6 +544,31 @@ export async function fetchDashboardSummary(
   return requestJson<DashboardOverview>(`/dashboard/summary${suffix}`, init);
 }
 
+export async function fetchPipeline(init?: ApiInit) {
+  return requestJson<PipelinePayload>("/tenders/pipeline", init);
+}
+
+export async function fetchReviewQueue(
+  params: {
+    workspaceId?: string;
+    scope?: "mine" | "all";
+    statuses?: string[];
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+  init?: ApiInit,
+) {
+  const query = new URLSearchParams();
+  if (params.workspaceId) query.set("workspaceId", params.workspaceId);
+  if (params.scope) query.set("scope", params.scope);
+  if (params.statuses?.length) query.set("statuses", params.statuses.join(","));
+  if (params.q) query.set("q", params.q);
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 50));
+  return requestJson<ReviewQueuePayload>(`/reviews/queue?${query.toString()}`, init);
+}
+
 export async function fetchTenders(
   params: {
     workspaceId?: string;
@@ -500,6 +611,71 @@ export async function fetchTenders(
   query.set("pageSize", String(params.pageSize ?? 25));
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return requestJson<TenderListPayload>(`/tenders${suffix}`, init);
+}
+
+export async function fetchRequirementsQueue(
+  params: {
+    workspaceId?: string;
+    includeArchived?: boolean;
+    page?: number;
+    pageSize?: number;
+  } = {},
+  init?: ApiInit,
+) {
+  const query = new URLSearchParams();
+  if (params.workspaceId) query.set("workspaceId", params.workspaceId);
+  if (params.includeArchived !== undefined) query.set("includeArchived", String(params.includeArchived));
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 100));
+  return requestJson<RequirementsQueuePayload>(`/requirements/workspace-queue?${query.toString()}`, init);
+}
+
+export async function fetchResponsesQueue(
+  params: {
+    workspaceId?: string;
+    includeArchived?: boolean;
+    q?: string;
+    status?: string;
+    source?: string;
+    evidence?: string;
+    confidence?: string;
+    review?: string;
+    sort?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+  init?: ApiInit,
+) {
+  const query = new URLSearchParams();
+  if (params.workspaceId) query.set("workspaceId", params.workspaceId);
+  if (params.includeArchived !== undefined) query.set("includeArchived", String(params.includeArchived));
+  if (params.q) query.set("q", params.q);
+  if (params.status) query.set("status", params.status);
+  if (params.source) query.set("source", params.source);
+  if (params.evidence) query.set("evidence", params.evidence);
+  if (params.confidence) query.set("confidence", params.confidence);
+  if (params.review) query.set("review", params.review);
+  if (params.sort) query.set("sort", params.sort);
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 50));
+  return requestJson<ResponsesQueuePayload>(`/responses/workspace-queue?${query.toString()}`, init);
+}
+
+export async function fetchSubmissionsQueue(
+  params: {
+    workspaceId?: string;
+    includeArchived?: boolean;
+    page?: number;
+    pageSize?: number;
+  } = {},
+  init?: ApiInit,
+) {
+  const query = new URLSearchParams();
+  if (params.workspaceId) query.set("workspaceId", params.workspaceId);
+  if (params.includeArchived !== undefined) query.set("includeArchived", String(params.includeArchived));
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 100));
+  return requestJson<SubmissionsQueuePayload>(`/submissions/workspace-queue?${query.toString()}`, init);
 }
 
 export async function fetchWorkspaces(params: { status?: "active" | "archived" | "all" } = {}, init?: ApiInit) {
@@ -940,12 +1116,13 @@ export async function approveTender(tenderId: string, init?: ApiInit) {
 }
 
 export async function fetchKnowledgeList(
-  params: { status?: string; search?: string; page?: number; pageSize?: number } = {},
+  params: KnowledgeListParams = {},
   init?: ApiInit,
 ) {
   const query = new URLSearchParams();
-  if (params.status) query.set("status", params.status);
-  if (params.search) query.set("search", params.search);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  }
   query.set("page", String(params.page ?? 1));
   query.set("pageSize", String(params.pageSize ?? 25));
   const queryString = query.toString();
@@ -955,7 +1132,7 @@ export async function fetchKnowledgeList(
 
 export async function fetchKnowledgeSummary(init?: ApiInit) {
   return requestJson<{
-    counts: { total: number; draft: number; active: number; archived: number; stale: number };
+    counts: { total: number; draft: number; active: number; archived: number; stale: number; expired?: number; expiring?: number; templates?: number; conflicts?: number };
     items: KnowledgeListPayload["items"];
     attention: KnowledgeListPayload["items"];
   }>(`/knowledge/summary`, init);
@@ -966,18 +1143,7 @@ export async function fetchKnowledgeItem(id: string, init?: ApiInit) {
 }
 
 export async function createKnowledge(
-  body: {
-    name: string;
-    type: string;
-    category: string;
-    version?: string;
-    authority?: "high" | "medium" | "low";
-    ownerId?: string;
-    summary?: string;
-    lastVerified?: string;
-    expiresAt?: string;
-    claims?: Array<{ label: string; value: string; confidence?: number }>;
-  },
+  body: KnowledgeSourceInput,
   init?: ApiInit,
 ) {
   return requestJson<KnowledgeItem>(`/knowledge`, {
@@ -989,18 +1155,7 @@ export async function createKnowledge(
 
 export async function updateKnowledge(
   id: string,
-  body: {
-    name?: string;
-    type?: string;
-    category?: string;
-    version?: string;
-    authority?: "high" | "medium" | "low";
-    ownerId?: string;
-    summary?: string;
-    lastVerified?: string;
-    expiresAt?: string | null;
-    claims?: Array<{ label: string; value: string; confidence?: number }>;
-  },
+  body: Partial<KnowledgeSourceInput>,
   init?: ApiInit,
 ) {
   return requestJson<KnowledgeItem>(`/knowledge/${id}`, {
@@ -1022,4 +1177,96 @@ export async function archiveKnowledge(id: string, init?: ApiInit) {
     ...init,
     method: "POST",
   });
+}
+
+export async function fetchKnowledgeSources(params: KnowledgeListParams = {}, init?: ApiInit) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  }
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 25));
+  return requestJson<KnowledgeListPayload>(`/knowledge/sources?${query.toString()}`, init);
+}
+
+export async function fetchKnowledgeSource(id: string, init?: ApiInit) {
+  return requestJson<KnowledgeItem>(`/knowledge/sources/${id}`, init);
+}
+
+export async function createKnowledgeSource(body: KnowledgeSourceInput, init?: ApiInit) {
+  return requestJson<KnowledgeItem>("/knowledge/sources", { ...init, method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateKnowledgeSource(id: string, body: Partial<KnowledgeSourceInput>, init?: ApiInit) {
+  return requestJson<KnowledgeItem>(`/knowledge/sources/${id}`, { ...init, method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function approveKnowledgeSource(id: string, init?: ApiInit) {
+  return requestJson<KnowledgeItem>(`/knowledge/sources/${id}/approve`, { ...init, method: "POST" });
+}
+
+export async function archiveKnowledgeSource(id: string, init?: ApiInit) {
+  return requestJson<KnowledgeItem>(`/knowledge/sources/${id}/archive`, { ...init, method: "POST" });
+}
+
+export async function verifyKnowledgeSource(id: string, body: { note?: string; expiresAt?: string | null } = {}, init?: ApiInit) {
+  return requestJson<KnowledgeItem>(`/knowledge/sources/${id}/verify`, { ...init, method: "POST", body: JSON.stringify(body) });
+}
+
+export async function fetchKnowledgeIssues(
+  params: { type?: string; status?: "OPEN" | "RESOLVED" | "ALL"; search?: string; page?: number; pageSize?: number } = {},
+  init?: ApiInit,
+) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  }
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 50));
+  return requestJson<KnowledgeIssuesPayload>(`/knowledge/issues?${query.toString()}`, init);
+}
+
+export async function resolveKnowledgeIssue(
+  id: string,
+  body: { action: "approve" | "verify" | "archive" | "resolve_conflict"; note?: string },
+  init?: ApiInit,
+) {
+  return requestJson<unknown>(`/knowledge/issues/${encodeURIComponent(id)}/resolve`, { ...init, method: "POST", body: JSON.stringify(body) });
+}
+
+export async function fetchResponseTemplates(
+  params: { status?: "DRAFT" | "ACTIVE" | "ARCHIVED" | "ALL"; category?: string; ownerId?: string; search?: string; page?: number; pageSize?: number } = {},
+  init?: ApiInit,
+) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  }
+  query.set("page", String(params.page ?? 1));
+  query.set("pageSize", String(params.pageSize ?? 25));
+  return requestJson<ResponseTemplatesPayload>(`/knowledge/templates?${query.toString()}`, init);
+}
+
+export async function fetchResponseTemplate(id: string, init?: ApiInit) {
+  return requestJson<ResponseTemplate>(`/knowledge/templates/${id}`, init);
+}
+
+export async function createResponseTemplate(body: ResponseTemplateInput, init?: ApiInit) {
+  return requestJson<ResponseTemplate>("/knowledge/templates", { ...init, method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateResponseTemplate(id: string, body: Partial<ResponseTemplateInput>, init?: ApiInit) {
+  return requestJson<ResponseTemplate>(`/knowledge/templates/${id}`, { ...init, method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function approveResponseTemplate(id: string, init?: ApiInit) {
+  return requestJson<ResponseTemplate>(`/knowledge/templates/${id}/approve`, { ...init, method: "POST" });
+}
+
+export async function archiveResponseTemplate(id: string, init?: ApiInit) {
+  return requestJson<ResponseTemplate>(`/knowledge/templates/${id}/archive`, { ...init, method: "POST" });
+}
+
+export async function duplicateResponseTemplate(id: string, init?: ApiInit) {
+  return requestJson<ResponseTemplate>(`/knowledge/templates/${id}/duplicate`, { ...init, method: "POST" });
 }

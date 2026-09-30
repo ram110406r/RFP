@@ -2,18 +2,39 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useState } from "react";
 
 import { AppShell } from "../../components/app-shell";
-import { TendyyResponsiveDataView } from "../../components/tendyy-ui";
-import type { DashboardOverview } from "../../lib/models";
-import { useDashboardSummary } from "../../lib/queries";
+import { RfpEmptyState } from "../../components/rfp-foundation";
+import { TendyyErrorState, TendyyResponsiveDataView, TendyySkeletonRows } from "../../components/tendyy-ui";
+import type { SubmissionQueueActionState, SubmissionsQueueRow } from "../../lib/models";
+import { useSubmissionsQueue } from "../../lib/queries";
 
-type SubmissionRow = DashboardOverview["tenders"][number];
+type SubmissionRow = SubmissionsQueueRow;
+type FilterKey = "all" | "ready" | "approved" | "needs-rebuild" | "submitted" | "blocked";
 
 export default function SubmissionsPage() {
-  const dashboardQuery = useDashboardSummary(25);
-  const sourceRows: DashboardOverview["tenders"] = dashboardQuery.data?.activeTenders ?? dashboardQuery.data?.tenders ?? [];
-  const rows: SubmissionRow[] = sourceRows;
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const queueQuery = useSubmissionsQueue({ pageSize: 100, includeArchived: false });
+  const rows = queueQuery.data?.items ?? [];
+  const counts = queueQuery.data?.counts ?? { tenders: 0, noPackage: 0, generating: 0, ready: 0, approved: 0, needsRebuild: 0, submitted: 0, blocked: 0 };
+  const filteredRows = rows.filter((row) =>
+    filter === "all"
+    || (filter === "ready" && row.latestPackage?.status === "READY")
+    || (filter === "approved" && row.latestPackage?.status === "APPROVED")
+    || (filter === "needs-rebuild" && (row.latestPackage?.status === "STALE" || row.latestPackage?.status === "FAILED"))
+    || (filter === "submitted" && Boolean(row.latestSubmission))
+    || (filter === "blocked" && (row.blockingIssueCount > 0 || row.actionState === "RESOLVE_BLOCKERS")),
+  );
+  const filters: Array<[FilterKey, string]> = [
+    ["all", `All (${counts.tenders})`],
+    ["ready", `Ready (${counts.ready})`],
+    ["approved", `Approved (${counts.approved})`],
+    ["needs-rebuild", `Needs rebuild (${counts.needsRebuild})`],
+    ["submitted", `Submitted (${counts.submitted})`],
+    ["blocked", `Blocked (${counts.blocked})`],
+  ];
+  const filterHidesRows = filter !== "all" && filteredRows.length < rows.length;
 
   return (
     <AppShell breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Submissions" }]}>
@@ -27,13 +48,21 @@ export default function SubmissionsPage() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard title="Visible tenders" value={String(rows.length)} detail="Loaded from active dashboard tenders." />
-          <StatCard title="Approved packages" value={String(rows.filter((row) => row.latestPackage?.status === "APPROVED").length)} detail="Eligible for manual receipt capture." />
-          <StatCard title="Needs rebuild" value={String(rows.filter((row) => row.latestPackage?.status === "STALE" || row.latestPackage?.status === "FAILED").length)} detail="Package is stale or failed." />
-          <StatCard title="Submitted" value={String(rows.filter((row) => row.latestSubmission).length)} detail="Manual receipts recorded." />
+          <StatCard title="Visible tenders" value={String(counts.tenders)} detail="Loaded from the submissions queue." />
+          <StatCard title="Approved packages" value={String(counts.approved)} detail="Eligible for manual receipt capture." />
+          <StatCard title="Needs rebuild" value={String(counts.needsRebuild)} detail="Package is stale or failed." />
+          <StatCard title="Submitted" value={String(counts.submitted)} detail="Manual receipts recorded." />
         </section>
 
+        <QueueFilters items={filters} value={filter} onChange={setFilter} />
+        {filterHidesRows ? <p className="text-xs font-medium text-slate-500">Showing {filteredRows.length} of {rows.length} tenders for this filter.</p> : null}
+
         <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_rgba(15,23,42,0.05)]">
+          {queueQuery.isLoading ? (
+            <TendyySkeletonRows count={7} />
+          ) : queueQuery.isError ? (
+            <TendyyErrorState title="Unable to load submissions" message="Submissions could not be loaded. Check the API and selected workspace, then retry." onRetry={() => void queueQuery.refetch()} />
+          ) : filteredRows.length ? (
           <div className="min-w-0 overflow-hidden rounded-[10px] border border-slate-200">
             <TendyyResponsiveDataView
               desktop={
@@ -49,8 +78,7 @@ export default function SubmissionsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.length > 0 ? (
-                      rows.map((row) => (
+                    {filteredRows.map((row) => (
                         <tr key={row.tender.id} className="bg-white align-top">
                           <Td>
                             <Link href={`/apply/${row.tender.id}`} className="block py-4 pr-4">
@@ -71,20 +99,13 @@ export default function SubmissionsPage() {
                           <Td><ReceiptCell submission={row.latestSubmission} /></Td>
                           <Td><div className="py-4"><Link href={`/apply/${row.tender.id}#packages`} className="inline-flex rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100">{actionLabel(row)}</Link></div></Td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-10 text-sm text-slate-500">
-                          No submissions are available yet.
-                        </td>
-                      </tr>
-                    )}
+                    ))}
                   </tbody>
                 </table>
               }
               mobile={
                 <div className="space-y-3 p-3">
-                  {rows.length ? rows.map((row) => (
+                  {filteredRows.map((row) => (
                     <article key={row.tender.id} className="min-w-0 border border-slate-200 bg-white p-4">
                       <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
@@ -103,11 +124,14 @@ export default function SubmissionsPage() {
                       <ReceiptCell submission={row.latestSubmission} />
                       <Link href={`/apply/${row.tender.id}#packages`} className="mt-4 inline-flex h-9 items-center rounded-lg border border-sky-200 bg-sky-50 px-3 text-xs font-semibold text-sky-800">{actionLabel(row)}</Link>
                     </article>
-                  )) : <p className="p-5 text-sm text-slate-500">No submissions are available yet.</p>}
+                  ))}
                 </div>
               }
             />
           </div>
+          ) : (
+            <RfpEmptyState title="No matching submissions" description={rows.length ? "Try another queue filter to widen the results." : "Active tenders will appear here after they are imported into the workspace."} actionHref="/tenders/import" actionLabel="Import RFP" />
+          )}
         </section>
       </div>
     </AppShell>
@@ -140,11 +164,16 @@ function ReceiptCell({ submission }: { submission: SubmissionRow["latestSubmissi
 }
 
 function actionLabel(row: SubmissionRow) {
-  if (row.latestSubmission) return "View receipt";
-  if (row.latestPackage?.status === "APPROVED") return "Record receipt";
-  if (row.latestPackage?.status === "READY") return "Approve package";
-  if (row.latestPackage?.status === "STALE" || row.latestPackage?.status === "FAILED") return "Rebuild package";
-  return row.ready ? "Build package" : "Resolve blockers";
+  return actionLabelByState(row.actionState);
+}
+
+function actionLabelByState(state: SubmissionQueueActionState) {
+  if (state === "VIEW_RECEIPT") return "View receipt";
+  if (state === "RECORD_RECEIPT") return "Record receipt";
+  if (state === "APPROVE_PACKAGE") return "Approve package";
+  if (state === "REBUILD_PACKAGE") return "Rebuild package";
+  if (state === "BUILD_PACKAGE") return "Build package";
+  return "Resolve blockers";
 }
 
 function packageTone(status: NonNullable<SubmissionRow["latestPackage"]>["status"]): "success" | "warning" | "danger" | "neutral" {
@@ -160,6 +189,18 @@ function Th({ children }: { children: ReactNode }) {
 
 function Td({ children }: { children: ReactNode }) {
   return <td className="border-t border-slate-200 px-4 align-top">{children}</td>;
+}
+
+function QueueFilters({ items, value, onChange }: { items: Array<[FilterKey, string]>; value: FilterKey; onChange: (value: FilterKey) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map(([key, label]) => (
+        <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${value === key ? "border-sky-700 bg-sky-50 text-sky-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function Badge({ tone, children }: { tone: "success" | "warning" | "danger" | "neutral"; children: ReactNode }) {

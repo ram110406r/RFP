@@ -19,111 +19,136 @@ import { SavedSearchEvaluator } from "./saved-search-evaluator";
 
 const logger = createLogger("worker:tender-discovery");
 
+/**
+ * Document imports are independent downloads and run in parallel, so a slow
+ * portal file no longer holds up every sync behind it. Everything else (portal
+ * syncs and catalog maintenance) still runs one at a time in this process
+ * through `serial`: a GeM HEAD and BACKFILL sync for the same window have
+ * different job ids, and both write the portal's syncState from a copy read at
+ * the start of the run, so letting them overlap would lose backfill progress.
+ */
+const CONCURRENCY = 3;
+
 export function createTenderDiscoveryWorker(connection: IORedis) {
   const repository = new TenderIngestionRepository();
   const documentImporter = new NoticeDocumentImporter(tenderDiscoveryStorage());
   const savedSearches = new SavedSearchEvaluator();
+  const serial = createSerialRunner();
   return new Worker<TenderIngestionJobPayload>(
     QUEUES.TENDER_INGESTION,
     async (job: Job<TenderIngestionJobPayload>) => {
       if (job.name === TENDER_INGESTION_JOBS.IMPORT_DOCUMENT && job.data.kind === "IMPORT_DOCUMENT")
-        return documentImporter.import(job.data);
-      if (job.name === TENDER_INGESTION_JOBS.RECONCILE_CATALOG && job.data.kind === "RECONCILE_CATALOG") {
-        await repository.reconcileCatalog();
-        return { processed: true };
-      }
-      if (job.name === TENDER_INGESTION_JOBS.EVALUATE_SAVED_SEARCHES && job.data.kind === "EVALUATE_SAVED_SEARCHES")
-        return { processed: true, evaluated: await savedSearches.evaluateDue() };
-      if (job.name === TENDER_INGESTION_JOBS.MAINTAIN_DISCOVERY_ANALYTICS && job.data.kind === "MAINTAIN_DISCOVERY_ANALYTICS") {
-        await savedSearches.maintainAnalytics();
-        return { processed: true };
-      }
-      if (job.name !== TENDER_INGESTION_JOBS.SYNC_PORTAL || job.data.kind !== "SYNC_PORTAL")
-        throw new Error(`Unsupported tender ingestion job ${job.name}.`);
-      const data = job.data as TenderPortalSyncJobPayload;
-      const portal = await repository.portal(data.portalId);
-      const smoke = job.data.kind === "SYNC_PORTAL" && job.data.scope?.smoke === true;
-      if (!portal || (!portal.enabled && !(smoke && portal.metadata.connectorVerified === true)))
-        return { processed: false, reason: "Portal is missing or disabled." };
-      const mode = data.mode ?? "HEAD";
-      const backfill = mode === "BACKFILL" ? gemBackfillScope(portal.syncState) : null;
-      const scope: Record<string, unknown> = backfill ? { ...backfill } : mode === "FULL_REFRESH" || mode === "RECONCILE" ? { ...(data.scope ?? {}), snapshotStartedAt: data.windowStartedAt } : data.scope ?? {};
-      const run = await repository.beginRun(portal.id, data.windowStartedAt, data.cursor, mode, scope);
-      let cursor = mode === "BACKFILL" ? backfill?.cursor ?? null : data.cursor ?? null;
-      let discovered = 0;
-      let inserted = 0;
-      let updated = 0;
-      let duplicates = 0;
-      let parsed = 0;
-      let rejected = 0;
-      const complete = { referenceNumber: 0, buyer: 0, deadline: 0, category: 0, state: 0, estimatedValue: 0, documents: 0 };
-      try {
-        const connector = connectorForPortal(portal);
-        const fetchMode = mode === "RECONCILE" ? "FULL_REFRESH" : mode;
-        const maxPages = mode === "HEAD"
-          ? metadataNumber(portal.metadata, "headPagesPerRun", 3, 1, 10)
-          : metadataNumber(portal.metadata, "maxPagesPerRun", 25, 1, 100);
-        const requestDelayMs = metadataNumber(portal.metadata, "requestDelayMs", 1_000, 0, 10_000);
-        let pages = 0;
-        do {
-          const page = await connector.fetchPage(cursor, backfill ? {
-            mode: fetchMode,
-            deadlineFrom: backfill.deadlineFrom,
-            deadlineTo: backfill.deadlineTo,
-          } : { mode: fetchMode });
-          discovered += page.items.length;
-          for (const sourceItem of page.items) {
-            let item;
-            try {
-              item = normalizeNoticeFields(sourceItem);
-            } catch (error) {
-              rejected += 1;
-              await repository.rejectNotice(portal.id, run.id, sourceItem, error instanceof Error ? error.message : "Notice normalization failed.");
-              continue;
-            }
-            const result = await repository.persistNotice(portal.id, run.id, item);
-            parsed += 1;
-            if (result.inserted) inserted += 1;
-            else if (result.duplicate) duplicates += 1;
-            else updated += 1;
-            if (item.referenceNumber) complete.referenceNumber += 1;
-            if (item.buyerName) complete.buyer += 1;
-            if (item.deadlineAt) complete.deadline += 1;
-            if (item.category) complete.category += 1;
-            if (item.state) complete.state += 1;
-            if (item.estimatedValue !== null && item.estimatedValue !== undefined) complete.estimatedValue += 1;
-            if (item.documents?.length) complete.documents += 1;
-          }
-          cursor = page.nextCursor;
-          pages += 1;
-          await job.updateProgress({ discovered, cursor });
-          if (cursor && pages < maxPages && requestDelayMs) await sleep(requestDelayMs);
-        } while (cursor && pages < maxPages);
-        const nextBackfill = backfill ? advanceGemBackfill(backfill, portal.syncState, cursor) : null;
-        const completeness = Object.fromEntries(Object.entries(complete).map(([key, value]) => [key, discovered ? Math.round(value * 10_000 / discovered) / 100 : 0]));
-        await repository.completeRun(run.id, portal.id, { discovered, parsed, rejected, duplicates, inserted, updated, completeness }, mode === "BACKFILL" ? null : cursor, {
-          mode,
-          scope,
-          fullSnapshot: mode === "FULL_REFRESH" || mode === "RECONCILE" || (nextBackfill?.complete ?? false),
-          backfillComplete: nextBackfill?.complete ?? false,
-          syncState: nextBackfill?.state ?? portal.syncState,
-        });
-        logger.info(
-          { portal: portal.key, discovered, parsed, rejected, inserted, updated, duplicates, completeness },
-          "tender portal sync complete",
-        );
-        return { processed: true, discovered, inserted, updated };
-      } catch (error) {
-        await repository.failRun(
-          run.id,
-          portal.id,
-          error instanceof Error ? error.message : "Tender portal sync failed.",
-        );
-        throw error;
-      }
+        return documentImporter.import(job.data, job);
+      return serial(() => processSerialJob(job));
     },
-    { connection, concurrency: 1, ...DEFAULT_JOB_OPTIONS },
+    { connection, concurrency: CONCURRENCY },
   );
+
+  async function processSerialJob(job: Job<TenderIngestionJobPayload>) {
+    if (job.name === TENDER_INGESTION_JOBS.RECONCILE_CATALOG && job.data.kind === "RECONCILE_CATALOG") {
+      await repository.reconcileCatalog();
+      return { processed: true };
+    }
+    if (job.name === TENDER_INGESTION_JOBS.EVALUATE_SAVED_SEARCHES && job.data.kind === "EVALUATE_SAVED_SEARCHES")
+      return { processed: true, evaluated: await savedSearches.evaluateDue() };
+    if (job.name === TENDER_INGESTION_JOBS.MAINTAIN_DISCOVERY_ANALYTICS && job.data.kind === "MAINTAIN_DISCOVERY_ANALYTICS") {
+      await savedSearches.maintainAnalytics();
+      return { processed: true };
+    }
+    if (job.name !== TENDER_INGESTION_JOBS.SYNC_PORTAL || job.data.kind !== "SYNC_PORTAL")
+      throw new Error(`Unsupported tender ingestion job ${job.name}.`);
+    const data = job.data as TenderPortalSyncJobPayload;
+    const portal = await repository.portal(data.portalId);
+    const smoke = job.data.kind === "SYNC_PORTAL" && job.data.scope?.smoke === true;
+    if (!portal || (!portal.enabled && !(smoke && portal.metadata.connectorVerified === true)))
+      return { processed: false, reason: "Portal is missing or disabled." };
+    const mode = data.mode ?? "HEAD";
+    const backfill = mode === "BACKFILL" ? gemBackfillScope(portal.syncState) : null;
+    const scope: Record<string, unknown> = backfill ? { ...backfill } : mode === "FULL_REFRESH" || mode === "RECONCILE" ? { ...(data.scope ?? {}), snapshotStartedAt: data.windowStartedAt } : data.scope ?? {};
+    const run = await repository.beginRun(portal.id, data.windowStartedAt, data.cursor, mode, scope);
+    let cursor = mode === "BACKFILL" ? backfill?.cursor ?? null : data.cursor ?? null;
+    let discovered = 0;
+    let inserted = 0;
+    let updated = 0;
+    let duplicates = 0;
+    let parsed = 0;
+    let rejected = 0;
+    const complete = { referenceNumber: 0, buyer: 0, deadline: 0, category: 0, state: 0, estimatedValue: 0, documents: 0 };
+    try {
+      const connector = connectorForPortal(portal);
+      const fetchMode = mode === "RECONCILE" ? "FULL_REFRESH" : mode;
+      const maxPages = mode === "HEAD"
+        ? metadataNumber(portal.metadata, "headPagesPerRun", 3, 1, 10)
+        : metadataNumber(portal.metadata, "maxPagesPerRun", 25, 1, 100);
+      const requestDelayMs = metadataNumber(portal.metadata, "requestDelayMs", 1_000, 0, 10_000);
+      let pages = 0;
+      do {
+        const page = await connector.fetchPage(cursor, backfill ? {
+          mode: fetchMode,
+          deadlineFrom: backfill.deadlineFrom,
+          deadlineTo: backfill.deadlineTo,
+        } : { mode: fetchMode });
+        discovered += page.items.length;
+        for (const sourceItem of page.items) {
+          let item;
+          try {
+            item = normalizeNoticeFields(sourceItem);
+          } catch (error) {
+            rejected += 1;
+            await repository.rejectNotice(portal.id, run.id, sourceItem, error instanceof Error ? error.message : "Notice normalization failed.");
+            continue;
+          }
+          const result = await repository.persistNotice(portal.id, run.id, item);
+          parsed += 1;
+          if (result.inserted) inserted += 1;
+          else if (result.duplicate) duplicates += 1;
+          else updated += 1;
+          if (item.referenceNumber) complete.referenceNumber += 1;
+          if (item.buyerName) complete.buyer += 1;
+          if (item.deadlineAt) complete.deadline += 1;
+          if (item.category) complete.category += 1;
+          if (item.state) complete.state += 1;
+          if (item.estimatedValue !== null && item.estimatedValue !== undefined) complete.estimatedValue += 1;
+          if (item.documents?.length) complete.documents += 1;
+        }
+        cursor = page.nextCursor;
+        pages += 1;
+        await job.updateProgress({ discovered, cursor });
+        if (cursor && pages < maxPages && requestDelayMs) await sleep(requestDelayMs);
+      } while (cursor && pages < maxPages);
+      const nextBackfill = backfill ? advanceGemBackfill(backfill, portal.syncState, cursor) : null;
+      const completeness = Object.fromEntries(Object.entries(complete).map(([key, value]) => [key, discovered ? Math.round(value * 10_000 / discovered) / 100 : 0]));
+      await repository.completeRun(run.id, portal.id, { discovered, parsed, rejected, duplicates, inserted, updated, completeness }, mode === "BACKFILL" ? null : cursor, {
+        mode,
+        scope,
+        fullSnapshot: mode === "FULL_REFRESH" || mode === "RECONCILE" || (nextBackfill?.complete ?? false),
+        backfillComplete: nextBackfill?.complete ?? false,
+        syncState: nextBackfill?.state ?? portal.syncState,
+      });
+      logger.info(
+        { portal: portal.key, discovered, parsed, rejected, inserted, updated, duplicates, completeness },
+        "tender portal sync complete",
+      );
+      return { processed: true, discovered, inserted, updated };
+    } catch (error) {
+      await repository.failRun(
+        run.id,
+        portal.id,
+        error instanceof Error ? error.message : "Tender portal sync failed.",
+      );
+      throw error;
+    }
+  }
+}
+
+/** Runs tasks one after another, in the order they were submitted. */
+function createSerialRunner() {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(task: () => Promise<T>): Promise<T> => {
+    const run = tail.then(task, task);
+    tail = run.catch(() => undefined);
+    return run;
+  };
 }
 
 export function startTenderDiscoveryScheduler(connection: IORedis) {

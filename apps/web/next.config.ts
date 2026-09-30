@@ -34,6 +34,10 @@ const nextConfig: NextConfig = {
         destination: `${apiTarget}/api/v1/:path*`,
       },
       {
+        source: "/api/auth/:path*",
+        destination: `${apiTarget}/api/auth/:path*`,
+      },
+      {
         source: `/${storageBucket}/:path*`,
         destination: `${storageTarget}/${storageBucket}/:path*`,
       },

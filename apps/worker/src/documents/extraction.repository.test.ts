@@ -21,11 +21,12 @@ import { ExtractionRepository, type ExtractionResult } from "./extraction.reposi
  * the replace-on-re-extract behaviour and the tenant scoping, both of which
  * are properties of the SQL and the constraints rather than of the types.
  */
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 describeDb("Extraction storage", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const repository = new ExtractionRepository();
 
   const suffix = randomUUID().slice(0, 8);

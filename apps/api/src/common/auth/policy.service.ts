@@ -43,7 +43,86 @@ export class PolicyService {
     action: string,
     attributes: ResourceAttributes = {},
   ): Promise<PolicyDecision> {
-    const policies = await this.db
+    const [decision] = await this.evaluateMany(auth, resource, action, [attributes]);
+    return decision ?? { allowed: true };
+  }
+
+  /**
+   * Evaluates one action against many resources of the same type. Policies and
+   * their conditions are loaded once, then each attribute set is decided in
+   * memory — so filtering a list costs two queries, not two per row. Decisions
+   * are returned in the same order as `attributesList`.
+   */
+  async evaluateMany(
+    auth: AuthContext,
+    resource: string,
+    action: string,
+    attributesList: ResourceAttributes[],
+  ): Promise<PolicyDecision[]> {
+    if (attributesList.length === 0) return [];
+
+    const policies = await this.loadActivePolicies(auth, resource, action);
+    if (policies.length === 0) return attributesList.map(() => ({ allowed: true }));
+
+    const conditionRows = await this.db
+      .select()
+      .from(policyConditions)
+      .where(inArray(policyConditions.policyId, policies.map((policy) => policy.id)));
+    const conditions = conditionRows.filter(
+      (condition): condition is typeof policyConditions.$inferSelect =>
+        typeof (condition as { attribute?: unknown }).attribute === "string",
+    );
+
+    const actor = {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      role: auth.role,
+      permissions: auth.permissions,
+    };
+    const evaluable = policies.map((policy) => ({
+      effect: policy.effect,
+      action: policy.action,
+      resource: policy.resource,
+      priority: policy.priority,
+      conditions: [
+        ...this.conditionsFromLegacyJson(policy.condition as Record<string, unknown> | null),
+        ...conditions
+          .filter((condition) => condition.policyId === policy.id)
+          .map((condition) => ({
+            attribute: condition.attribute,
+            operator: condition.operator,
+            value: condition.value,
+            logicalGroup: condition.logicalGroup,
+          })),
+      ],
+    }));
+    const denyReason =
+      policies.find((policy) => policy.effect === "deny")?.description ||
+      `Denied by policy on ${resource}:${action}.`;
+
+    return attributesList.map((attributes) => {
+      const decision = evaluatePolicies(
+        actor,
+        { type: resource, organizationId: auth.organizationId, attributes },
+        action,
+        evaluable,
+      );
+      return decision.allowed ? { allowed: true } : { allowed: false, reason: denyReason };
+    });
+  }
+
+  /**
+   * Cheap check for whether any active policy could affect this caller's
+   * `resource:action`. When none can, RBAC alone decides and callers may skip
+   * per-row evaluation entirely.
+   */
+  async hasActivePolicies(auth: AuthContext, resource: string, action: string): Promise<boolean> {
+    const policies = await this.loadActivePolicies(auth, resource, action);
+    return policies.length > 0;
+  }
+
+  private loadActivePolicies(auth: AuthContext, resource: string, action: string) {
+    return this.db
       .select()
       .from(accessPolicies)
       .where(
@@ -55,58 +134,6 @@ export class PolicyService {
           eq(accessPolicies.status, "active"),
         ),
       );
-
-    if (policies.length === 0) return { allowed: true };
-
-    const conditionRows = await this.db
-      .select()
-      .from(policyConditions)
-      .where(inArray(policyConditions.policyId, policies.map((policy) => policy.id)));
-    const conditions = conditionRows.filter(
-      (condition): condition is typeof policyConditions.$inferSelect =>
-        typeof (condition as { attribute?: unknown }).attribute === "string",
-    );
-
-    const decision = evaluatePolicies(
-      {
-        userId: auth.userId,
-        organizationId: auth.organizationId,
-        role: auth.role,
-        permissions: auth.permissions,
-      },
-      {
-        type: resource,
-        organizationId: auth.organizationId,
-        attributes,
-      },
-      action,
-      policies.map((policy) => ({
-        effect: policy.effect,
-        action: policy.action,
-        resource: policy.resource,
-        priority: policy.priority,
-        conditions: [
-          ...this.conditionsFromLegacyJson(policy.condition as Record<string, unknown> | null),
-          ...conditions
-            .filter((condition) => condition.policyId === policy.id)
-            .map((condition) => ({
-              attribute: condition.attribute,
-              operator: condition.operator,
-              value: condition.value,
-              logicalGroup: condition.logicalGroup,
-            })),
-        ],
-      })),
-    );
-
-    return decision.allowed
-      ? { allowed: true }
-      : {
-          allowed: false,
-          reason:
-            policies.find((policy) => policy.effect === "deny")?.description ||
-            `Denied by policy on ${resource}:${action}.`,
-        };
   }
 
   private conditionsFromLegacyJson(condition: Record<string, unknown> | null) {

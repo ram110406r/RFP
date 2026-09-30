@@ -529,6 +529,54 @@ export interface TenderRequirement {
   questionIds: string[];
 }
 
+export interface RequirementsQueueRow {
+  tender: TenderSummary;
+  requirement: TenderRequirement;
+  questionIds: string[];
+  answerState: {
+    answered: boolean;
+    pendingReview: boolean;
+    approved: boolean;
+    lowConfidence: boolean;
+    answerCount: number;
+    answerIds: string[];
+    evidenceCount: number;
+    latestStatus: string | null;
+    updatedAt: string | null;
+  };
+  reviewState: {
+    pendingReview: boolean;
+    approved: boolean;
+    changesRequested: boolean;
+    reviewCount: number;
+    latestStatus: string | null;
+    updatedAt: string | null;
+  };
+  riskState: {
+    blocked: boolean;
+    highRisk: boolean;
+    lowConfidence: boolean;
+  };
+  lastActivityAt: string | null;
+}
+
+export interface RequirementsQueuePayload {
+  items: RequirementsQueueRow[];
+  counts: {
+    tenders: number;
+    requirements: number;
+    mandatory: number;
+    unanswered: number;
+    highRisk: number;
+    pendingReview: number;
+    approved: number;
+    blocked: number;
+  };
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface TenderAnswer {
   id: string;
   organizationId: string;
@@ -614,9 +662,80 @@ export interface TenderReview {
   reviewerId: string | null;
   reviewerName?: string | null;
   status: string;
+  contentDigest?: string | null;
   comment: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ResponsesQueueRow {
+  tender: TenderSummary;
+  answer: TenderAnswer;
+  question: TenderQuestion;
+  requirement: TenderRequirement | null;
+  linkedRequirementCount: number;
+  reviewSummary: {
+    latest: (TenderReview & { reviewerName: string | null }) | null;
+    counts: {
+      total: number;
+      pending: number;
+      changesRequested: number;
+      approved: number;
+      rejected: number;
+    };
+    latestStatus: string | null;
+    latestComment: string | null;
+    latestReviewerName: string | null;
+  };
+  navigation: {
+    primaryHref: string;
+    applyHref: string;
+    tenderHref: string;
+  };
+  lastActivityAt: string;
+}
+
+export interface ResponsesQueuePayload {
+  items: ResponsesQueueRow[];
+  counts: {
+    total: number;
+    draft: number;
+    needsReview: number;
+    missingEvidence: number;
+    lowConfidence: number;
+    changesRequested: number;
+    final: number;
+  };
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface ReviewQueueItem {
+  review: TenderReview;
+  tender: TenderSummary;
+  answer: TenderAnswer;
+  question: TenderQuestion;
+  requirement: (TenderRequirement & { questionIds: string[] }) | null;
+  reviewer: { id: string; name: string; email: string } | null;
+  href: string;
+  canAct: boolean;
+}
+
+export interface ReviewQueuePayload {
+  generatedAt: string;
+  items: ReviewQueueItem[];
+  counts: {
+    total: number;
+    actionable: number;
+    pending: number;
+    changesRequested: number;
+    approved: number;
+    rejected: number;
+  };
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface TenderBriefPayload {
@@ -681,6 +800,19 @@ export interface KnowledgeVersion {
   note: string;
 }
 
+export interface KnowledgeConflict {
+  id: string;
+  sourceId: string;
+  topic: string;
+  recommended: string;
+  action: string;
+  status: "OPEN" | "RESOLVED";
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  resolutionNote: string | null;
+  variants: Array<{ id: string; label: string; value: string }>;
+}
+
 export interface KnowledgeItem {
   id: string;
   organizationId: string;
@@ -700,10 +832,75 @@ export interface KnowledgeItem {
   updatedAt: string;
   claims?: KnowledgeClaim[];
   versions?: KnowledgeVersion[];
+  conflicts?: KnowledgeConflict[];
 }
 
 export interface KnowledgeListPayload {
   items: KnowledgeItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface KnowledgeIssue {
+  id: string;
+  type: "DRAFT" | "STALE" | "EXPIRED" | "EXPIRING_SOON" | "CONFLICT";
+  status: "OPEN" | "RESOLVED";
+  title: string;
+  detail: string;
+  recommendedAction: string;
+  source: KnowledgeItem;
+  conflict?: KnowledgeConflict;
+  createdAt: string;
+}
+
+export interface KnowledgeIssuesPayload {
+  items: KnowledgeIssue[];
+  total: number;
+  page: number;
+  pageSize: number;
+  counts: {
+    total: number;
+    draft: number;
+    stale: number;
+    expired: number;
+    expiring_soon: number;
+    conflict: number;
+  };
+}
+
+export interface ResponseTemplateSection {
+  id?: string;
+  title: string;
+  body: string;
+}
+
+export interface ResponseTemplateVariable {
+  key: string;
+  label: string;
+  required?: boolean;
+  defaultValue?: string;
+}
+
+export interface ResponseTemplate {
+  id: string;
+  organizationId: string;
+  name: string;
+  category: string;
+  status: "DRAFT" | "ACTIVE" | "ARCHIVED";
+  ownerId: string | null;
+  description: string;
+  sections: ResponseTemplateSection[];
+  variables: ResponseTemplateVariable[];
+  version: string;
+  usageMetadata: Record<string, unknown>;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResponseTemplatesPayload {
+  items: ResponseTemplate[];
   total: number;
   page: number;
   pageSize: number;
@@ -722,8 +919,15 @@ export interface DashboardIssue {
   evidenceId?: string;
 }
 
+export interface DashboardOwner {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface DashboardTenderCard {
   tender: TenderSummary;
+  owner?: DashboardOwner | null;
   readiness: number | null;
   ready: boolean;
   issueCount: number;
@@ -736,6 +940,66 @@ export interface DashboardTenderCard {
   latestSubmission?: Pick<TenderSubmission, "id" | "packageId" | "portal" | "portalReference" | "submittedAt" | "notes" | "createdAt"> | null;
 }
 
+export type SubmissionQueueActionState =
+  | "VIEW_RECEIPT"
+  | "RECORD_RECEIPT"
+  | "APPROVE_PACKAGE"
+  | "REBUILD_PACKAGE"
+  | "BUILD_PACKAGE"
+  | "RESOLVE_BLOCKERS";
+
+export interface SubmissionsQueueRow {
+  tender: TenderSummary;
+  readiness: number | null;
+  ready: boolean;
+  issueCount: number;
+  blockingIssueCount: number;
+  latestPackage: Pick<TenderSubmissionPackage, "id" | "version" | "status" | "failureReason" | "createdAt" | "completedAt"> | null;
+  latestSubmission: Pick<TenderSubmission, "id" | "packageId" | "portal" | "portalReference" | "submittedAt" | "notes" | "createdAt"> | null;
+  actionState: SubmissionQueueActionState;
+  lastActivityAt: string | null;
+}
+
+export interface SubmissionsQueuePayload {
+  items: SubmissionsQueueRow[];
+  counts: {
+    tenders: number;
+    noPackage: number;
+    generating: number;
+    ready: number;
+    approved: number;
+    needsRebuild: number;
+    submitted: number;
+    blocked: number;
+  };
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export type PipelineStageId = "intake" | "answering" | "review" | "approval" | "ready" | "submitted";
+
+export interface PipelineTenderCard extends DashboardTenderCard {
+  pipelineStageId: PipelineStageId;
+  availableTransitions: Array<{
+    to: string;
+    label: string;
+    description: string;
+  }>;
+}
+
+export interface PipelinePayload {
+  generatedAt: string;
+  metrics: DashboardSummary["metrics"];
+  stages: Array<{ id: PipelineStageId; label: string; count: number }>;
+  items: PipelineTenderCard[];
+  errors: Array<{ section: string; message: string }>;
+  /** Only set when the request passed `pageSize`; the web app requests the full set. */
+  total?: number;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface DashboardKnowledgeHealth {
   counts: {
     total: number;
@@ -743,6 +1007,10 @@ export interface DashboardKnowledgeHealth {
     active: number;
     archived: number;
     stale: number;
+    expired?: number;
+    expiring?: number;
+    templates?: number;
+    conflicts?: number;
   };
   items: KnowledgeItem[];
   attention: KnowledgeItem[];

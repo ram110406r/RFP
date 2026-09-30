@@ -23,11 +23,6 @@ type BoundaryResult = {
 };
 
 const API_BASE = "http://localhost:4100/api/v1";
-const DEFAULT_LOGIN = {
-  email: "priya.nair@halcyonsystems.com",
-  password: "PriyaDemo!2026",
-};
-
 const results: BoundaryResult[] = [];
 
 function record(boundary: string, status: BoundaryStatus, detail: string) {
@@ -104,7 +99,7 @@ async function main() {
   const login = await fetch(`${API_BASE}/auth/dev-login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(DEFAULT_LOGIN),
+    body: "{}",
   });
   if (!login.ok) {
     throw new Error(`Dev login failed with HTTP ${login.status}`);

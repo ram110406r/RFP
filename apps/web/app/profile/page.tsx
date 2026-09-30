@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { updateProfile } from "firebase/auth";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import {
   ArrowRight,
   Bell,
@@ -26,8 +24,7 @@ import {
 import { AppShell } from "../../components/app-shell";
 import { TendyyResponsiveNav } from "../../components/tendyy-ui";
 import { useFirebaseSession } from "../../components/firebase-auth-gate";
-import { fetchOnboardingStatus } from "../../lib/api";
-import { getFirebaseAuth, getFirebaseDb } from "../../lib/firebase";
+import { fetchOnboardingStatus, updateCurrentProfile } from "../../lib/api";
 import { useActivities, useOrganizationCurrent, useOrganizationMembers } from "../../lib/queries";
 import { Button } from "@rfp-os/ui";
 
@@ -151,21 +148,10 @@ function ProfileWorkspace() {
   const [skillsDraft, setSkillsDraft] = useState(profileSource.skills.join(", "));
 
   const saveProfileMutation = useMutation({
-    mutationFn: async (patch: Record<string, unknown>) => {
+    mutationFn: async (patch: Parameters<typeof updateCurrentProfile>[0]) => {
       if (!user) throw new Error("No authenticated user available.");
-      const auth = getFirebaseAuth();
-      if (patch.displayName && auth.currentUser && typeof patch.displayName === "string" && auth.currentUser.displayName !== patch.displayName) {
-        await updateProfile(auth.currentUser, { displayName: patch.displayName });
-      }
-
-      await setDoc(
-        doc(getFirebaseDb(), "users", user.uid),
-        {
-          ...patch,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+      await updateCurrentProfile(patch);
+      await session?.refresh();
     },
   });
 

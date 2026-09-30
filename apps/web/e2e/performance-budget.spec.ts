@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const queueRoutes = ["/apply", "/requirements", "/responses", "/reviews", "/submissions"] as const;
 const apiRequestBudget = 8;
 
-test.describe("queue performance budgets", () => {
+if (typeof Bun === "undefined") test.describe("queue performance budgets", () => {
   const authenticated = Boolean(process.env.PLAYWRIGHT_E2E && process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST && process.env.PLAYWRIGHT_E2E_EMAIL && process.env.PLAYWRIGHT_E2E_PASSWORD);
   test.skip(!authenticated && process.env.PLAYWRIGHT_GUEST_AUDIT !== "1", "Set the Firebase emulator test environment, or use PLAYWRIGHT_GUEST_AUDIT=1 against a development-only guest server.");
 

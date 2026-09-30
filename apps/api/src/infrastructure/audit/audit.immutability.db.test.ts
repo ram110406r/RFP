@@ -11,11 +11,12 @@ const hasComposeDatabase =
   liveDatabaseUrl.includes("@postgres:5432/") ||
   liveDatabaseUrl.includes("@postgres/");
 
-const dbTest = hasComposeDatabase ? test : test.skip;
-const describeDb = hasComposeDatabase ? describe : describe.skip;
+const shouldRunDbTests = Boolean(hasComposeDatabase && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 describeDb("Audit immutability", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const audit = new AuditService(db);
   const orgId = randomUUID();
   const userId = randomUUID();

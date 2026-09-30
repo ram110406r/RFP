@@ -232,6 +232,20 @@
       "when": 1788933600000,
       "tag": "0032_tender_search_p0_p2",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788937200000,
+      "tag": "0033_knowledge_brain_workflows",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788940800000,
+      "tag": "0034_backend_owned_profile",
+      "breakpoints": true
     }
   ]
 }

@@ -38,8 +38,9 @@ import { DocumentsService } from "./documents.service";
  * URL. The one behaviour that genuinely depends on storage (size verification
  * at completion) is exercised through the fake's controllable head response.
  */
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 class RecordingPublisher extends EventPublisher {
   readonly published: DomainEvent[] = [];
@@ -115,7 +116,7 @@ class RecordingJobQueue extends JobQueue {
 const PDF = "application/pdf";
 
 describeDb("Document ingestion", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const events = new RecordingPublisher();
   const repository = new DocumentsRepository(db);
   const storage = new FakeObjectStorage();

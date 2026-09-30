@@ -16,7 +16,7 @@ configuration determines which infrastructure it uses.
 - BullMQ worker in `apps/worker`
 - PostgreSQL + pgvector with Drizzle in `packages/db`
 - Redis, MinIO/S3, OpenSearch
-- Firebase browser auth with API-side token verification
+- Better Auth browser sessions backed by Postgres, with temporary Firebase token compatibility behind an opt-in flag
 
 ## Local Setup
 
@@ -55,7 +55,9 @@ bun db:reset         # local-only: drop/recreate DB schema and rerun migrations
 
 bun doctor           # verify local tooling, infra, env, DB, and seed data
 bun build            # production build
-bun test             # tests
+bun test             # fast unit tests, no database
+bun test:db          # DB-backed API/worker tests; requires infra + migrations
+bun test:e2e         # Playwright specs through the web package runner
 bun lint             # lint
 bun typecheck        # TypeScript checks
 ```
@@ -76,7 +78,7 @@ Change only environment values.
 | Storage | MinIO `localhost:59000` | staging S3/MinIO | production S3/MinIO |
 | Search | OpenSearch `localhost:45200` | staging search | production search |
 | AI | `AI_PROVIDER=mock` or configured provider | configured provider | configured provider, never mock |
-| Auth | Firebase dev/project config | staging Firebase config | production Firebase config |
+| Auth | Better Auth + local Postgres | Better Auth + staging Postgres | Better Auth + production Postgres |
 
 Important variables:
 
@@ -92,8 +94,11 @@ Important variables:
 - `OPENSEARCH_URL`
 - `CORS_ORIGIN`
 - `AI_PROVIDER`
-- `FIREBASE_PROJECT_ID`
-- `NEXT_PUBLIC_FIREBASE_*`
+- `BETTER_AUTH_SECRET`
+- `BETTER_AUTH_URL`
+- `BETTER_AUTH_GOOGLE_CLIENT_ID`
+- `BETTER_AUTH_GOOGLE_CLIENT_SECRET`
+- `ENABLE_FIREBASE_AUTH_COMPAT` and `FIREBASE_PROJECT_ID` only during Firebase token migration compatibility
 
 `.env.local`, `.env`, `.env.production`, and other real env files are ignored.
 Only example files are committed.
@@ -154,14 +159,21 @@ separate Dokploy Postgres service.
 
 ## Authentication Direction
 
-Production currently uses Firebase browser auth with API-side token
-verification. Keep that path for now; switching providers only for cost would
-add migration risk without simplifying this codebase.
+Better Auth is the browser-facing auth system for local and production. It uses
+the existing Postgres/Drizzle identity tables, and the API resolves tenants
+from Postgres memberships server-side.
 
-If a fully self-hosted/free auth path becomes important, finish the existing
-Better Auth integration and remove Firebase after migration. Better Auth is
-already installed, uses the existing Postgres/Drizzle model, and fits the
-Nest API plus Next web split better than adding another hosted platform.
+Firebase token verification is retained only as temporary migration
+compatibility behind `ENABLE_FIREBASE_AUTH_COMPAT=true`. It is disabled by
+default and should not be used for new browser session or profile behavior.
+
+## Product Domain Direction
+
+`tenders` is the canonical active product domain: discovery opportunity,
+application workspace, answer/evidence/review, automation runs, and package
+generation. Legacy `rfp_*` tables and `apps/api/src/modules/rfp/**` remain for
+compatibility until a later migration/removal plan. Do not build new product
+behavior on `rfp_*`.
 
 ## Documentation Layout
 
@@ -182,7 +194,7 @@ Historical prompts, audits, investigations, and feature-planning notes live in
 - OpenSearch unavailable: check memory limits and `bun infra:logs`.
 - Missing env variable: copy `.env.example` to `.env.local` and rerun.
 - CORS error: ensure `CORS_ORIGIN` matches the web origin exactly.
-- Auth error: verify `FIREBASE_PROJECT_ID` and `NEXT_PUBLIC_FIREBASE_*`.
+- Auth error: verify `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, CORS origins, and Google OAuth vars when using Google sign-in.
 - Worker unavailable: ensure `REDIS_URL` is set and `bun dev:apps` is running.
 - Migration error: run `bun db:migrate`; for local-only rebuilds use
   `APP_ENV=local bun db:reset && bun db:ensure-seed`.

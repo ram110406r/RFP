@@ -8,12 +8,39 @@ export interface PdfExtractionResult extends ExtractionResult {
 
 const EXTRACTOR = "pdfjs-dist@6.2.108";
 
+/**
+ * Upper bound on pages walked per document. Text extraction is linear in page
+ * count and every page's text is held in memory until the extraction is saved,
+ * so a PDF declaring a huge page tree must be refused rather than walked.
+ */
+export const DEFAULT_MAX_PDF_PAGES = 2_000;
+
+export interface PdfDocumentParserOptions {
+  maxPages?: number;
+}
+
+export class PdfParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PdfParseError";
+  }
+}
+
 export class PdfDocumentParser {
+  private readonly maxPages: number;
+
+  constructor(options: PdfDocumentParserOptions = {}) {
+    this.maxPages = options.maxPages ?? DEFAULT_MAX_PDF_PAGES;
+  }
+
   async parse(bytes: Uint8Array): Promise<PdfExtractionResult> {
     const loadingTask = getDocument({ data: bytes, stopAtErrors: true });
 
     try {
       const pdf = await loadingTask.promise;
+      if (pdf.numPages > this.maxPages) {
+        throw new PdfParseError(`PDF has ${pdf.numPages} pages; the limit is ${this.maxPages}.`);
+      }
       const pages: ExtractedPage[] = [];
 
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {

@@ -1,5 +1,6 @@
-import { All, Body, Controller, ForbiddenException, Get, Post, Req, Res, VERSION_NEUTRAL } from "@nestjs/common";
+import { All, Controller, Get, NotFoundException, Post, Req, Res, VERSION_NEUTRAL } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { DEMO_LOGIN_EMAIL, DEMO_LOGIN_PASSWORD } from "@rfp-os/db";
 
 import { AllowWithoutOrg, CurrentAuth, Public, toFetchHeaders } from "../../common/auth";
 import type { RequestWithAuth } from "../../common/auth";
@@ -28,6 +29,10 @@ export class AuthController {
   async handle(@Req() request: Request, @Res() response: Response): Promise<void> {
     const webRequest = toWebRequest(request);
     const webResponse = await this.authService.auth.handler(webRequest);
+    if (isSuccessfulPasswordSignup(request, webResponse)) {
+      const email = typeof request.body?.email === "string" ? request.body.email : "";
+      await this.authService.markEmailVerifiedForPasswordSignup(email);
+    }
     await writeWebResponse(webResponse, response);
   }
 }
@@ -85,27 +90,21 @@ export class AuthSessionController {
   /**
    * Local-development helper that creates the demo credential if needed and
    * then signs in through Better Auth so the browser gets the real cookie.
+   * Always signs in as the seeded demo user; any request body is ignored.
+   * Outside a local stack the route answers 404 as if it did not exist.
    */
   @Public()
   @Post("dev-login")
-  async devLogin(
-    @Req() request: Request,
-    @Res() response: Response,
-    @Body()
-    body: {
-      email?: string;
-      password?: string;
-    } = {},
-  ): Promise<void> {
-    if (process.env.NODE_ENV === "production") {
-      throw new ForbiddenException("Development login is disabled in production.");
+  async devLogin(@Req() request: Request, @Res() response: Response): Promise<void> {
+    if (!this.authService.isDevelopmentLoginEnabled()) {
+      throw new NotFoundException();
     }
 
-    const email = body.email ?? "priya.nair@halcyonsystems.com";
-    const password = body.password ?? "PriyaDemo!2026";
+    const email = DEMO_LOGIN_EMAIL;
+    const password = DEMO_LOGIN_PASSWORD;
 
     try {
-      await this.authService.ensureDevelopmentCredential(email, password);
+      await this.authService.ensureDevelopmentCredential();
     } catch (error) {
       console.warn(
         `[AuthController] dev-login credential bootstrap failed for ${email}: ${
@@ -147,6 +146,12 @@ function toWebRequest(request: Request): Request2 {
       : undefined;
 
   return new globalThis.Request(url.toString(), { method: request.method, headers, body });
+}
+
+function isSuccessfulPasswordSignup(request: Request, response: Response2): boolean {
+  const method = request.method.toUpperCase();
+  const path = request.path.replace(/\/$/, "");
+  return method === "POST" && path.endsWith("/sign-up/email") && response.status >= 200 && response.status < 300;
 }
 
 type Request2 = globalThis.Request;

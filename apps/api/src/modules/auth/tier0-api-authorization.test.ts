@@ -19,7 +19,6 @@ import {
 } from "@rfp-os/db";
 import { permissionsForRole, type AuthContext } from "@rfp-os/types";
 
-import { AppModule } from "../../app.module";
 import { ActivityService } from "../../infrastructure/activity";
 import { AuditService } from "../../infrastructure/audit";
 import { AssignmentsService } from "../assignments/assignments.service";
@@ -27,8 +26,9 @@ import { AuthService, type ResolvedSession } from "./auth.service";
 import { RolesService } from "../roles/roles.service";
 import { PoliciesService } from "../policies/policies.service";
 
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 const env = {
   NODE_ENV: "test",
@@ -54,7 +54,7 @@ const config = {
 } as never;
 
 describeDb("Tier 0 HTTP authorization path", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const activity = new ActivityService(db);
   const audit = new AuditService(db);
   const rolesService = new RolesService(db, activity, audit);
@@ -98,6 +98,8 @@ describeDb("Tier 0 HTTP authorization path", () => {
   });
 
   beforeAll(async () => {
+    const { AppModule } = await import("../../app.module");
+
     await db.insert(organizations).values([
       { id: orgA, name: `HTTP Org A ${suffix}`, domain: `http-a-${suffix}.invalid` },
       { id: orgB, name: `HTTP Org B ${suffix}`, domain: `http-b-${suffix}.invalid` },

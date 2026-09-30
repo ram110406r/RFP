@@ -13,7 +13,12 @@ import {
   dashboardSummarySchema,
   improveTenderAnswerSchema,
   listTendersSchema,
+  pipelineQuerySchema,
+  requirementsQueueSchema,
+  responsesQueueSchema,
+  reviewQueueSchema,
   searchTenderRequirementEvidenceSchema,
+  submissionsQueueSchema,
   transitionTenderSchema,
   updateTenderAnswerSchema,
   updateTenderQuestionSchema,
@@ -29,7 +34,12 @@ import {
   type DashboardSummaryInput,
   type ImproveTenderAnswerInput,
   type ListTendersInput,
+  type PipelineQueryInput,
+  type RequirementsQueueInput,
+  type ResponsesQueueInput,
+  type ReviewQueueInput,
   type SearchTenderRequirementEvidenceInput,
+  type SubmissionsQueueInput,
   type TransitionTenderInput,
   type UpdateTenderAnswerInput,
   type UpdateTenderQuestionInput,
@@ -66,6 +76,13 @@ export class TendersController {
   @ZodQuery(dashboardSummarySchema)
   async dashboard(@CurrentAuth() auth: AuthContext, @Query() query: DashboardSummaryInput) {
     return this.tenders.getDashboard(auth, query);
+  }
+
+  @Get("pipeline")
+  @RequirePermissions("tender:read")
+  @ZodQuery(pipelineQuerySchema)
+  async pipeline(@CurrentAuth() auth: AuthContext, @Query() query: PipelineQueryInput) {
+    return this.tenders.getPipeline(auth, query);
   }
 
   @Get(":id")
@@ -455,6 +472,42 @@ export class TendersController {
   }
 }
 
+@Controller({ path: "requirements", version: "1" })
+export class RequirementsController {
+  constructor(private readonly tenders: TendersService) {}
+
+  @Get("workspace-queue")
+  @RequirePermissions("requirement:read")
+  @ZodQuery(requirementsQueueSchema)
+  async workspaceQueue(@CurrentAuth() auth: AuthContext, @Query() query: RequirementsQueueInput) {
+    return this.tenders.getRequirementsQueue(auth, query);
+  }
+}
+
+@Controller({ path: "responses", version: "1" })
+export class ResponsesController {
+  constructor(private readonly tenders: TendersService) {}
+
+  @Get("workspace-queue")
+  @RequirePermissions("answer:read")
+  @ZodQuery(responsesQueueSchema)
+  async workspaceQueue(@CurrentAuth() auth: AuthContext, @Query() query: ResponsesQueueInput) {
+    return this.tenders.getResponsesQueue(auth, query);
+  }
+}
+
+@Controller({ path: "submissions", version: "1" })
+export class SubmissionsController {
+  constructor(private readonly tenders: TendersService) {}
+
+  @Get("workspace-queue")
+  @RequirePermissions("tender:read")
+  @ZodQuery(submissionsQueueSchema)
+  async workspaceQueue(@CurrentAuth() auth: AuthContext, @Query() query: SubmissionsQueueInput) {
+    return this.tenders.getSubmissionsQueue(auth, query);
+  }
+}
+
 @Controller({ path: "answers", version: "1" })
 export class TenderAnswerReviewsController {
   constructor(private readonly tenders: TendersService) {}
@@ -474,6 +527,13 @@ export class TenderAnswerReviewsController {
 @Controller({ path: "reviews", version: "1" })
 export class TenderReviewsController {
   constructor(private readonly tenders: TendersService) {}
+
+  @Get("queue")
+  @RequirePermissions("answer:read")
+  @ZodQuery(reviewQueueSchema)
+  async queue(@CurrentAuth() auth: AuthContext, @Query() query: ReviewQueueInput) {
+    return this.tenders.getReviewQueue(auth, query);
+  }
 
   @Patch(":reviewId")
   @RequirePermissions("answer:review")

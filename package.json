@@ -9,6 +9,8 @@
     "dev:apps": "bun scripts/run-with-env.ts turbo run dev --filter=@rfp-os/api --filter=@rfp-os/worker --filter=@rfp-os/web",
     "build": "bun scripts/run-with-env.ts --node-env=production turbo run build",
     "test": "bun scripts/run-with-env.ts --node-env=test --without-database turbo run test",
+    "test:db": "bun scripts/run-with-env.ts --node-env=test --require-database turbo run test:db",
+    "test:e2e": "bun scripts/run-with-env.ts --node-env=test turbo run test:e2e --filter=@rfp-os/web",
     "lint": "bun scripts/run-with-env.ts turbo run lint",
     "typecheck": "bun scripts/run-with-env.ts turbo run typecheck",
     "format": "prettier --write .",

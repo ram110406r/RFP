@@ -76,6 +76,11 @@ import type {
   CreateTenderReviewInput,
   CreateTenderInput,
   ListTendersInput,
+  RequirementsQueueInput,
+  ResponsesQueueInput,
+  PipelineQueryInput,
+  ReviewQueueInput,
+  SubmissionsQueueInput,
   TransitionTenderInput,
   UpdateTenderAnswerInput,
   UpdateTenderQuestionInput,
@@ -117,7 +122,18 @@ import {
   permissionForTenderTransition,
   type TenderStatus,
 } from "./domain/tender-state-machine";
-import { buildDashboardSummary, type DashboardAiActivity, type DashboardEvidenceHealth, type DashboardKnowledgeHealth, type DashboardSectionError, type DashboardTenderCard } from "../dashboard/dashboard-summary.logic";
+import {
+  buildDashboardSummary,
+  buildPipelineSummary,
+  isActivePipelineStatus,
+  mapPipelineStage,
+  type DashboardAiActivity,
+  type DashboardEvidenceHealth,
+  type DashboardKnowledgeHealth,
+  type DashboardSectionError,
+  type DashboardTenderCard,
+  type PipelineTenderCard,
+} from "../dashboard/dashboard-summary.logic";
 
 type TenderRow = typeof tenders.$inferSelect;
 type TenderQuestionRow = typeof tenderQuestions.$inferSelect;
@@ -167,6 +183,26 @@ type TenderValidationSnapshot = {
   categories: TenderValidationCategory[];
   issues: TenderValidationIssue[];
 };
+type TenderValidationInputs = {
+  questions: TenderQuestionRow[];
+  requirements: TenderRequirementRow[];
+  answers: TenderAnswerRow[];
+  sources: TenderSourceRow[];
+  reviews: TenderReviewRow[];
+  evidence: Array<typeof tenderAnswerEvidence.$inferSelect>;
+  links: Array<typeof tenderQuestionRequirements.$inferSelect>;
+};
+type TenderValidationSummary = {
+  validation: TenderValidationSnapshot;
+  reviews: TenderReviewRow[];
+};
+type SubmissionQueueActionState =
+  | "VIEW_RECEIPT"
+  | "RECORD_RECEIPT"
+  | "APPROVE_PACKAGE"
+  | "REBUILD_PACKAGE"
+  | "BUILD_PACKAGE"
+  | "RESOLVE_BLOCKERS";
 
 const TENDER_ACTIVITY_ACTIONS = {
   CREATED: "tender.created",
@@ -338,6 +374,10 @@ export class TendersService {
       filters.includeArchived ? undefined : sql`${tenders.archivedAt} is null`,
     );
 
+    if (await this.policy.hasActivePolicies(auth, "tender", "read")) {
+      return this.listPolicyFiltered(auth, filters, where);
+    }
+
     const [totalRow] = await this.db
       .select({ value: sql<number>`count(*)` })
       .from(tenders)
@@ -375,11 +415,452 @@ export class TendersService {
     };
   }
 
+  /**
+   * `list()` when `tender:read` policies apply to the caller: SQL can't evaluate
+   * them, so select the policy attributes of every matching row (same filters
+   * and sort), keep the readable ones, page the ids in memory and then load
+   * only that page. `total` is the readable count.
+   */
+  private async listPolicyFiltered(
+    auth: AuthContext,
+    filters: ListTendersInput,
+    where: ReturnType<typeof and>,
+  ) {
+    const savedJoin = and(
+      eq(savedTenders.organizationId, auth.organizationId),
+      eq(savedTenders.workspaceId, tenders.workspaceId),
+      eq(savedTenders.tenderId, tenders.id),
+    );
+    const candidates = await this.db
+      .select({
+        id: tenders.id,
+        workspaceId: tenders.workspaceId,
+        ownerId: tenders.ownerId,
+        status: tenders.status,
+        tenderType: tenders.tenderType,
+        archivedAt: tenders.archivedAt,
+      })
+      .from(tenders)
+      .leftJoin(savedTenders, savedJoin)
+      .where(where)
+      .orderBy(...this.tenderListOrder(filters.sort));
+    const readable = await this.filterReadableTenders(auth, candidates);
+    const start = (filters.page - 1) * filters.pageSize;
+    const pageIds = readable.slice(start, start + filters.pageSize).map((row) => row.id);
+
+    const pageRows =
+      pageIds.length === 0
+        ? []
+        : await this.db
+            .select({ tender: tenders, savedTenderId: savedTenders.tenderId })
+            .from(tenders)
+            .leftJoin(savedTenders, savedJoin)
+            .where(and(eq(tenders.organizationId, auth.organizationId), inArray(tenders.id, pageIds)));
+    const rowById = new Map(pageRows.map((row) => [row.tender.id, row]));
+
+    return {
+      items: pageIds.flatMap((id) => {
+        const row = rowById.get(id);
+        return row ? [serializeTender(row.tender, { saved: Boolean(row.savedTenderId) })] : [];
+      }),
+      total: readable.length,
+      page: filters.page,
+      pageSize: filters.pageSize,
+    };
+  }
+
+  async getRequirementsQueue(auth: AuthContext, input: RequirementsQueueInput) {
+    const workspaceIds = this.resolveRequirementWorkspaceScope(auth, input.workspaceId);
+    const tenderRows = await this.db
+      .select()
+      .from(tenders)
+      .where(
+        and(
+          eq(tenders.organizationId, auth.organizationId),
+          workspaceIds ? inArray(tenders.workspaceId, workspaceIds) : undefined,
+          input.includeArchived ? undefined : sql`${tenders.archivedAt} is null`,
+        ),
+      );
+    const readableTenders = await this.filterReadableTenders(auth, tenderRows);
+    const tenderIds = readableTenders.map((tender) => tender.id);
+    const tenderById = new Map(readableTenders.map((tender) => [tender.id, tender]));
+
+    if (tenderIds.length === 0) {
+      return emptyRequirementsQueue(input);
+    }
+
+    const [requirementRows, linkRows, answerRows, reviewRows, evidenceRows] = await Promise.all([
+      this.db
+        .select()
+        .from(tenderRequirements)
+        .where(and(eq(tenderRequirements.organizationId, auth.organizationId), inArray(tenderRequirements.tenderId, tenderIds))),
+      this.db
+        .select()
+        .from(tenderQuestionRequirements)
+        .where(and(eq(tenderQuestionRequirements.organizationId, auth.organizationId), inArray(tenderQuestionRequirements.workspaceId, readableTenders.map((tender) => tender.workspaceId)))),
+      this.db
+        .select()
+        .from(tenderAnswers)
+        .where(and(eq(tenderAnswers.organizationId, auth.organizationId), inArray(tenderAnswers.tenderId, tenderIds))),
+      this.db
+        .select()
+        .from(tenderAnswerReviews)
+        .where(and(eq(tenderAnswerReviews.organizationId, auth.organizationId), inArray(tenderAnswerReviews.tenderId, tenderIds))),
+      this.db
+        .select()
+        .from(tenderAnswerEvidence)
+        .where(and(eq(tenderAnswerEvidence.organizationId, auth.organizationId), inArray(tenderAnswerEvidence.tenderId, tenderIds))),
+    ]);
+
+    const requirementIds = new Set(requirementRows.map((requirement) => requirement.id));
+    const questionIdsByRequirement = new Map<string, string[]>();
+    for (const link of linkRows) {
+      if (!requirementIds.has(link.requirementId)) continue;
+      const questionIds = questionIdsByRequirement.get(link.requirementId) ?? [];
+      questionIds.push(link.questionId);
+      questionIdsByRequirement.set(link.requirementId, questionIds);
+    }
+
+    const answersByQuestion = new Map<string, TenderAnswerRow[]>();
+    for (const answer of answerRows) {
+      const list = answersByQuestion.get(answer.questionId) ?? [];
+      list.push(answer);
+      answersByQuestion.set(answer.questionId, list);
+    }
+
+    const reviewsByAnswer = new Map<string, TenderReviewRow[]>();
+    for (const review of reviewRows) {
+      const list = reviewsByAnswer.get(review.answerId) ?? [];
+      list.push(review);
+      reviewsByAnswer.set(review.answerId, list);
+    }
+
+    const evidenceCountByAnswer = new Map<string, number>();
+    for (const evidence of evidenceRows) {
+      evidenceCountByAnswer.set(evidence.answerId, (evidenceCountByAnswer.get(evidence.answerId) ?? 0) + 1);
+    }
+
+    const rows = requirementRows
+      .map((requirement) => {
+        const tender = tenderById.get(requirement.tenderId);
+        if (!tender) return null;
+        const questionIds = questionIdsByRequirement.get(requirement.id) ?? [];
+        const linkedAnswers = questionIds.flatMap((questionId) => answersByQuestion.get(questionId) ?? []);
+        const linkedReviews = linkedAnswers.flatMap((answer) => reviewsByAnswer.get(answer.id) ?? []);
+        const answered = linkedAnswers.some((answer) => answer.answerText.trim().length > 0);
+        const pendingReview = linkedAnswers.some((answer) => /REVIEW|PENDING/i.test(answer.status))
+          || linkedReviews.some((review) => review.status === "PENDING" || review.status === "CHANGES_REQUESTED");
+        const approved = linkedAnswers.some((answer) => /APPROVED|FINAL/i.test(answer.status))
+          || linkedReviews.some((review) => review.status === "APPROVED");
+        const blocked = /BLOCKED|FAILED/i.test(requirement.status);
+        const lowConfidence = linkedAnswers.some((answer) => Number(answer.confidence) < 0.65);
+        const changesRequested = linkedReviews.some((review) => review.status === "CHANGES_REQUESTED");
+        const highRisk = requirement.mandatory && (!answered || lowConfidence || blocked || changesRequested);
+        const answerIds = linkedAnswers.map((answer) => answer.id);
+        const evidenceCount = answerIds.reduce((total, answerId) => total + (evidenceCountByAnswer.get(answerId) ?? 0), 0);
+        const answerUpdatedAt = latestDate(linkedAnswers.map((answer) => answer.updatedAt));
+        const reviewUpdatedAt = latestDate(linkedReviews.map((review) => review.updatedAt));
+        const lastActivityAt = latestDate([requirement.updatedAt, answerUpdatedAt, reviewUpdatedAt]);
+
+        return {
+          tender: serializeTender(tender),
+          requirement: {
+            ...serializeRequirement(requirement),
+            questionIds,
+          },
+          questionIds,
+          answerState: {
+            answered,
+            pendingReview,
+            approved,
+            lowConfidence,
+            answerCount: linkedAnswers.length,
+            answerIds,
+            evidenceCount,
+            latestStatus: linkedAnswers[0]?.status ?? null,
+            updatedAt: answerUpdatedAt,
+          },
+          reviewState: {
+            pendingReview,
+            approved,
+            changesRequested,
+            reviewCount: linkedReviews.length,
+            latestStatus: linkedReviews[0]?.status ?? null,
+            updatedAt: reviewUpdatedAt,
+          },
+          riskState: {
+            blocked,
+            highRisk,
+            lowConfidence,
+          },
+          lastActivityAt,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => Boolean(row))
+      .sort(compareRequirementQueueRows);
+
+    const counts = rows.reduce(
+      (acc, row) => {
+        acc.requirements += 1;
+        if (row.requirement.mandatory) acc.mandatory += 1;
+        if (!row.answerState.answered) acc.unanswered += 1;
+        if (row.riskState.highRisk) acc.highRisk += 1;
+        if (row.answerState.pendingReview) acc.pendingReview += 1;
+        if (row.answerState.approved) acc.approved += 1;
+        if (row.riskState.blocked) acc.blocked += 1;
+        return acc;
+      },
+      {
+        tenders: new Set(rows.map((row) => row.tender.id)).size,
+        requirements: 0,
+        mandatory: 0,
+        unanswered: 0,
+        highRisk: 0,
+        pendingReview: 0,
+        approved: 0,
+        blocked: 0,
+      },
+    );
+    const start = (input.page - 1) * input.pageSize;
+    return {
+      items: rows.slice(start, start + input.pageSize),
+      counts,
+      page: input.page,
+      pageSize: input.pageSize,
+      total: rows.length,
+    };
+  }
+
+  async getResponsesQueue(auth: AuthContext, input: ResponsesQueueInput) {
+    const workspaceIds = this.resolveAnswerWorkspaceScope(auth, input.workspaceId);
+    const tenderRows = await this.db
+      .select()
+      .from(tenders)
+      .where(
+        and(
+          eq(tenders.organizationId, auth.organizationId),
+          workspaceIds && workspaceIds.length > 0 ? inArray(tenders.workspaceId, workspaceIds) : undefined,
+          input.includeArchived ? undefined : sql`${tenders.archivedAt} is null`,
+        ),
+      );
+    const readableTenders = await this.filterReadableTenders(auth, tenderRows);
+    const tenderIds = readableTenders.map((tender) => tender.id);
+    const tenderById = new Map(readableTenders.map((tender) => [tender.id, tender]));
+
+    if (tenderIds.length === 0) {
+      return emptyResponsesQueue(input);
+    }
+
+    const [answerRows, questionRows, requirementRows, linkRows, reviewRows, evidenceRows, versionRows] = await Promise.all([
+      this.db
+        .select()
+        .from(tenderAnswers)
+        .where(and(eq(tenderAnswers.organizationId, auth.organizationId), inArray(tenderAnswers.tenderId, tenderIds))),
+      this.db
+        .select()
+        .from(tenderQuestions)
+        .where(and(eq(tenderQuestions.organizationId, auth.organizationId), inArray(tenderQuestions.tenderId, tenderIds))),
+      this.db
+        .select()
+        .from(tenderRequirements)
+        .where(and(eq(tenderRequirements.organizationId, auth.organizationId), inArray(tenderRequirements.tenderId, tenderIds))),
+      this.db
+        .select()
+        .from(tenderQuestionRequirements)
+        .where(and(eq(tenderQuestionRequirements.organizationId, auth.organizationId), inArray(tenderQuestionRequirements.workspaceId, readableTenders.map((tender) => tender.workspaceId)))),
+      this.db
+        .select({ review: tenderAnswerReviews, reviewerName: users.name })
+        .from(tenderAnswerReviews)
+        .leftJoin(users, eq(users.id, tenderAnswerReviews.reviewerId))
+        .where(and(eq(tenderAnswerReviews.organizationId, auth.organizationId), inArray(tenderAnswerReviews.tenderId, tenderIds)))
+        .orderBy(desc(tenderAnswerReviews.updatedAt)),
+      this.db
+        .select({ answerId: tenderAnswerEvidence.answerId, id: tenderAnswerEvidence.id })
+        .from(tenderAnswerEvidence)
+        .where(and(eq(tenderAnswerEvidence.organizationId, auth.organizationId), inArray(tenderAnswerEvidence.tenderId, tenderIds))),
+      this.db
+        .select({ answerId: tenderAnswerVersions.answerId, id: tenderAnswerVersions.id })
+        .from(tenderAnswerVersions)
+        .where(and(eq(tenderAnswerVersions.organizationId, auth.organizationId), inArray(tenderAnswerVersions.tenderId, tenderIds))),
+    ]);
+
+    const questionById = new Map(questionRows.map((question) => [question.id, question]));
+    const requirementById = new Map(requirementRows.map((requirement) => [requirement.id, requirement]));
+    const requirementIdsByQuestion = new Map<string, string[]>();
+    for (const link of linkRows) {
+      if (!questionById.has(link.questionId) || !requirementById.has(link.requirementId)) continue;
+      const ids = requirementIdsByQuestion.get(link.questionId) ?? [];
+      ids.push(link.requirementId);
+      requirementIdsByQuestion.set(link.questionId, ids);
+    }
+
+    const reviewsByAnswer = new Map<string, Array<{ review: TenderReviewRow; reviewerName: string | null }>>();
+    for (const row of reviewRows) {
+      const list = reviewsByAnswer.get(row.review.answerId) ?? [];
+      list.push({ review: row.review, reviewerName: row.reviewerName ?? null });
+      reviewsByAnswer.set(row.review.answerId, list);
+    }
+
+    const evidenceCountByAnswer = new Map<string, number>();
+    for (const evidence of evidenceRows) {
+      evidenceCountByAnswer.set(evidence.answerId, (evidenceCountByAnswer.get(evidence.answerId) ?? 0) + 1);
+    }
+
+    const versionCountByAnswer = new Map<string, number>();
+    for (const version of versionRows) {
+      versionCountByAnswer.set(version.answerId, (versionCountByAnswer.get(version.answerId) ?? 0) + 1);
+    }
+
+    const allRows = answerRows
+      .map((answer) => {
+        const tender = tenderById.get(answer.tenderId);
+        const question = questionById.get(answer.questionId);
+        if (!tender || !question) return null;
+        const linkedRequirementIds = requirementIdsByQuestion.get(answer.questionId) ?? [];
+        const requirement = linkedRequirementIds.map((id) => requirementById.get(id)).find(Boolean) ?? null;
+        const reviews = reviewsByAnswer.get(answer.id) ?? [];
+        const reviewSummary = buildResponseReviewSummary(reviews);
+        const evidenceCount = evidenceCountByAnswer.get(answer.id) ?? 0;
+        const versionCount = versionCountByAnswer.get(answer.id) ?? 0;
+        const primaryHref = requirement ? `/tenders/${tender.id}/requirements/${requirement.id}` : `/apply/${tender.id}`;
+
+        return {
+          tender: serializeTender(tender),
+          answer: {
+            ...serializeAnswer(answer),
+            versionCount,
+            evidenceCount,
+            reviewCount: reviews.length,
+          },
+          question: serializeQuestion(question),
+          requirement: requirement ? serializeRequirement(requirement) : null,
+          linkedRequirementCount: linkedRequirementIds.length,
+          reviewSummary,
+          navigation: {
+            primaryHref,
+            applyHref: `/apply/${tender.id}`,
+            tenderHref: `/tenders/${tender.id}`,
+          },
+          lastActivityAt: latestDate([answer.updatedAt, reviewSummary.latest?.updatedAt ?? null])?.toISOString() ?? answer.updatedAt.toISOString(),
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+    const searchedRows = input.q
+      ? allRows.filter((row) => responseRowMatchesSearch(row, input.q ?? ""))
+      : allRows;
+    const counts = countResponseQueueRows(searchedRows);
+    const filteredRows = searchedRows
+      .filter((row) => responseRowMatchesFilters(row, input))
+      .sort((left, right) => compareResponseQueueRows(left, right, input.sort));
+    const start = (input.page - 1) * input.pageSize;
+
+    return {
+      items: filteredRows.slice(start, start + input.pageSize),
+      counts,
+      page: input.page,
+      pageSize: input.pageSize,
+      total: filteredRows.length,
+    };
+  }
+
+  async getSubmissionsQueue(auth: AuthContext, input: SubmissionsQueueInput) {
+    const workspaceIds = this.resolveWorkspaceScope(auth, input.workspaceId);
+    const tenderRows = await this.db
+      .select()
+      .from(tenders)
+      .where(
+        and(
+          eq(tenders.organizationId, auth.organizationId),
+          workspaceIds && workspaceIds.length > 0 ? inArray(tenders.workspaceId, workspaceIds) : undefined,
+          input.includeArchived ? undefined : sql`${tenders.archivedAt} is null`,
+        ),
+      );
+    const readableTenders = await this.filterReadableTenders(auth, tenderRows);
+    const tenderIds = readableTenders.map((tender) => tender.id);
+
+    if (tenderIds.length === 0) {
+      return emptySubmissionsQueue(input);
+    }
+
+    const [latestPackagesByTender, latestSubmissionsByTender] = await Promise.all([
+      this.latestPackagesByTender(auth.organizationId, tenderIds),
+      this.latestSubmissionsByTender(auth.organizationId, tenderIds),
+    ]);
+
+    const validationByTender = await this.validationSummariesByTender(auth.organizationId, readableTenders);
+
+    const rows = readableTenders.map((tender) => {
+      const latestPackage = latestPackagesByTender.get(tender.id) ?? null;
+      const latestSubmission = latestSubmissionsByTender.get(tender.id) ?? null;
+      const lastActivityAt = latestDate([
+        tender.updatedAt,
+        latestPackage?.completedAt ?? latestPackage?.createdAt,
+        latestSubmission?.submittedAt ?? latestSubmission?.createdAt,
+      ]);
+
+      try {
+        this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:read");
+        const validation = validationByTender.get(tender.id)?.validation;
+        if (!validation) throw new TenderNotFoundError();
+        const issues = validation.issues ?? [];
+        const ready = validation.ready;
+        return {
+          tender: serializeTender(tender),
+          readiness: validation.score,
+          ready,
+          issueCount: issues.length,
+          blockingIssueCount: issues.filter((issue) => issue.blocking).length,
+          latestPackage,
+          latestSubmission,
+          actionState: submissionActionState({ ready, latestPackage, latestSubmission }),
+          lastActivityAt,
+        };
+      } catch {
+        return {
+          tender: serializeTender(tender),
+          readiness: null,
+          ready: false,
+          issueCount: 0,
+          blockingIssueCount: 0,
+          latestPackage,
+          latestSubmission,
+          actionState: submissionActionState({ ready: false, latestPackage, latestSubmission }),
+          lastActivityAt,
+        };
+      }
+    });
+    rows.sort(compareSubmissionQueueRows);
+
+    const counts = rows.reduce(
+      (acc, row) => {
+        acc.tenders += 1;
+        if (!row.latestPackage) acc.noPackage += 1;
+        if (row.latestPackage?.status === "GENERATING") acc.generating += 1;
+        if (row.latestPackage?.status === "READY") acc.ready += 1;
+        if (row.latestPackage?.status === "APPROVED") acc.approved += 1;
+        if (row.latestPackage?.status === "STALE" || row.latestPackage?.status === "FAILED") acc.needsRebuild += 1;
+        if (row.latestSubmission) acc.submitted += 1;
+        if (row.blockingIssueCount > 0 || row.actionState === "RESOLVE_BLOCKERS") acc.blocked += 1;
+        return acc;
+      },
+      { tenders: 0, noPackage: 0, generating: 0, ready: 0, approved: 0, needsRebuild: 0, submitted: 0, blocked: 0 },
+    );
+    const start = (input.page - 1) * input.pageSize;
+    return {
+      items: rows.slice(start, start + input.pageSize),
+      counts,
+      page: input.page,
+      pageSize: input.pageSize,
+      total: rows.length,
+    };
+  }
+
   async getDashboard(auth: AuthContext, input: { pageSize: number }) {
     const errors: DashboardSectionError[] = [];
     const workspaceIds = this.resolveWorkspaceScope(auth);
 
-    const tenderRows = await this.db
+    const scopedTenderRows = await this.db
       .select()
       .from(tenders)
       .where(
@@ -390,6 +871,9 @@ export class TendersService {
         ),
       )
       .orderBy(desc(tenders.updatedAt));
+    // Tenders a read policy denies are dropped before anything is derived from
+    // them, so they never reach the cards, the counts or the AI/evidence stats.
+    const tenderRows = await this.filterReadableTenders(auth, scopedTenderRows);
 
     const knowledgeRows = await this.db
       .select()
@@ -435,62 +919,49 @@ export class TendersService {
     };
 
     const tenderIds = tenderRows.map((tender) => tender.id);
+    const ownerIds = [...new Set(tenderRows.map((tender) => tender.ownerId).filter(Boolean))];
     const [latestRunsByTender, latestPackagesByTender, latestSubmissionsByTender] = await Promise.all([
       this.latestAutomationRunsByTender(auth.organizationId, tenderIds),
       this.latestPackagesByTender(auth.organizationId, tenderIds),
       this.latestSubmissionsByTender(auth.organizationId, tenderIds),
     ]);
-
-    const tenderDetails: DashboardTenderCard[] = await Promise.all(
-      tenderRows.map(async (tender) => {
-        try {
-          const [validation, reviews] = await Promise.all([
-            this.getValidation(auth, tender.id),
-            this.listReviews(auth, tender.id),
-          ]);
-          const issues = validation.current.issues ?? [];
-          const highestIssue = issues.reduce<TenderValidationIssue | null>((best, issue) => {
-            if (!best) return issue;
-            const issueScore = rankSeverity(issue.severity);
-            const bestScore = rankSeverity(best.severity);
-            return issueScore > bestScore ? issue : best;
-          }, null);
-          return {
-            tender: serializeTender(tender),
-            readiness: validation.current.score,
-            ready: validation.current.ready,
-            highestIssue,
-            issueCount: issues.length,
-            blockingIssueCount: issues.filter((issue) => issue.blocking).length,
-            pendingReviews: reviews.items.filter(
-              (review) => review.status === "PENDING" || review.status === "CHANGES_REQUESTED",
-            ).length,
-            totalReviews: reviews.items.length,
-            latestRun: latestRunsByTender.get(tender.id) ?? null,
-            latestPackage: latestPackagesByTender.get(tender.id) ?? null,
-            latestSubmission: latestSubmissionsByTender.get(tender.id) ?? null,
-          };
-        } catch (error) {
-          errors.push({
-            section: "tenders",
-            message: error instanceof Error ? error.message : "Failed to load tender dashboard data.",
-          });
-          return {
-            tender: serializeTender(tender),
-            readiness: null,
-            ready: false,
-            issueCount: 0,
-            blockingIssueCount: 0,
-            highestIssue: null,
-            pendingReviews: 0,
-            totalReviews: 0,
-            latestRun: latestRunsByTender.get(tender.id) ?? null,
-            latestPackage: latestPackagesByTender.get(tender.id) ?? null,
-            latestSubmission: latestSubmissionsByTender.get(tender.id) ?? null,
-          };
-        }
-      }),
+    const ownersById = await this.dashboardOwnersById(auth.organizationId, ownerIds);
+    const validationByTender = await this.tryValidationSummariesByTender(
+      auth.organizationId,
+      tenderRows,
+      errors,
+      "tenders",
     );
+
+    const tenderDetails: DashboardTenderCard[] = tenderRows.map((tender) => {
+      try {
+        const summary = this.readableValidationSummary(auth, tender, validationByTender);
+        return {
+          tender: serializeTender(tender),
+          owner: ownersById.get(tender.ownerId) ?? null,
+          ...validationCardFields(summary),
+          latestRun: latestRunsByTender.get(tender.id) ?? null,
+          latestPackage: latestPackagesByTender.get(tender.id) ?? null,
+          latestSubmission: latestSubmissionsByTender.get(tender.id) ?? null,
+        };
+      } catch (error) {
+        this.reportSectionError(errors, "tenders", error, tender.id);
+        return {
+          tender: serializeTender(tender),
+          owner: ownersById.get(tender.ownerId) ?? null,
+          readiness: null,
+          ready: false,
+          issueCount: 0,
+          blockingIssueCount: 0,
+          highestIssue: null,
+          pendingReviews: 0,
+          totalReviews: 0,
+          latestRun: latestRunsByTender.get(tender.id) ?? null,
+          latestPackage: latestPackagesByTender.get(tender.id) ?? null,
+          latestSubmission: latestSubmissionsByTender.get(tender.id) ?? null,
+        };
+      }
+    });
 
     let aiActivity: DashboardAiActivity | null = null;
     let evidenceHealth: DashboardEvidenceHealth | null = null;
@@ -576,10 +1047,7 @@ export class TendersService {
               : Math.round(((freshnessCounts.fresh + freshnessCounts.aging) / totalEvidence) * 100),
         };
       } catch (error) {
-        errors.push({
-          section: "ai_activity",
-          message: error instanceof Error ? error.message : "Failed to load AI activity summary.",
-        });
+        this.reportSectionError(errors, "ai_activity", error);
       }
     }
 
@@ -590,6 +1058,92 @@ export class TendersService {
       knowledge,
       aiActivity,
       evidenceHealth,
+      errors,
+    });
+  }
+
+  async getPipeline(auth: AuthContext, input: PipelineQueryInput = {}) {
+    const errors: DashboardSectionError[] = [];
+    const workspaceIds = this.resolveWorkspaceScope(auth);
+
+    const scopedTenderRows = await this.db
+      .select()
+      .from(tenders)
+      .where(
+        and(
+          eq(tenders.organizationId, auth.organizationId),
+          workspaceIds && workspaceIds.length > 0 ? inArray(tenders.workspaceId, workspaceIds) : undefined,
+          sql`${tenders.archivedAt} is null`,
+          sql`${tenders.status} not in ('CANCELLED', 'ARCHIVED')`,
+        ),
+      )
+      .orderBy(desc(tenders.updatedAt));
+    const tenderRows = await this.filterReadableTenders(auth, scopedTenderRows);
+
+    const tenderIds = tenderRows.map((tender) => tender.id);
+    const ownerIds = [...new Set(tenderRows.map((tender) => tender.ownerId).filter(Boolean))];
+    const [latestRunsByTender, latestPackagesByTender, latestSubmissionsByTender, ownersById] = await Promise.all([
+      this.latestAutomationRunsByTender(auth.organizationId, tenderIds),
+      this.latestPackagesByTender(auth.organizationId, tenderIds),
+      this.latestSubmissionsByTender(auth.organizationId, tenderIds),
+      this.dashboardOwnersById(auth.organizationId, ownerIds),
+    ]);
+
+    const pipelineTenders = tenderRows.filter((tender) => isActivePipelineStatus(tender.status));
+    const validationByTender = await this.tryValidationSummariesByTender(
+      auth.organizationId,
+      pipelineTenders,
+      errors,
+      "pipeline",
+    );
+
+    const items: PipelineTenderCard[] = pipelineTenders.map((tender) => {
+      const base = {
+        tender: serializeTender(tender),
+        owner: ownersById.get(tender.ownerId) ?? null,
+        latestRun: latestRunsByTender.get(tender.id) ?? null,
+        latestPackage: latestPackagesByTender.get(tender.id) ?? null,
+        latestSubmission: latestSubmissionsByTender.get(tender.id) ?? null,
+        pipelineStageId: mapPipelineStage(tender.status),
+        availableTransitions: allowedTransitionsFrom(tender.status as TenderStatus)
+          .filter(
+            (rule) =>
+              hasOrganizationPermission(auth, rule.permission) ||
+              hasWorkspacePermission(auth, tender.workspaceId, rule.permission),
+          )
+          .map((rule) => ({
+            to: rule.to,
+            label: formatStatusLabel(rule.to),
+            description: rule.description,
+          })),
+      };
+      try {
+        const summary = this.readableValidationSummary(auth, tender, validationByTender);
+        return { ...base, ...validationCardFields(summary) };
+      } catch (error) {
+        this.reportSectionError(errors, "pipeline", error, tender.id);
+        return {
+          ...base,
+          readiness: null,
+          ready: false,
+          issueCount: 0,
+          blockingIssueCount: 0,
+          highestIssue: null,
+          pendingReviews: 0,
+          totalReviews: 0,
+        };
+      }
+    });
+
+    return buildPipelineSummary({
+      generatedAt: new Date().toISOString(),
+      pageSize: Math.max(1, items.length),
+      tenders: items,
+      items,
+      pagination: { page: input.page, pageSize: input.pageSize },
+      knowledge: emptyDashboardKnowledge(),
+      aiActivity: null,
+      evidenceHealth: null,
       errors,
     });
   }
@@ -2304,6 +2858,134 @@ export class TendersService {
     };
   }
 
+  async getReviewQueue(auth: AuthContext, input: ReviewQueueInput) {
+    const workspaceIds = this.resolveAnswerWorkspaceScope(auth, input.workspaceId);
+    const search = input.q ? `%${input.q}%` : null;
+    const where = and(
+      eq(tenderAnswerReviews.organizationId, auth.organizationId),
+      workspaceIds ? inArray(tenderAnswerReviews.workspaceId, workspaceIds) : undefined,
+      input.scope === "mine" ? eq(tenderAnswerReviews.reviewerId, auth.userId) : undefined,
+      sql`${tenders.archivedAt} is null`,
+      search
+        ? or(
+            ilike(tenders.title, search),
+            ilike(tenders.name, search),
+            ilike(tenders.referenceNumber, search),
+            ilike(tenderQuestions.questionText, search),
+            ilike(tenderAnswers.answerText, search),
+          )
+        : undefined,
+    );
+
+    const rows = await this.db
+      .select({
+        review: tenderAnswerReviews,
+        tender: tenders,
+        answer: tenderAnswers,
+        question: tenderQuestions,
+        reviewerId: users.id,
+        reviewerName: users.name,
+        reviewerEmail: users.email,
+      })
+      .from(tenderAnswerReviews)
+      .innerJoin(tenders, eq(tenders.id, tenderAnswerReviews.tenderId))
+      .innerJoin(tenderAnswers, eq(tenderAnswers.id, tenderAnswerReviews.answerId))
+      .innerJoin(tenderQuestions, eq(tenderQuestions.id, tenderAnswers.questionId))
+      .leftJoin(users, eq(users.id, tenderAnswerReviews.reviewerId))
+      .where(where)
+      .orderBy(asc(tenders.dueAt), asc(tenderAnswerReviews.createdAt));
+
+    const readableRows = await this.filterReadableTenders(auth, rows, (row) => row.tender);
+
+    const counts = {
+      total: readableRows.length,
+      actionable: 0,
+      pending: 0,
+      changesRequested: 0,
+      approved: 0,
+      rejected: 0,
+    };
+    for (const row of readableRows) {
+      if (row.review.status === "PENDING") counts.pending += 1;
+      if (row.review.status === "CHANGES_REQUESTED") counts.changesRequested += 1;
+      if (row.review.status === "APPROVED") counts.approved += 1;
+      if (row.review.status === "REJECTED") counts.rejected += 1;
+      if (row.review.status === "PENDING" || row.review.status === "CHANGES_REQUESTED") counts.actionable += 1;
+    }
+
+    const visibleRows = readableRows.filter((row) => input.statuses.includes(row.review.status));
+    const pageRows = visibleRows.slice((input.page - 1) * input.pageSize, input.page * input.pageSize);
+    const answerIds = pageRows.map((row) => row.answer.id);
+    const questionIds = [...new Set(pageRows.map((row) => row.question.id))];
+    const [evidenceCounts, requirementRows] = await Promise.all([
+      answerIds.length
+        ? this.db
+            .select({ answerId: tenderAnswerEvidence.answerId, count: sql<number>`count(*)` })
+            .from(tenderAnswerEvidence)
+            .where(and(eq(tenderAnswerEvidence.organizationId, auth.organizationId), inArray(tenderAnswerEvidence.answerId, answerIds)))
+            .groupBy(tenderAnswerEvidence.answerId)
+        : Promise.resolve([]),
+      questionIds.length
+        ? this.db
+            .select({
+              questionId: tenderQuestionRequirements.questionId,
+              requirement: tenderRequirements,
+            })
+            .from(tenderQuestionRequirements)
+            .innerJoin(tenderRequirements, eq(tenderRequirements.id, tenderQuestionRequirements.requirementId))
+            .where(and(eq(tenderQuestionRequirements.organizationId, auth.organizationId), inArray(tenderQuestionRequirements.questionId, questionIds)))
+            .orderBy(asc(tenderRequirements.requirementCode), asc(tenderRequirements.title))
+        : Promise.resolve([]),
+    ]);
+
+    const evidenceCountByAnswer = new Map(evidenceCounts.map((row) => [row.answerId, Number(row.count ?? 0)]));
+    const requirementByQuestion = new Map<string, TenderRequirementRow>();
+    for (const row of requirementRows) {
+      if (!requirementByQuestion.has(row.questionId)) requirementByQuestion.set(row.questionId, row.requirement);
+    }
+
+    return {
+      generatedAt: new Date().toISOString(),
+      items: pageRows.map((row) => {
+        const requirement = requirementByQuestion.get(row.question.id) ?? null;
+        const canAct =
+          (row.review.status === "PENDING" || row.review.status === "CHANGES_REQUESTED") &&
+          (hasOrganizationPermission(auth, "answer:review") || hasWorkspacePermission(auth, row.review.workspaceId, "answer:review"));
+        return {
+          review: {
+            ...serializeReview(row.review),
+            reviewerName: row.reviewerName ?? null,
+          },
+          tender: serializeTender(row.tender),
+          answer: {
+            ...serializeAnswer(row.answer),
+            versionCount: 0,
+            evidenceCount: evidenceCountByAnswer.get(row.answer.id) ?? 0,
+            reviewCount: 1,
+          },
+          question: {
+            ...serializeQuestion(row.question),
+            requirementIds: requirement ? [requirement.id] : [],
+          },
+          requirement: requirement ? { ...serializeRequirement(requirement), questionIds: [row.question.id] } : null,
+          reviewer: row.reviewerId
+            ? {
+                id: row.reviewerId,
+                name: row.reviewerName ?? "Unknown reviewer",
+                email: row.reviewerEmail ?? "",
+              }
+            : null,
+          href: requirement ? `/tenders/${row.tender.id}/requirements/${requirement.id}` : `/apply/${row.tender.id}`,
+          canAct,
+        };
+      }),
+      counts,
+      page: input.page,
+      pageSize: input.pageSize,
+      total: visibleRows.length,
+    };
+  }
+
   async getValidation(auth: AuthContext, tenderId: string) {
     const tender = await this.requireTender(auth.organizationId, tenderId);
     this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:read");
@@ -3898,6 +4580,28 @@ export class TendersService {
     return latest;
   }
 
+  private async dashboardOwnersById(organizationId: string, ownerIds: string[]) {
+    const owners = new Map<string, { id: string; name: string; email: string }>();
+    if (ownerIds.length === 0) return owners;
+    const rows = await this.db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          eq(organizationMembers.status, "active"),
+          inArray(organizationMembers.userId, ownerIds),
+        ),
+      );
+    for (const row of rows) owners.set(row.id, row);
+    return owners;
+  }
+
   private async latestPackagesByTender(organizationId: string, tenderIds: string[]) {
     const latest = new Map<string, {
       id: string;
@@ -3959,257 +4663,103 @@ export class TendersService {
   }
 
   private async computeValidationSnapshot(auth: AuthContext, tender: TenderRow): Promise<TenderValidationSnapshot> {
+    const inputsByTender = await this.loadValidationInputs(auth.organizationId, [tender.id]);
+    return scoreValidation(tender, inputsByTender.get(tender.id) ?? emptyValidationInputs());
+  }
+
+  /**
+   * Loads everything `scoreValidation` needs for a set of tenders in a fixed
+   * number of queries (six child tables plus the question-requirement links),
+   * grouped by tender. The single-tender `getValidation` path and the
+   * dashboard / pipeline / submissions batch path share this loader.
+   */
+  private async loadValidationInputs(
+    organizationId: string,
+    tenderIds: string[],
+  ): Promise<Map<string, TenderValidationInputs>> {
+    const inputsByTender = new Map<string, TenderValidationInputs>(
+      tenderIds.map((tenderId) => [tenderId, emptyValidationInputs()]),
+    );
+    if (tenderIds.length === 0) return inputsByTender;
+
     const [questions, requirements, answers, sources, reviews, evidenceRows] = await Promise.all([
       this.db
         .select()
         .from(tenderQuestions)
-        .where(and(eq(tenderQuestions.organizationId, auth.organizationId), eq(tenderQuestions.tenderId, tender.id))),
+        .where(and(eq(tenderQuestions.organizationId, organizationId), inArray(tenderQuestions.tenderId, tenderIds))),
       this.db
         .select()
         .from(tenderRequirements)
-        .where(and(eq(tenderRequirements.organizationId, auth.organizationId), eq(tenderRequirements.tenderId, tender.id))),
+        .where(and(eq(tenderRequirements.organizationId, organizationId), inArray(tenderRequirements.tenderId, tenderIds))),
       this.db
         .select()
         .from(tenderAnswers)
-        .where(and(eq(tenderAnswers.organizationId, auth.organizationId), eq(tenderAnswers.tenderId, tender.id))),
+        .where(and(eq(tenderAnswers.organizationId, organizationId), inArray(tenderAnswers.tenderId, tenderIds))),
       this.db
         .select()
         .from(tenderSources)
-        .where(and(eq(tenderSources.organizationId, auth.organizationId), eq(tenderSources.tenderId, tender.id))),
+        .where(and(eq(tenderSources.organizationId, organizationId), inArray(tenderSources.tenderId, tenderIds))),
       this.db
         .select()
         .from(tenderAnswerReviews)
-        .where(and(eq(tenderAnswerReviews.organizationId, auth.organizationId), eq(tenderAnswerReviews.tenderId, tender.id))),
+        .where(and(eq(tenderAnswerReviews.organizationId, organizationId), inArray(tenderAnswerReviews.tenderId, tenderIds))),
       this.db
         .select()
         .from(tenderAnswerEvidence)
         .where(
           and(
-            eq(tenderAnswerEvidence.organizationId, auth.organizationId),
-            eq(tenderAnswerEvidence.tenderId, tender.id),
+            eq(tenderAnswerEvidence.organizationId, organizationId),
+            inArray(tenderAnswerEvidence.tenderId, tenderIds),
           ),
         ),
     ]);
 
+    const inputsFor = (tenderId: string) => {
+      let inputs = inputsByTender.get(tenderId);
+      if (!inputs) {
+        inputs = emptyValidationInputs();
+        inputsByTender.set(tenderId, inputs);
+      }
+      return inputs;
+    };
+    for (const row of questions) inputsFor(row.tenderId).questions.push(row);
+    for (const row of requirements) inputsFor(row.tenderId).requirements.push(row);
+    for (const row of answers) inputsFor(row.tenderId).answers.push(row);
+    for (const row of sources) inputsFor(row.tenderId).sources.push(row);
+    for (const row of reviews) inputsFor(row.tenderId).reviews.push(row);
+    for (const row of evidenceRows) inputsFor(row.tenderId).evidence.push(row);
+
     const questionIds = questions.map((question) => question.id);
     const requirementIds = requirements.map((requirement) => requirement.id);
-    const linkConditions = [eq(tenderQuestionRequirements.organizationId, auth.organizationId)];
-    if (questionIds.length > 0) {
-      linkConditions.push(inArray(tenderQuestionRequirements.questionId, questionIds));
-    }
-    if (requirementIds.length > 0) {
-      linkConditions.push(inArray(tenderQuestionRequirements.requirementId, requirementIds));
-    }
-    const links =
-      linkConditions.length === 1
-        ? []
-        : await this.db.select().from(tenderQuestionRequirements).where(and(...linkConditions));
+    if (questionIds.length === 0 && requirementIds.length === 0) return inputsByTender;
 
-    const answerByQuestionId = new Map(answers.map((answer) => [answer.questionId, answer]));
-    const requirementById = new Map(requirements.map((requirement) => [requirement.id, requirement]));
-    const requirementIdsByQuestion = new Map<string, string[]>();
-    const questionIdsByRequirement = new Map<string, string[]>();
-    for (const link of links) {
-      const requirementsForQuestion = requirementIdsByQuestion.get(link.questionId) ?? [];
-      requirementsForQuestion.push(link.requirementId);
-      requirementIdsByQuestion.set(link.questionId, requirementsForQuestion);
+    const links = await this.db
+      .select()
+      .from(tenderQuestionRequirements)
+      .where(
+        and(
+          eq(tenderQuestionRequirements.organizationId, organizationId),
+          or(
+            questionIds.length > 0 ? inArray(tenderQuestionRequirements.questionId, questionIds) : undefined,
+            requirementIds.length > 0 ? inArray(tenderQuestionRequirements.requirementId, requirementIds) : undefined,
+          ),
+        ),
+      );
 
-      const questionsForRequirement = questionIdsByRequirement.get(link.requirementId) ?? [];
-      questionsForRequirement.push(link.questionId);
-      questionIdsByRequirement.set(link.requirementId, questionsForRequirement);
-    }
-
-    const evidenceCountByAnswer = new Map<string, number>();
-    for (const evidence of evidenceRows) {
-      evidenceCountByAnswer.set(evidence.answerId, (evidenceCountByAnswer.get(evidence.answerId) ?? 0) + 1);
-    }
-    const reviewCountByAnswer = new Map<string, number>();
-    const latestReviewByAnswer = new Map<string, typeof tenderAnswerReviews.$inferSelect>();
-    for (const review of reviews) {
-      reviewCountByAnswer.set(review.answerId, (reviewCountByAnswer.get(review.answerId) ?? 0) + 1);
-      const current = latestReviewByAnswer.get(review.answerId);
-      if (!current || current.createdAt < review.createdAt) {
-        latestReviewByAnswer.set(review.answerId, review);
-      }
-    }
-
-    const mandatoryRequirements = requirements.filter((requirement) => requirement.mandatory);
-    const requirementIsApproved = (requirement: typeof tenderRequirements.$inferSelect) => {
-      const linkedQuestionIds = questionIdsByRequirement.get(requirement.id) ?? [];
-      return linkedQuestionIds.length > 0 && linkedQuestionIds.every((questionId) => { const answer = answerByQuestionId.get(questionId); return answer ? hasCurrentApproval(answer, reviews) : false; });
-    };
-    const approvedMandatory = mandatoryRequirements.filter(requirementIsApproved);
-    const answeredQuestions = questions.filter((question) => answerByQuestionId.has(question.id));
-    const answeredWithEvidence = answers.filter((answer) => (evidenceCountByAnswer.get(answer.id) ?? 0) > 0);
-    const reviewedAnswers = answers.filter((answer) => hasCurrentApproval(answer, reviews));
-    const readySources = sources.filter((source) => source.status === "READY");
-
-    let score = 100;
-    const issues: TenderValidationIssue[] = [];
-    const addIssue = (issue: TenderValidationIssue, weight: number) => {
-      issues.push(issue);
-      score -= weight;
-    };
-
-    const categories: TenderValidationCategory[] = [
-      validationCategory(
-        "questionCoverage",
-        "Questions answered",
-        answeredQuestions.length,
-        questions.length,
-        answeredQuestions.length === questions.length ? "success" : "warning",
-        "Every question should have a linked answer before the tender is approved.",
-      ),
-      validationCategory(
-        "mandatory",
-        "Mandatory requirements approved",
-        approvedMandatory.length,
-        mandatoryRequirements.length,
-        mandatoryRequirements.length === 0 || approvedMandatory.length === mandatoryRequirements.length
-          ? "success"
-          : "danger",
-        "Mandatory requirements must be approved before submission.",
-      ),
-      validationCategory(
-        "evidence",
-        "Answers backed by evidence",
-        answeredWithEvidence.length,
-        answers.length,
-        answers.length === 0 || answeredWithEvidence.length / Math.max(answers.length, 1) > 0.8 ? "success" : "warning",
-        "Linked evidence keeps answers traceable during review.",
-      ),
-      validationCategory(
-        "reviews",
-        "Answers reviewed",
-        reviewedAnswers.length,
-        answers.length,
-        reviewedAnswers.length === answers.length ? "success" : "warning",
-        "Reviewed answers are easier to finalize and submit.",
-      ),
-      validationCategory(
-        "sources",
-        "Source files ready",
-        readySources.length,
-        sources.length,
-        sources.length === 0 || readySources.length === sources.length ? "success" : "warning",
-        "Document and intake sources should be uploaded and marked ready.",
-      ),
-    ];
-
-    for (const requirement of mandatoryRequirements) {
-      if (requirementIsApproved(requirement)) continue;
-      addIssue(
-        {
-          id: `requirement-${requirement.id}-not-approved`,
-          severity: "HIGH",
-          title: `Mandatory requirement ${requirement.title} is not approved`,
-          detail: "A mandatory requirement still needs approval before this tender can be submitted.",
-          recommendation: "Assign a reviewer and approve every answer linked to this requirement.",
-          blocking: true,
-          requirementId: requirement.id,
-        },
-        25,
+    // A link belongs to a tender under the same rule the single-tender query
+    // used: its question is one of the tender's questions (when it has any)
+    // AND its requirement is one of the tender's requirements (when it has any).
+    for (const inputs of inputsByTender.values()) {
+      if (inputs.questions.length === 0 && inputs.requirements.length === 0) continue;
+      const tenderQuestionIds = new Set(inputs.questions.map((question) => question.id));
+      const tenderRequirementIds = new Set(inputs.requirements.map((requirement) => requirement.id));
+      inputs.links = links.filter(
+        (link) =>
+          (tenderQuestionIds.size === 0 || tenderQuestionIds.has(link.questionId)) &&
+          (tenderRequirementIds.size === 0 || tenderRequirementIds.has(link.requirementId)),
       );
     }
-
-    for (const question of questions) {
-      const answer = answerByQuestionId.get(question.id);
-      if (answer) continue;
-      addIssue(
-        {
-          id: `question-${question.id}-unanswered`,
-          severity: question.required ? "MEDIUM" : "LOW",
-          title: `Question ${question.questionText} has no answer`,
-          detail: "The workspace still has an unanswered question.",
-          recommendation: "Draft an answer and link supporting evidence if the question is material.",
-          blocking: Boolean(question.required),
-          questionId: question.id,
-        },
-        question.required ? 10 : 3,
-      );
-    }
-
-    for (const answer of answers) {
-      const evidenceCount = evidenceCountByAnswer.get(answer.id) ?? 0;
-      const latestReview = latestReviewByAnswer.get(answer.id);
-      if (questions.find((question) => question.id === answer.questionId)?.required && !hasCurrentApproval(answer, reviews)) {
-        addIssue({ id: `answer-${answer.id}-unapproved-content`, severity: "HIGH", title: "Required answer needs a current approved review", detail: "Approval must match the current answer content.", recommendation: "Review the latest answer and approve it.", blocking: true, answerId: answer.id, questionId: answer.questionId }, 15);
-      }
-      if (evidenceCount === 0) {
-        const relatedRequirementIds = requirementIdsByQuestion.get(answer.questionId) ?? [];
-        const relatedMandatory = relatedRequirementIds.some((requirementId) => requirementById.get(requirementId)?.mandatory);
-        addIssue(
-          {
-            id: `answer-${answer.id}-no-evidence`,
-            severity: relatedMandatory ? "HIGH" : "MEDIUM",
-            title: `Answer ${answer.id} has no evidence`,
-            detail: "Answers should be traceable to evidence before approval.",
-            recommendation: "Attach a source, document, or note that supports this answer.",
-            blocking: relatedMandatory,
-            answerId: answer.id,
-            questionId: answer.questionId,
-          },
-          relatedMandatory ? 15 : 6,
-        );
-      }
-
-      if (latestReview?.status === "PENDING" || latestReview?.status === "CHANGES_REQUESTED") {
-        addIssue(
-          {
-            id: `answer-${answer.id}-needs-review`,
-            severity: latestReview.status === "PENDING" ? "MEDIUM" : "HIGH",
-            title: `Answer ${answer.id} still needs review`,
-            detail:
-              latestReview.status === "PENDING"
-                ? "A review has been opened but not completed."
-                : "Changes were requested and still need resolution.",
-            recommendation: "Resolve the reviewer feedback and run validation again.",
-            blocking: latestReview.status === "CHANGES_REQUESTED",
-            answerId: answer.id,
-            questionId: answer.questionId,
-          },
-          latestReview.status === "PENDING" ? 5 : 12,
-        );
-      }
-    }
-
-    if (tender.tenderType === "DOCUMENT" && readySources.length === 0) {
-      addIssue(
-        {
-          id: "tender-document-source-missing",
-          severity: "MEDIUM",
-          title: "Document tender has no ready source material",
-          detail: "Document tenders should carry at least one ready source before they are approved.",
-          recommendation: "Upload or complete the source file and mark it ready.",
-          blocking: false,
-        },
-        8,
-      );
-    }
-
-    if (tender.tenderType === "ONLINE" && !tender.sourceUrl && Object.keys(tender.sourceReference ?? {}).length === 0) {
-      addIssue(
-        {
-          id: "tender-online-source-missing",
-          severity: "MEDIUM",
-          title: "Online tender is missing source reference details",
-          detail: "Online tenders should preserve the portal or source reference that defined the request.",
-          recommendation: "Add the portal URL or a structured source reference to the tender metadata.",
-          blocking: false,
-        },
-        8,
-      );
-    }
-
-    score = Math.max(0, Math.min(100, score));
-    const ready = issues.filter((issue) => issue.blocking).length === 0 && score >= 75;
-
-    return {
-      score,
-      ready,
-      categories,
-      issues,
-    };
+    return inputsByTender;
   }
 
   private async requireSource(organizationId: string, tenderId: string, sourceId: string): Promise<TenderSourceRow> {
@@ -4371,6 +4921,103 @@ export class TendersService {
     }
   }
 
+  /**
+   * Validation snapshots and review rows for many tenders at once, for the
+   * list views. Same loader and scorer as `getValidation`, so a tender scores
+   * identically here and on its own page, at a fixed query count instead of
+   * a dozen queries per tender.
+   */
+  private async validationSummariesByTender(
+    organizationId: string,
+    tenderRows: TenderRow[],
+  ): Promise<Map<string, TenderValidationSummary>> {
+    const inputsByTender = await this.loadValidationInputs(
+      organizationId,
+      tenderRows.map((tender) => tender.id),
+    );
+    return new Map(
+      tenderRows.map((tender) => {
+        const inputs = inputsByTender.get(tender.id) ?? emptyValidationInputs();
+        return [tender.id, { validation: scoreValidation(tender, inputs), reviews: inputs.reviews }];
+      }),
+    );
+  }
+
+  /** As `validationSummariesByTender`, but a failure degrades the section instead of failing the page. */
+  private async tryValidationSummariesByTender(
+    organizationId: string,
+    tenderRows: TenderRow[],
+    errors: DashboardSectionError[],
+    section: string,
+  ): Promise<Map<string, TenderValidationSummary>> {
+    try {
+      return await this.validationSummariesByTender(organizationId, tenderRows);
+    } catch (error) {
+      this.reportSectionError(errors, section, error);
+      return new Map();
+    }
+  }
+
+  /**
+   * The summary for one card, after the same permission checks the per-tender
+   * `getValidation` and `listReviews` calls used to apply. The `read` policy
+   * has already been applied to the whole list by `filterReadableTenders`.
+   */
+  private readableValidationSummary(
+    auth: AuthContext,
+    tender: TenderRow,
+    summaries: Map<string, TenderValidationSummary>,
+  ): TenderValidationSummary {
+    this.assertTenderWorkspacePermission(auth, tender.workspaceId, "tender:read");
+    this.assertTenderWorkspacePermission(auth, tender.workspaceId, "answer:read");
+    const summary = summaries.get(tender.id);
+    if (!summary) throw new Error(`Validation data for tender ${tender.id} is unavailable.`);
+    return summary;
+  }
+
+  /**
+   * Logs the real failure server-side and adds one generic entry per section to
+   * the response, so internal error text never reaches the client.
+   */
+  private reportSectionError(
+    errors: DashboardSectionError[],
+    section: string,
+    error: unknown,
+    tenderId?: string,
+  ) {
+    this.logger.warn(
+      `dashboard section ${section} degraded${tenderId ? ` for tender ${tenderId}` : ""}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      "TendersService",
+    );
+    if (errors.some((entry) => entry.section === section)) return;
+    errors.push({
+      section,
+      message: section === "ai_activity" ? "AI activity could not be loaded." : "Some tender details could not be loaded.",
+    });
+  }
+
+  /**
+   * Drops rows whose tender a `tender:read` policy denies to the caller. One
+   * batched policy evaluation for the whole list, so list endpoints stay at a
+   * fixed number of policy queries however many tenders they return.
+   */
+  private async filterReadableTenders<T>(
+    auth: AuthContext,
+    rows: T[],
+    tenderOf: (row: T) => TenderPolicySubject = (row) => row as unknown as TenderPolicySubject,
+  ): Promise<T[]> {
+    if (rows.length === 0) return rows;
+    const decisions = await this.policy.evaluateMany(
+      auth,
+      "tender",
+      "read",
+      rows.map((row) => tenderPolicyAttributes(tenderOf(row))),
+    );
+    return rows.filter((_, index) => decisions[index]?.allowed !== false);
+  }
+
   private async assertPolicyAllows(
     auth: AuthContext,
     action: string,
@@ -4378,12 +5025,7 @@ export class TendersService {
     extra: Record<string, unknown> = {},
   ) {
     const decision = await this.policy.evaluate(auth, "tender", action, {
-      tenderId: tender.id,
-      workspaceId: tender.workspaceId,
-      ownerId: tender.ownerId,
-      status: tender.status,
-      tenderType: tender.tenderType,
-      archived: tender.archivedAt !== null,
+      ...tenderPolicyAttributes(tender),
       ...extra,
     });
     if (!decision.allowed) {
@@ -4441,6 +5083,44 @@ export class TendersService {
     const workspaceIds = auth.workspaceIds ?? [];
     if (workspaceIds.length === 0) {
       throw new TenderPermissionError("tender:read");
+    }
+    return workspaceIds;
+  }
+
+  private resolveRequirementWorkspaceScope(auth: AuthContext, workspaceId?: string) {
+    if (workspaceId) {
+      if (!hasWorkspacePermission(auth, workspaceId, "requirement:read")) {
+        throw new TenderPermissionError("requirement:read");
+      }
+      return [workspaceId];
+    }
+
+    if (hasOrganizationPermission(auth, "requirement:read")) {
+      return null;
+    }
+
+    const workspaceIds = (auth.workspaceIds ?? []).filter((id) => hasWorkspacePermission(auth, id, "requirement:read"));
+    if (workspaceIds.length === 0) {
+      throw new TenderPermissionError("requirement:read");
+    }
+    return workspaceIds;
+  }
+
+  private resolveAnswerWorkspaceScope(auth: AuthContext, workspaceId?: string) {
+    if (workspaceId) {
+      if (!hasOrganizationPermission(auth, "answer:read") && !hasWorkspacePermission(auth, workspaceId, "answer:read")) {
+        throw new TenderPermissionError("answer:read");
+      }
+      return [workspaceId];
+    }
+
+    if (hasOrganizationPermission(auth, "answer:read")) {
+      return null;
+    }
+
+    const workspaceIds = (auth.workspaceIds ?? []).filter((id) => hasWorkspacePermission(auth, id, "answer:read"));
+    if (workspaceIds.length === 0) {
+      throw new TenderPermissionError("answer:read");
     }
     return workspaceIds;
   }
@@ -4629,6 +5309,20 @@ function deriveGroundingStatus(analysis: {
   return "SUPPORTED" as const;
 }
 
+type TenderPolicySubject = Pick<TenderRow, "id" | "workspaceId" | "ownerId" | "status" | "tenderType" | "archivedAt">;
+
+/** The attributes `tender` access policies are evaluated against. */
+function tenderPolicyAttributes(tender: TenderPolicySubject) {
+  return {
+    tenderId: tender.id,
+    workspaceId: tender.workspaceId,
+    ownerId: tender.ownerId,
+    status: tender.status,
+    tenderType: tender.tenderType,
+    archived: tender.archivedAt !== null,
+  };
+}
+
 function serializeTender(row: TenderRow, options: { saved?: boolean } = {}) {
   return {
     id: row.id,
@@ -4660,6 +5354,262 @@ function serializeTender(row: TenderRow, options: { saved?: boolean } = {}) {
   };
 }
 
+function emptyDashboardKnowledge(): DashboardKnowledgeHealth {
+  return {
+    counts: { total: 0, draft: 0, active: 0, archived: 0, stale: 0 },
+    items: [],
+    attention: [],
+  };
+}
+
+function formatStatusLabel(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+/**
+ * Pure readiness scoring for one tender. Every validation read path — the
+ * single-tender endpoint and the batched dashboard / pipeline / submissions
+ * views — goes through this function so their numbers cannot drift apart.
+ */
+function scoreValidation(tender: TenderRow, inputs: TenderValidationInputs): TenderValidationSnapshot {
+  const { questions, requirements, answers, sources, reviews, links } = inputs;
+  const evidenceRows = inputs.evidence;
+
+  const answerByQuestionId = new Map(answers.map((answer) => [answer.questionId, answer]));
+  const requirementById = new Map(requirements.map((requirement) => [requirement.id, requirement]));
+  const requirementIdsByQuestion = new Map<string, string[]>();
+  const questionIdsByRequirement = new Map<string, string[]>();
+  for (const link of links) {
+    const requirementsForQuestion = requirementIdsByQuestion.get(link.questionId) ?? [];
+    requirementsForQuestion.push(link.requirementId);
+    requirementIdsByQuestion.set(link.questionId, requirementsForQuestion);
+
+    const questionsForRequirement = questionIdsByRequirement.get(link.requirementId) ?? [];
+    questionsForRequirement.push(link.questionId);
+    questionIdsByRequirement.set(link.requirementId, questionsForRequirement);
+  }
+
+  const evidenceCountByAnswer = new Map<string, number>();
+  for (const evidence of evidenceRows) {
+    evidenceCountByAnswer.set(evidence.answerId, (evidenceCountByAnswer.get(evidence.answerId) ?? 0) + 1);
+  }
+  const reviewCountByAnswer = new Map<string, number>();
+  const latestReviewByAnswer = new Map<string, typeof tenderAnswerReviews.$inferSelect>();
+  for (const review of reviews) {
+    reviewCountByAnswer.set(review.answerId, (reviewCountByAnswer.get(review.answerId) ?? 0) + 1);
+    const current = latestReviewByAnswer.get(review.answerId);
+    if (!current || current.createdAt < review.createdAt) {
+      latestReviewByAnswer.set(review.answerId, review);
+    }
+  }
+
+  const mandatoryRequirements = requirements.filter((requirement) => requirement.mandatory);
+  const requirementIsApproved = (requirement: typeof tenderRequirements.$inferSelect) => {
+    const linkedQuestionIds = questionIdsByRequirement.get(requirement.id) ?? [];
+    return linkedQuestionIds.length > 0 && linkedQuestionIds.every((questionId) => { const answer = answerByQuestionId.get(questionId); return answer ? hasCurrentApproval(answer, reviews) : false; });
+  };
+  const approvedMandatory = mandatoryRequirements.filter(requirementIsApproved);
+  const answeredQuestions = questions.filter((question) => answerByQuestionId.has(question.id));
+  const answeredWithEvidence = answers.filter((answer) => (evidenceCountByAnswer.get(answer.id) ?? 0) > 0);
+  const reviewedAnswers = answers.filter((answer) => hasCurrentApproval(answer, reviews));
+  const readySources = sources.filter((source) => source.status === "READY");
+
+  let score = 100;
+  const issues: TenderValidationIssue[] = [];
+  const addIssue = (issue: TenderValidationIssue, weight: number) => {
+    issues.push(issue);
+    score -= weight;
+  };
+
+  const categories: TenderValidationCategory[] = [
+    validationCategory(
+      "questionCoverage",
+      "Questions answered",
+      answeredQuestions.length,
+      questions.length,
+      answeredQuestions.length === questions.length ? "success" : "warning",
+      "Every question should have a linked answer before the tender is approved.",
+    ),
+    validationCategory(
+      "mandatory",
+      "Mandatory requirements approved",
+      approvedMandatory.length,
+      mandatoryRequirements.length,
+      mandatoryRequirements.length === 0 || approvedMandatory.length === mandatoryRequirements.length
+        ? "success"
+        : "danger",
+      "Mandatory requirements must be approved before submission.",
+    ),
+    validationCategory(
+      "evidence",
+      "Answers backed by evidence",
+      answeredWithEvidence.length,
+      answers.length,
+      answers.length === 0 || answeredWithEvidence.length / Math.max(answers.length, 1) > 0.8 ? "success" : "warning",
+      "Linked evidence keeps answers traceable during review.",
+    ),
+    validationCategory(
+      "reviews",
+      "Answers reviewed",
+      reviewedAnswers.length,
+      answers.length,
+      reviewedAnswers.length === answers.length ? "success" : "warning",
+      "Reviewed answers are easier to finalize and submit.",
+    ),
+    validationCategory(
+      "sources",
+      "Source files ready",
+      readySources.length,
+      sources.length,
+      sources.length === 0 || readySources.length === sources.length ? "success" : "warning",
+      "Document and intake sources should be uploaded and marked ready.",
+    ),
+  ];
+
+  for (const requirement of mandatoryRequirements) {
+    if (requirementIsApproved(requirement)) continue;
+    addIssue(
+      {
+        id: `requirement-${requirement.id}-not-approved`,
+        severity: "HIGH",
+        title: `Mandatory requirement ${requirement.title} is not approved`,
+        detail: "A mandatory requirement still needs approval before this tender can be submitted.",
+        recommendation: "Assign a reviewer and approve every answer linked to this requirement.",
+        blocking: true,
+        requirementId: requirement.id,
+      },
+      25,
+    );
+  }
+
+  for (const question of questions) {
+    const answer = answerByQuestionId.get(question.id);
+    if (answer) continue;
+    addIssue(
+      {
+        id: `question-${question.id}-unanswered`,
+        severity: question.required ? "MEDIUM" : "LOW",
+        title: `Question ${question.questionText} has no answer`,
+        detail: "The workspace still has an unanswered question.",
+        recommendation: "Draft an answer and link supporting evidence if the question is material.",
+        blocking: Boolean(question.required),
+        questionId: question.id,
+      },
+      question.required ? 10 : 3,
+    );
+  }
+
+  for (const answer of answers) {
+    const evidenceCount = evidenceCountByAnswer.get(answer.id) ?? 0;
+    const latestReview = latestReviewByAnswer.get(answer.id);
+    if (questions.find((question) => question.id === answer.questionId)?.required && !hasCurrentApproval(answer, reviews)) {
+      addIssue({ id: `answer-${answer.id}-unapproved-content`, severity: "HIGH", title: "Required answer needs a current approved review", detail: "Approval must match the current answer content.", recommendation: "Review the latest answer and approve it.", blocking: true, answerId: answer.id, questionId: answer.questionId }, 15);
+    }
+    if (evidenceCount === 0) {
+      const relatedRequirementIds = requirementIdsByQuestion.get(answer.questionId) ?? [];
+      const relatedMandatory = relatedRequirementIds.some((requirementId) => requirementById.get(requirementId)?.mandatory);
+      addIssue(
+        {
+          id: `answer-${answer.id}-no-evidence`,
+          severity: relatedMandatory ? "HIGH" : "MEDIUM",
+          title: `Answer ${answer.id} has no evidence`,
+          detail: "Answers should be traceable to evidence before approval.",
+          recommendation: "Attach a source, document, or note that supports this answer.",
+          blocking: relatedMandatory,
+          answerId: answer.id,
+          questionId: answer.questionId,
+        },
+        relatedMandatory ? 15 : 6,
+      );
+    }
+
+    if (latestReview?.status === "PENDING" || latestReview?.status === "CHANGES_REQUESTED") {
+      addIssue(
+        {
+          id: `answer-${answer.id}-needs-review`,
+          severity: latestReview.status === "PENDING" ? "MEDIUM" : "HIGH",
+          title: `Answer ${answer.id} still needs review`,
+          detail:
+            latestReview.status === "PENDING"
+              ? "A review has been opened but not completed."
+              : "Changes were requested and still need resolution.",
+          recommendation: "Resolve the reviewer feedback and run validation again.",
+          blocking: latestReview.status === "CHANGES_REQUESTED",
+          answerId: answer.id,
+          questionId: answer.questionId,
+        },
+        latestReview.status === "PENDING" ? 5 : 12,
+      );
+    }
+  }
+
+  if (tender.tenderType === "DOCUMENT" && readySources.length === 0) {
+    addIssue(
+      {
+        id: "tender-document-source-missing",
+        severity: "MEDIUM",
+        title: "Document tender has no ready source material",
+        detail: "Document tenders should carry at least one ready source before they are approved.",
+        recommendation: "Upload or complete the source file and mark it ready.",
+        blocking: false,
+      },
+      8,
+    );
+  }
+
+  if (tender.tenderType === "ONLINE" && !tender.sourceUrl && Object.keys(tender.sourceReference ?? {}).length === 0) {
+    addIssue(
+      {
+        id: "tender-online-source-missing",
+        severity: "MEDIUM",
+        title: "Online tender is missing source reference details",
+        detail: "Online tenders should preserve the portal or source reference that defined the request.",
+        recommendation: "Add the portal URL or a structured source reference to the tender metadata.",
+        blocking: false,
+      },
+      8,
+    );
+  }
+
+  score = Math.max(0, Math.min(100, score));
+  const ready = issues.filter((issue) => issue.blocking).length === 0 && score >= 75;
+
+  return {
+    score,
+    ready,
+    categories,
+    issues,
+  };
+}
+
+/** The readiness / issue / review fields shared by dashboard and pipeline cards. */
+function validationCardFields({ validation, reviews }: TenderValidationSummary) {
+  const issues = validation.issues ?? [];
+  const highestIssue = issues.reduce<TenderValidationIssue | null>((best, issue) => {
+    if (!best) return issue;
+    const issueScore = rankSeverity(issue.severity);
+    const bestScore = rankSeverity(best.severity);
+    return issueScore > bestScore ? issue : best;
+  }, null);
+  return {
+    readiness: validation.score,
+    ready: validation.ready,
+    highestIssue,
+    issueCount: issues.length,
+    blockingIssueCount: issues.filter((issue) => issue.blocking).length,
+    pendingReviews: reviews.filter((review) => review.status === "PENDING" || review.status === "CHANGES_REQUESTED")
+      .length,
+    totalReviews: reviews.length,
+  };
+}
+
+function emptyValidationInputs(): TenderValidationInputs {
+  return { questions: [], requirements: [], answers: [], sources: [], reviews: [], evidence: [], links: [] };
+}
+
 function validationCategory(
   id: string,
   label: string,
@@ -4682,6 +5632,256 @@ function serializeValidationRun(row: TenderValidationRunRow) {
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+function emptyRequirementsQueue(input: RequirementsQueueInput) {
+  return {
+    items: [],
+    counts: {
+      tenders: 0,
+      requirements: 0,
+      mandatory: 0,
+      unanswered: 0,
+      highRisk: 0,
+      pendingReview: 0,
+      approved: 0,
+      blocked: 0,
+    },
+    page: input.page,
+    pageSize: input.pageSize,
+    total: 0,
+  };
+}
+
+function emptyResponsesQueue(input: ResponsesQueueInput) {
+  return {
+    items: [],
+    counts: {
+      total: 0,
+      draft: 0,
+      needsReview: 0,
+      missingEvidence: 0,
+      lowConfidence: 0,
+      changesRequested: 0,
+      final: 0,
+    },
+    page: input.page,
+    pageSize: input.pageSize,
+    total: 0,
+  };
+}
+
+function emptySubmissionsQueue(input: SubmissionsQueueInput) {
+  return {
+    items: [],
+    counts: {
+      tenders: 0,
+      noPackage: 0,
+      generating: 0,
+      ready: 0,
+      approved: 0,
+      needsRebuild: 0,
+      submitted: 0,
+      blocked: 0,
+    },
+    page: input.page,
+    pageSize: input.pageSize,
+    total: 0,
+  };
+}
+
+function latestDate(values: Array<Date | string | null | undefined>) {
+  const dates = values
+    .filter((value): value is Date | string => Boolean(value))
+    .map((value) => (value instanceof Date ? value : new Date(value)))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime());
+  return dates[0] ?? null;
+}
+
+function buildResponseReviewSummary(rows: Array<{ review: TenderReviewRow; reviewerName: string | null }>) {
+  const counts = rows.reduce(
+    (acc, row) => {
+      acc.total += 1;
+      if (row.review.status === "PENDING") acc.pending += 1;
+      if (row.review.status === "CHANGES_REQUESTED") acc.changesRequested += 1;
+      if (row.review.status === "APPROVED") acc.approved += 1;
+      if (row.review.status === "REJECTED") acc.rejected += 1;
+      return acc;
+    },
+    { total: 0, pending: 0, changesRequested: 0, approved: 0, rejected: 0 },
+  );
+  const latest = rows[0] ? { ...serializeReview(rows[0].review), reviewerName: rows[0].reviewerName } : null;
+  return {
+    latest,
+    counts,
+    latestStatus: latest?.status ?? null,
+    latestComment: latest?.comment ?? null,
+    latestReviewerName: latest?.reviewerName ?? null,
+  };
+}
+
+type ResponseQueueRow = {
+  tender: ReturnType<typeof serializeTender>;
+  answer: ReturnType<typeof serializeAnswer> & { versionCount: number; evidenceCount: number; reviewCount: number };
+  question: ReturnType<typeof serializeQuestion>;
+  requirement: ReturnType<typeof serializeRequirement> | null;
+  linkedRequirementCount: number;
+  reviewSummary: ReturnType<typeof buildResponseReviewSummary>;
+  navigation: { primaryHref: string; applyHref: string; tenderHref: string };
+  lastActivityAt: string;
+};
+
+function countResponseQueueRows(rows: ResponseQueueRow[]) {
+  return rows.reduce(
+    (acc, row) => {
+      acc.total += 1;
+      if (/DRAFT/i.test(row.answer.status)) acc.draft += 1;
+      if (responseNeedsReview(row)) acc.needsReview += 1;
+      if (row.answer.evidenceCount === 0) acc.missingEvidence += 1;
+      if (row.answer.confidence < 0.65) acc.lowConfidence += 1;
+      if (row.reviewSummary.counts.changesRequested > 0) acc.changesRequested += 1;
+      if (/FINAL|APPROVED/i.test(row.answer.status)) acc.final += 1;
+      return acc;
+    },
+    { total: 0, draft: 0, needsReview: 0, missingEvidence: 0, lowConfidence: 0, changesRequested: 0, final: 0 },
+  );
+}
+
+function responseNeedsReview(row: ResponseQueueRow) {
+  return /REVIEW|PENDING|CHANGES_REQUESTED/i.test(row.answer.status)
+    || row.reviewSummary.counts.pending > 0
+    || row.reviewSummary.counts.changesRequested > 0;
+}
+
+function responseRowMatchesSearch(row: ResponseQueueRow, query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  const haystack = [
+    row.answer.answerText,
+    row.tender.title,
+    row.tender.name,
+    row.tender.buyerName,
+    row.question.questionText,
+    row.question.section,
+    row.requirement?.title,
+    row.requirement?.description,
+    row.reviewSummary.latestComment,
+    row.reviewSummary.latestReviewerName,
+  ].filter(Boolean).join("\n").toLowerCase();
+  return haystack.includes(needle);
+}
+
+function responseRowMatchesFilters(row: ResponseQueueRow, input: ResponsesQueueInput) {
+  if (input.status !== "all" && row.answer.status !== input.status) return false;
+  if (input.source !== "all" && row.answer.source !== input.source) return false;
+  if (input.evidence === "missing" && row.answer.evidenceCount > 0) return false;
+  if (input.evidence === "linked" && row.answer.evidenceCount === 0) return false;
+  if (input.confidence === "low" && row.answer.confidence >= 0.65) return false;
+  if (input.confidence === "medium" && (row.answer.confidence < 0.65 || row.answer.confidence >= 0.85)) return false;
+  if (input.confidence === "high" && row.answer.confidence < 0.85) return false;
+  if (input.review === "not_sent" && row.reviewSummary.counts.total > 0) return false;
+  if (input.review === "pending" && row.reviewSummary.counts.pending === 0) return false;
+  if (input.review === "changes_requested" && row.reviewSummary.counts.changesRequested === 0) return false;
+  if (input.review === "approved" && row.reviewSummary.counts.approved === 0) return false;
+  if (input.review === "rejected" && row.reviewSummary.counts.rejected === 0) return false;
+  return true;
+}
+
+function compareResponseQueueRows(left: ResponseQueueRow, right: ResponseQueueRow, sort: ResponsesQueueInput["sort"]) {
+  if (sort === "updated_asc") return dateValue(left.answer.updatedAt) - dateValue(right.answer.updatedAt);
+  if (sort === "confidence_asc") return left.answer.confidence - right.answer.confidence;
+  if (sort === "confidence_desc") return right.answer.confidence - left.answer.confidence;
+  if (sort === "evidence_asc") return left.answer.evidenceCount - right.answer.evidenceCount || dateValue(right.answer.updatedAt) - dateValue(left.answer.updatedAt);
+  if (sort === "review_urgency") {
+    const urgency = responseReviewUrgency(left) - responseReviewUrgency(right);
+    if (urgency !== 0) return urgency;
+  }
+  return dateValue(right.answer.updatedAt) - dateValue(left.answer.updatedAt);
+}
+
+function responseReviewUrgency(row: ResponseQueueRow) {
+  if (row.reviewSummary.counts.changesRequested > 0) return 0;
+  if (row.reviewSummary.counts.pending > 0 || /REVIEW|PENDING/i.test(row.answer.status)) return 1;
+  if (row.answer.evidenceCount === 0) return 2;
+  if (row.answer.confidence < 0.65) return 3;
+  return 4;
+}
+
+function dateValue(value: Date | string | null | undefined) {
+  if (!value) return 0;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function submissionActionState(input: {
+  ready: boolean;
+  latestPackage: { status: "GENERATING" | "READY" | "FAILED" | "STALE" | "APPROVED" } | null;
+  latestSubmission: { id: string } | null;
+}): SubmissionQueueActionState {
+  if (input.latestSubmission) return "VIEW_RECEIPT";
+  if (input.latestPackage?.status === "APPROVED") return "RECORD_RECEIPT";
+  if (input.latestPackage?.status === "READY") return "APPROVE_PACKAGE";
+  if (input.latestPackage?.status === "STALE" || input.latestPackage?.status === "FAILED") return "REBUILD_PACKAGE";
+  return input.ready ? "BUILD_PACKAGE" : "RESOLVE_BLOCKERS";
+}
+
+function compareSubmissionQueueRows(
+  left: {
+    tender: ReturnType<typeof serializeTender>;
+    ready: boolean;
+    blockingIssueCount: number;
+    latestPackage: { status: "GENERATING" | "READY" | "FAILED" | "STALE" | "APPROVED" } | null;
+    latestSubmission: { id: string } | null;
+  },
+  right: {
+    tender: ReturnType<typeof serializeTender>;
+    ready: boolean;
+    blockingIssueCount: number;
+    latestPackage: { status: "GENERATING" | "READY" | "FAILED" | "STALE" | "APPROVED" } | null;
+    latestSubmission: { id: string } | null;
+  },
+) {
+  const leftRank = submissionQueueRank(left);
+  const rightRank = submissionQueueRank(right);
+  if (leftRank !== rightRank) return leftRank - rightRank;
+  const leftDue = left.tender.dueAt ? new Date(left.tender.dueAt).getTime() : Number.POSITIVE_INFINITY;
+  const rightDue = right.tender.dueAt ? new Date(right.tender.dueAt).getTime() : Number.POSITIVE_INFINITY;
+  if (leftDue !== rightDue) return leftDue - rightDue;
+  return left.tender.title.localeCompare(right.tender.title);
+}
+
+function submissionQueueRank(row: {
+  ready: boolean;
+  blockingIssueCount: number;
+  latestPackage: { status: "GENERATING" | "READY" | "FAILED" | "STALE" | "APPROVED" } | null;
+  latestSubmission: { id: string } | null;
+}) {
+  if (row.blockingIssueCount > 0 || (!row.ready && !row.latestSubmission)) return 0;
+  if (row.latestPackage?.status === "STALE" || row.latestPackage?.status === "FAILED") return 1;
+  if (row.latestPackage?.status === "APPROVED" && !row.latestSubmission) return 2;
+  if (row.latestPackage?.status === "READY") return 3;
+  return 4;
+}
+
+function compareRequirementQueueRows(
+  left: {
+    tender: ReturnType<typeof serializeTender>;
+    requirement: ReturnType<typeof serializeRequirement> & { questionIds: string[] };
+    riskState: { highRisk: boolean };
+  },
+  right: {
+    tender: ReturnType<typeof serializeTender>;
+    requirement: ReturnType<typeof serializeRequirement> & { questionIds: string[] };
+    riskState: { highRisk: boolean };
+  },
+) {
+  if (left.riskState.highRisk !== right.riskState.highRisk) return left.riskState.highRisk ? -1 : 1;
+  if (left.requirement.mandatory !== right.requirement.mandatory) return left.requirement.mandatory ? -1 : 1;
+  const leftDue = left.tender.dueAt ? new Date(left.tender.dueAt).getTime() : Number.POSITIVE_INFINITY;
+  const rightDue = right.tender.dueAt ? new Date(right.tender.dueAt).getTime() : Number.POSITIVE_INFINITY;
+  if (leftDue !== rightDue) return leftDue - rightDue;
+  return left.requirement.title.localeCompare(right.requirement.title);
 }
 
 function serializeAnswerVersion(row: typeof tenderAnswerVersions.$inferSelect) {

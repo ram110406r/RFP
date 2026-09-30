@@ -42,10 +42,10 @@ describe("orgScope", () => {
 });
 
 /**
- * Needs a live database. Skipped rather than failed when DATABASE_URL is
- * unset so the suite still runs in environments without Postgres.
+ * Needs a live database. The DB suite is enabled by package scripts that set
+ * NODE_ENV=test and preserve DATABASE_URL; accidental root discovery skips it.
  */
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
+const dbTest = process.env.NODE_ENV === "test" && process.env.DATABASE_URL ? test : test.skip;
 
 describe("withTransaction", () => {
   const marker = "tx-rollback-probe.invalid";

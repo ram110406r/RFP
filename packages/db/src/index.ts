@@ -11,3 +11,4 @@ export * from "./relations";
 
 export { closeDb, getDb, orgScope, schema, withTransaction } from "./client";
 export type { Database, Transaction } from "./client";
+export { DEMO_LOGIN_EMAIL, DEMO_LOGIN_PASSWORD } from "./seed/demo-credentials";

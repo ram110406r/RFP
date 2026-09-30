@@ -1,4 +1,4 @@
-import { date, index, jsonb, numeric, pgEnum, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { date, index, jsonb, numeric, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { requirementCategoryEnum, timestamps } from "./_shared";
 import { users } from "./identity";
@@ -9,6 +9,7 @@ import { organizations } from "./organization";
  * the authority hierarchy the conflict engine (Phase 19) will enforce.
  */
 export const authorityEnum = pgEnum("authority", ["high", "medium", "low"]);
+export const responseTemplateStatusEnum = pgEnum("response_template_status", ["DRAFT", "ACTIVE", "ARCHIVED"]);
 
 /**
  * The organization's shared knowledge layer. Deliberately NOT an RFP-specific
@@ -80,6 +81,10 @@ export const knowledgeConflicts = pgTable(
     topic: text("topic").notNull(),
     recommended: text("recommended").notNull().default(""),
     action: text("action").notNull().default(""),
+    status: text("status").notNull().default("OPEN"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+    resolutionNote: text("resolution_note"),
   },
   (t) => [index("knowledge_conflicts_source_idx").on(t.sourceId)],
 );
@@ -96,4 +101,35 @@ export const knowledgeConflictVariants = pgTable(
     value: text("value").notNull(),
   },
   (t) => [index("knowledge_conflict_variants_conflict_idx").on(t.conflictId)],
+);
+
+export const responseTemplates = pgTable(
+  "response_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    category: requirementCategoryEnum("category").notNull(),
+    status: responseTemplateStatusEnum("status").notNull().default("DRAFT"),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "set null" }),
+    description: text("description").notNull().default(""),
+    sections: jsonb("sections")
+      .$type<Array<{ id?: string; title: string; body: string }>>()
+      .notNull()
+      .default([]),
+    variables: jsonb("variables")
+      .$type<Array<{ key: string; label: string; required?: boolean; defaultValue?: string }>>()
+      .notNull()
+      .default([]),
+    version: text("version").notNull().default("1.0"),
+    usageMetadata: jsonb("usage_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index("response_templates_org_idx").on(t.organizationId),
+    index("response_templates_status_idx").on(t.status),
+  ],
 );

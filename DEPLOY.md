@@ -14,8 +14,9 @@ path to MinIO, so no separate storage domain is needed.
 | `postgres` | pgvector database | internal only |
 | `redis` | queue backend | internal only |
 | `minio` | S3-compatible document storage | internal only |
+| `worker` | background jobs (document parsing, tender discovery, reminders) | internal only |
 | `migrate` | one-shot, applies migrations then exits | - |
-| `seed` | one-shot, seeds demo data then exits | - |
+| `seed` | one-shot, seeds demo data then exits; only with the `demo-seed` profile | - |
 
 ## Compose profiles
 
@@ -24,6 +25,10 @@ This repository has one canonical Compose file: `docker-compose.yml`.
 - `local`: local infrastructure only. Used by `bun infra:up`,
   `bun infra:down`, `bun infra:logs`, and `bun infra:reset`.
 - `dokploy-bundled`: app containers plus bundled Postgres, Redis, and MinIO.
+- `demo-seed`: adds the one-shot `seed` service that loads the demo dataset.
+  It includes a known demo login, so never enable it on a real production
+  deployment. Combine it with the bundled profile for demo environments only:
+  `COMPOSE_PROFILES=dokploy-bundled,demo-seed`.
 
 Dokploy should point at `docker-compose.yml`. Set
 `COMPOSE_PROFILES=dokploy-bundled` in the deployment environment.
@@ -50,6 +55,12 @@ PUBLIC_URL=https://app.example.com
 API_INTERNAL_URL=http://api:4000
 BETTER_AUTH_URL=https://app.example.com
 BETTER_AUTH_SECRET=<strong secret>
+BETTER_AUTH_GOOGLE_CLIENT_ID=<google oauth client id>
+BETTER_AUTH_GOOGLE_CLIENT_SECRET=<google oauth client secret>
+ENABLE_FIREBASE_AUTH_COMPAT=false
+
+AI_PROVIDER=groq
+GROQ_API_KEY=<groq api key>
 
 # Bundled Postgres
 POSTGRES_USER=rfpos
@@ -69,6 +80,12 @@ NEXT_PUBLIC_FIREBASE_APP_ID=
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
 NEXT_PUBLIC_FIREBASE_USE_EMULATORS=false
 ```
+
+The API validates this configuration at boot and refuses to start in
+production if a required secret is missing, if `BETTER_AUTH_SECRET` is the old
+public compose fallback, or if Postgres/MinIO still use the local development
+password `rfpos_dev_password`. Compose has no secret fallbacks, so a missing
+value shows up as a clear boot error rather than a silently weak default.
 
 `PUBLIC_URL` must match the URL users will actually open. `API_INTERNAL_URL`
 should stay `http://api:4000` in Docker/Dokploy deployments.

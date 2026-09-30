@@ -32,8 +32,9 @@ import type { RfpLifecycleStatus } from "./domain/rfp-state-machine";
  *
  * Skipped without DATABASE_URL, matching packages/db and the auth suite.
  */
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 /** Captures published events so the tests can assert on them. */
 class RecordingPublisher extends EventPublisher {
@@ -44,7 +45,7 @@ class RecordingPublisher extends EventPublisher {
 }
 
 describeDb("RFP domain", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const events = new RecordingPublisher();
   const repository = new RfpRepository(db);
   const audit = new AuditService(db);

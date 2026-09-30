@@ -23,8 +23,13 @@ describe("apply queue classification", () => {
   });
 
   test("stale packages and blocking issues are blocked", () => {
-    expect(classifyApplication(row({ blockingIssueCount: 0 }), pkg("STALE")).blocked).toBe(true);
-    expect(classifyApplication(row({ blockingIssueCount: 2 }), null).blocked).toBe(true);
+    const stale = classifyApplication(row({ blockingIssueCount: 0 }), pkg("STALE"));
+    const blocked = classifyApplication(row({ blockingIssueCount: 2 }), null);
+
+    expect(stale.blocked).toBe(true);
+    expect(stale.reason).toBe("Package is stale");
+    expect(blocked.blocked).toBe(true);
+    expect(blocked.reason).toBe("2 blocking issues");
   });
 
   test("submitted tenders only match submitted terminal queue", () => {
@@ -33,7 +38,15 @@ describe("apply queue classification", () => {
     expect(state.submitted).toBe(true);
     expect(state.blocked).toBe(false);
     expect(state.needsReview).toBe(false);
+    expect(state.reason).toBe("Submission recorded");
     expect(matchesApplyQueue("submitted", state)).toBe(true);
+  });
+
+  test("queue reasons describe review, approval, ready, and failed run states", () => {
+    expect(classifyApplication(row({ pendingReviews: 1 }), null).reason).toBe("1 review pending");
+    expect(classifyApplication(row({ status: "REVIEW" }), pkg("READY")).reason).toBe("Package ready for approval");
+    expect(classifyApplication(row({ status: "APPROVED" }), pkg("APPROVED")).reason).toBe("Approved package ready to submit");
+    expect(classifyApplication(row(), null, run("FAILED")).reason).toBe("Preparation failed");
   });
 });
 
@@ -92,5 +105,15 @@ function pkg(status: TenderSubmissionPackage["status"]): TenderSubmissionPackage
     createdAt: "2026-01-01T00:00:00.000Z",
     completedAt: "2026-01-01T00:00:00.000Z",
     artifacts: [],
+  };
+}
+
+function run(status: string): NonNullable<DashboardTenderCard["latestRun"]> {
+  return {
+    id: `run-${status}`,
+    status,
+    failureReason: status === "FAILED" ? "Failed" : null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    completedAt: status === "RUNNING" ? null : "2026-01-01T00:00:00.000Z",
   };
 }

@@ -9,7 +9,8 @@
     "start": "bun ../../scripts/run-with-env.ts bun src/main.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src --path-ignore-patterns \"**/*.db.test.ts\" --path-ignore-patterns \"**/activity-audit-events.test.ts\" --path-ignore-patterns \"**/activity-audit-isolation.test.ts\" --path-ignore-patterns \"**/assignments.service.test.ts\" --path-ignore-patterns \"**/auth.service.test.ts\" --path-ignore-patterns \"**/documents.service.test.ts\" --path-ignore-patterns \"**/onboarding.employee.test.ts\" --path-ignore-patterns \"**/onboarding.service.test.ts\" --path-ignore-patterns \"**/rfp.service.test.ts\" --path-ignore-patterns \"**/roles.service.test.ts\" --path-ignore-patterns \"**/tenders.integration.test.ts\" --path-ignore-patterns \"**/tier0-api-authorization.test.ts\" --path-ignore-patterns \"**/workspaces.service.test.ts\""
+    "test": "bun test src --path-ignore-patterns \"**/*.db.test.ts\" --path-ignore-patterns \"**/activity-audit-events.test.ts\" --path-ignore-patterns \"**/activity-audit-isolation.test.ts\" --path-ignore-patterns \"**/assignments.service.test.ts\" --path-ignore-patterns \"**/auth.service.test.ts\" --path-ignore-patterns \"**/documents.service.test.ts\" --path-ignore-patterns \"**/onboarding.employee.test.ts\" --path-ignore-patterns \"**/onboarding.service.test.ts\" --path-ignore-patterns \"**/rfp.service.test.ts\" --path-ignore-patterns \"**/roles.service.test.ts\" --path-ignore-patterns \"**/tenders.integration.test.ts\" --path-ignore-patterns \"**/tier0-api-authorization.test.ts\" --path-ignore-patterns \"**/workspaces.service.test.ts\"",
+    "test:db": "bun test src --path-ignore-patterns \"**/e2e/**\" --path-ignore-patterns \"**/*.logic.test.ts\" --path-ignore-patterns \"**/*.dto.test.ts\" --path-ignore-patterns \"**/*.domain.test.ts\""
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

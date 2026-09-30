@@ -16,7 +16,12 @@ import { DOCUMENT_JOBS, type DocumentJobPayload } from "@rfp-os/jobs";
 import type { ObjectStorage } from "@rfp-os/storage";
 import { asc, eq, inArray, and } from "drizzle-orm";
 
-import { DocumentProcessor, isOcrRequired, isPermanent } from "./document-processor";
+import {
+  DEFAULT_MAX_DOCUMENT_BYTES,
+  DocumentProcessor,
+  isOcrRequired,
+  isPermanent,
+} from "./document-processor";
 import { DocxDocumentParser } from "@rfp-os/document-processing";
 import {
   DOCX_MIME,
@@ -33,11 +38,12 @@ import {
  * when the same document is processed twice or a newer version exists while
  * an older job is still running.
  */
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 describeDb("Document processing", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const storage = new FakeStorage();
   const processor = new DocumentProcessor(storage as unknown as ObjectStorage);
 
@@ -359,6 +365,30 @@ describeDb("Document processing", () => {
     });
   });
 
+  describe("size limit", () => {
+    dbTest("refuses an object over the size limit before reading it", async () => {
+      const payload = await givenQueuedDocument(buildPdf(["Oversized"]));
+      storage.declaredSizes.set(payload.objectKey, DEFAULT_MAX_DOCUMENT_BYTES + 1);
+      let fullReads = 0;
+      const readObject = storage.readObject.bind(storage);
+      storage.readObject = async (objectKey: string) => {
+        fullReads += 1;
+        return readObject(objectKey);
+      };
+
+      try {
+        const error = await processor.process(DOCUMENT_JOBS.PARSE, payload).catch((caught: unknown) => caught);
+
+        expect(isPermanent(error)).toBe(true);
+        expect((error as Error).message).toContain("processing limit");
+        expect(fullReads).toBe(0);
+        expect(await extractionOf(payload.documentId, 1)).toBeNull();
+      } finally {
+        storage.readObject = readObject;
+      }
+    });
+  });
+
   describe("persistence", () => {
     dbTest("does not mark parsed until extraction persistence succeeds", async () => {
       const payload = await givenQueuedDocument(buildPdf(["Pending persistence"]));
@@ -627,10 +657,18 @@ describeDb("Document processing", () => {
 
 class FakeStorage {
   private readonly objects = new Map<string, Uint8Array>();
+  /** Sizes reported by headObject in place of the real length, for limit tests. */
+  readonly declaredSizes = new Map<string, number>();
   failNext = false;
 
   put(objectKey: string, bytes: Uint8Array) {
     this.objects.set(objectKey, bytes);
+  }
+
+  async headObject(objectKey: string): Promise<{ sizeBytes: number } | null> {
+    const bytes = this.objects.get(objectKey);
+    if (!bytes) return null;
+    return { sizeBytes: this.declaredSizes.get(objectKey) ?? bytes.byteLength };
   }
 
   delete(objectKey: string) {

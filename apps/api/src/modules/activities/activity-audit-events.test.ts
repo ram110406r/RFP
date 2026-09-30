@@ -25,42 +25,20 @@ import { PoliciesService } from "../policies/policies.service";
 import { RolesService } from "../roles/roles.service";
 import { TeamsService } from "../teams/teams.service";
 import { WorkspacesService } from "../workspaces/workspaces.service";
-import type { Env } from "../../config/env.schema";
+import { testEnv } from "../../config/test-env";
 
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
-const env = {
-  APP_ENV: "local",
-  NODE_ENV: "test",
-  API_PORT: 4100,
-  CORS_ORIGIN: "http://localhost:3000",
-  LOG_LEVEL: "silent",
-  RATE_LIMIT_TTL_MS: 60_000,
-  RATE_LIMIT_LIMIT: 100,
-  BETTER_AUTH_SECRET: "test-secret-that-is-long-enough-for-zod-min-32",
-  BETTER_AUTH_URL: "http://localhost:4100",
-  AI_PROVIDER: "mock",
-  GROQ_API_KEY: undefined,
-  GROQ_MODEL: "llama-3.1-8b-instant",
-  GROQ_BASE_URL: "https://api.groq.com/openai/v1",
-  GROQ_TIMEOUT_MS: 60_000,
-  SESSION_MAX_AGE_SECONDS: 3600,
-  INVITATION_TTL_HOURS: 72,
-  STORAGE_REGION: "us-east-1",
-  STORAGE_BUCKET: "rfp-os-documents",
-  STORAGE_FORCE_PATH_STYLE: true,
-  UPLOAD_MAX_BYTES: 104_857_600,
-  UPLOAD_URL_TTL_SECONDS: 900,
-  DOWNLOAD_URL_TTL_SECONDS: 300,
-} satisfies Env;
+const env = testEnv();
 
 const config = {
   get: (key: keyof typeof env) => env[key],
 } as never;
 
 describeDb("Tier 0 activity and audit events", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const activity = new ActivityService(db);
   const audit = new AuditService(db);
   const organizationsService = new OrganizationsService(db, config, activity, audit);

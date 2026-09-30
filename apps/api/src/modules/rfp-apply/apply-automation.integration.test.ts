@@ -19,7 +19,7 @@ import { ApplyAutomationService } from "./apply-automation.service";
 import { ApplyRunnerService } from "./apply-runner.service";
 
 // Explicit opt-in: this suite writes fixtures and requires a disposable, migrated database.
-const suite = process.env.RFP_APPLY_INTEGRATION === "1" ? describe : describe.skip;
+const suite = process.env.RFP_APPLY_INTEGRATION === "1" && !process.env.TENDYY_ROOT_BUN_TEST ? describe : describe.skip;
 suite("Apply workflow database regression", () => {
   let db: ReturnType<typeof getDb>;
   const org = randomUUID(), user = randomUUID(), workspace = randomUUID();
@@ -30,7 +30,7 @@ suite("Apply workflow database regression", () => {
   let apply: ApplyAutomationService;
 
   beforeAll(async () => {
-    db = getDb();
+    db = process.env.RFP_APPLY_INTEGRATION === "1" && !process.env.TENDYY_ROOT_BUN_TEST ? getDb() : (undefined as never);
     await db.insert(organizations).values({ id: org, name: "Apply regression", domain: `${org}.invalid` });
     await db.insert(users).values({ id: user, organizationId: org, name: "Reviewer", email: `${user}@example.invalid` });
     await db.insert(organizationMembers).values({ organizationId: org, userId: user, role: "OWNER", status: "active" });

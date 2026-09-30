@@ -5,12 +5,12 @@ import { eq } from "drizzle-orm";
 import { TenderIngestionRepository } from "./tender-ingestion.repository";
 import { advanceGemBackfill, gemBackfillScope } from "./tender-ingestion.worker";
 
-const databaseConfigured = Boolean(process.env.DATABASE_URL || process.env.POSTGRES_HOST);
+const databaseConfigured = Boolean((process.env.DATABASE_URL || process.env.POSTGRES_HOST) && !process.env.TENDYY_ROOT_BUN_TEST);
 const databaseTest = databaseConfigured ? test : test.skip;
 
 describe("tender discovery operations", () => {
   databaseTest("marks a source stale only after two completed full snapshots omit it", async () => {
-    const db = getDb();
+    const db = databaseConfigured ? getDb() : (undefined as never);
     const suffix = crypto.randomUUID();
     const [portal] = await db.insert(tenderPortals).values({ key: `test-${suffix}`, name: "Lifecycle fixture", category: "CENTRAL", officialUrl: "https://example.gov.in", connectorType: "CUSTOM", enabled: false }).returning();
     const [notice] = await db.insert(tenderNotices).values({ canonicalKey: `notice-${suffix}`, title: "Lifecycle fixture", sourceUrl: "https://example.gov.in/tender" }).returning();

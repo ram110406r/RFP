@@ -22,10 +22,6 @@ async function main() {
     ],
     { env: composeEnv },
   );
-
-  await run(["docker", "compose", "-f", "docker-compose.yml", "up", "--force-recreate", "minio-init"], {
-    env: composeEnv,
-  });
 }
 
 main().catch((error) => {

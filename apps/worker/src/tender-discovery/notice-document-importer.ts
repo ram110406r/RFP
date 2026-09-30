@@ -1,23 +1,38 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
 import { files, getDb, tenderDocuments, tenderNoticeDocuments, tenderSources, tenders, withTransaction } from "@rfp-os/db";
 import { sniffFormat } from "@rfp-os/document-processing";
-import type { TenderNoticeDocumentImportJobPayload } from "@rfp-os/jobs";
+import { DEFAULT_JOB_OPTIONS, type TenderNoticeDocumentImportJobPayload } from "@rfp-os/jobs";
 import { ObjectStorage, sanitizeFilename, tenderSourceObjectKey } from "@rfp-os/storage";
+import { UnrecoverableError, type Job } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
 
+import { fetchPublicUrl, readBytesLimited, ResponseTooLargeError, UnsafeUrlError } from "../lib/http";
+
 const MAX_REMOTE_BYTES = 50 * 1024 * 1024;
+const TOO_LARGE_MESSAGE = "Official document exceeds the 50 MB import limit.";
 
 export class NoticeDocumentImporter {
   private readonly db = getDb();
   constructor(private readonly storage: ObjectStorage) {}
 
-  async import(payload: TenderNoticeDocumentImportJobPayload) {
+  /**
+   * `job` is optional so the importer can be driven directly; without it every
+   * failure is treated as the final attempt.
+   *
+   * A failure that retrying cannot fix is rethrown as UnrecoverableError so
+   * BullMQ stops at once. Anything else leaves the row PENDING with its error
+   * until the last attempt, so the UI does not show FAILED for a document the
+   * queue is about to import successfully.
+   */
+  async import(payload: TenderNoticeDocumentImportJobPayload, job?: Pick<Job, "attemptsMade" | "opts">) {
     await this.db.update(tenderNoticeDocuments).set({ importStatus: "PENDING", importAttempts: sql`${tenderNoticeDocuments.importAttempts} + 1`, lastCheckedAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(tenderNoticeDocuments.id, payload.noticeDocumentId));
     try { return await this.importDocument(payload); }
-    catch (error) {
-      await this.db.update(tenderNoticeDocuments).set({ importStatus: "FAILED", lastError: error instanceof Error ? error.message.slice(0, 2_000) : "Document import failed.", lastCheckedAt: new Date(), updatedAt: new Date() }).where(eq(tenderNoticeDocuments.id, payload.noticeDocumentId));
+    catch (caught) {
+      const error = toUnrecoverable(caught);
+      // attemptsMade counts finished attempts, so this one is attemptsMade + 1.
+      const finalAttempt = !job || job.attemptsMade + 1 >= (job.opts.attempts ?? DEFAULT_JOB_OPTIONS.attempts);
+      const failed = error instanceof UnrecoverableError || finalAttempt;
+      await this.db.update(tenderNoticeDocuments).set({ importStatus: failed ? "FAILED" : "PENDING", lastError: error instanceof Error ? error.message.slice(0, 2_000) : "Document import failed.", lastCheckedAt: new Date(), updatedAt: new Date() }).where(eq(tenderNoticeDocuments.id, payload.noticeDocumentId));
       throw error;
     }
   }
@@ -26,17 +41,20 @@ export class NoticeDocumentImporter {
     const existing = await this.db.select({ id: tenderSources.id }).from(tenderSources).where(and(eq(tenderSources.tenderId, payload.tenderId), eq(tenderSources.discoveryNoticeDocumentId, payload.noticeDocumentId))).limit(1);
     if (existing[0]) { await this.markImported(payload.noticeDocumentId, null); return { processed: false, sourceId: existing[0].id }; }
     const [row] = await this.db.select({ document: tenderNoticeDocuments, tender: tenders }).from(tenderNoticeDocuments).innerJoin(tenders, eq(tenders.discoveryNoticeId, tenderNoticeDocuments.noticeId)).where(and(eq(tenderNoticeDocuments.id, payload.noticeDocumentId), eq(tenders.id, payload.tenderId), eq(tenders.organizationId, payload.organizationId), eq(tenders.workspaceId, payload.workspaceId))).limit(1);
-    if (!row) throw new Error("Tender notice document is not linked to this application.");
+    if (!row) throw new UnrecoverableError("Tender notice document is not linked to this application.");
     if (row.document.access !== "DIRECT") { await this.db.update(tenderNoticeDocuments).set({ importStatus: "NOT_APPLICABLE", lastCheckedAt: new Date(), updatedAt: new Date() }).where(eq(tenderNoticeDocuments.id, payload.noticeDocumentId)); return { processed: false, reason: "Document is not directly downloadable." }; }
 
-    const response = await fetchPublicDocument(row.document.url);
-    if (!response.ok) throw new Error(`Official document returned HTTP ${response.status}.`);
-    const declaredSize = Number(response.headers.get("content-length") ?? 0);
-    if (declaredSize > MAX_REMOTE_BYTES) throw new Error("Official document exceeds the 50 MB import limit.");
-    const bytes = await readLimitedBody(response, MAX_REMOTE_BYTES);
-    if (!bytes.length || bytes.length > MAX_REMOTE_BYTES) throw new Error("Official document is empty or exceeds the 50 MB import limit.");
+    const response = await fetchPublicUrl(row.document.url, { timeoutMs: FETCH_TIMEOUT_MS });
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      const message = `Official document returned HTTP ${response.status}.`;
+      // 408 and 429 are the client errors that can clear up on their own.
+      throw response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429 ? new UnrecoverableError(message) : new Error(message);
+    }
+    const bytes = await readBytesLimited(response, MAX_REMOTE_BYTES, TOO_LARGE_MESSAGE);
+    if (!bytes.length) throw new Error("Official document is empty.");
     const format = sniffFormat(bytes.subarray(0, 512));
-    if (format !== "PDF" && format !== "ZIP") throw new Error("Official document is not a supported PDF or DOCX file.");
+    if (format !== "PDF" && format !== "ZIP") throw new UnrecoverableError("Official document is not a supported PDF or DOCX file.");
     const mimeType = format === "PDF" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     const filename = ensureExtension(sanitizeFilename(row.document.name), format === "PDF" ? ".pdf" : ".docx");
     const checksum = createHash("sha256").update(bytes).digest("hex");
@@ -74,50 +92,11 @@ function ensureExtension(name: string, extension: string) { return name.toLowerC
 
 class DuplicateImportError extends Error {}
 
-async function fetchPublicDocument(value: string, redirects = 0): Promise<Response> {
-  if (redirects > 4) throw new Error("Official document redirected too many times.");
-  const url = new URL(value);
-  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("Official document URL must use HTTP or HTTPS.");
-  await assertPublicHostname(url.hostname);
-  const response = await fetch(url, { redirect: "manual", headers: { "user-agent": "TENDYY-TenderDiscovery/1.0" } });
-  if (response.status >= 300 && response.status < 400) {
-    const location = response.headers.get("location");
-    if (!location) throw new Error("Official document redirect did not include a location.");
-    return fetchPublicDocument(new URL(location, url).toString(), redirects + 1);
-  }
-  return response;
-}
+const FETCH_TIMEOUT_MS = 120_000;
 
-async function assertPublicHostname(hostname: string) {
-  if (hostname.toLowerCase() === "localhost") throw new Error("Official document URL resolves to a private host.");
-  const addresses = isIP(hostname) ? [{ address: hostname }] : await lookup(hostname, { all: true, verbatim: true });
-  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) throw new Error("Official document URL resolves to a private host.");
-}
-
-function isPrivateAddress(address: string) {
-  const value = address.toLowerCase();
-  if (value === "::1" || value === "0:0:0:0:0:0:0:1" || value.startsWith("fc") || value.startsWith("fd") || value.startsWith("fe80:")) return true;
-  const match = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(value);
-  if (!match) return false;
-  const first = Number(match[1]);
-  const second = Number(match[2]);
-  return first === 0 || first === 10 || first === 127 || (first === 169 && second === 254) || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168) || first >= 224;
-}
-
-async function readLimitedBody(response: Response, limit: number) {
-  if (!response.body) return new Uint8Array();
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limit) { await reader.cancel(); throw new Error("Official document exceeds the 50 MB import limit."); }
-    chunks.push(value);
-  }
-  const result = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
-  return result;
+/** Failures a retry cannot fix: an unsafe URL or a document over the size limit. */
+function toUnrecoverable(error: unknown) {
+  if (error instanceof UnsafeUrlError) return new UnrecoverableError(`Official document ${error.message}`);
+  if (error instanceof ResponseTooLargeError) return new UnrecoverableError(error.message);
+  return error;
 }

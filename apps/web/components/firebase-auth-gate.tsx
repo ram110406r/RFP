@@ -1,28 +1,16 @@
 "use client";
 
-import {
-  createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  sendEmailVerification,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  type User,
-} from "firebase/auth";
-import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  ensureFirebaseAuthPersistence,
-  getFirebaseDb,
-  getFirebaseAuth,
-  isFirebaseConfigured,
-  syncFirebaseUserProfile,
-} from "../lib/firebase";
-import { fetchOnboardingStatus } from "../lib/api";
+  ApiError,
+  fetchCurrentProfile,
+  fetchOnboardingStatus,
+  getApiBaseUrl,
+  type CurrentProfile,
+} from "../lib/api";
 
 function maskEmail(email: string | null) {
   if (!email) return "signed-in user";
@@ -52,13 +40,25 @@ export type FirebaseUserProfile = {
   lastLoginAt?: unknown;
 };
 
+type BetterAuthUser = {
+  uid: string;
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  emailVerified: boolean;
+  metadata: { lastSignInTime?: string | null };
+  providerData: Array<{ providerId: string; displayName?: string | null; email?: string | null }>;
+};
+
 type FirebaseSessionState = {
-  user: User | null;
+  user: BetterAuthUser | null;
   profile: FirebaseUserProfile | null;
   loading: boolean;
   busy: boolean;
   error: string | null;
   signOut: () => Promise<void>;
+  refresh: () => Promise<void>;
 };
 
 const FirebaseSessionContext = createContext<FirebaseSessionState | null>(null);
@@ -69,115 +69,74 @@ export function useFirebaseSession() {
 
 export function FirebaseAuthGate({ children }: { children: React.ReactNode }) {
   const allowGuestUi = process.env.NEXT_PUBLIC_ALLOW_GUEST_UI === "true";
-  if (allowGuestUi) {
-    return <>{children}</>;
-  }
-
+  if (allowGuestUi) return <>{children}</>;
   return <FirebaseAuthGateInner>{children}</FirebaseAuthGateInner>;
 }
 
 function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<FirebaseUserProfile | null>(null);
+  const [profile, setProfile] = useState<CurrentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"sign-in" | "register">("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [verificationBusy, setVerificationBusy] = useState(false);
   const pathname = usePathname();
+
+  const sessionUser = useMemo(() => (profile ? toSessionUser(profile) : null), [profile]);
+  const sessionProfile = useMemo(() => (profile ? toSessionProfile(profile) : null), [profile]);
 
   useEffect(() => {
     if (pathname === "/signup") setMode("register");
     if (pathname === "/login" || pathname === "/onboarding") setMode("sign-in");
   }, [pathname]);
 
-  useEffect(() => {
-    let unsubscribe = () => {};
-    void (async () => {
-      try {
-        await ensureFirebaseAuthPersistence();
-        const firebaseAuth = getFirebaseAuth();
-        unsubscribe = onAuthStateChanged(firebaseAuth, (nextUser) => {
-          setUser(nextUser);
-          setProfile(null);
-          setLoading(false);
-          setError(null);
-          if (nextUser) {
-            void syncFirebaseUserProfile(nextUser).catch((syncError) => {
-              console.warn("[firebase] user profile sync failed", syncError);
-            });
-          }
-        });
-      } catch (authError) {
-        setError(authError instanceof Error ? authError.message : "Firebase failed to initialize.");
-        setLoading(false);
-      }
-    })();
-
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!user) {
-      setProfile(null);
-      return;
-    }
-
-    const profileRef = doc(getFirebaseDb(), "users", user.uid);
-    const unsubscribe = onSnapshot(profileRef, (snapshot) => {
-      if (!snapshot.exists()) {
-        setProfile({
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          emailVerified: user.emailVerified,
-        });
+  async function refreshProfile() {
+    try {
+      const nextProfile = await fetchCurrentProfile();
+      setProfile(nextProfile);
+      setError(null);
+    } catch (authError) {
+      if (authError instanceof ApiError && authError.status === 401) {
+        setProfile(null);
+        setError(null);
         return;
       }
+      setError(authError instanceof Error ? authError.message : "Could not load your session.");
+    }
+  }
 
-      const data = snapshot.data() as DocumentData;
-      setProfile({
-        uid: user.uid,
-        email: typeof data.email === "string" ? data.email : user.email,
-        displayName: typeof data.displayName === "string" ? data.displayName : user.displayName,
-        photoURL: typeof data.photoURL === "string" ? data.photoURL : user.photoURL,
-        emailVerified: typeof data.emailVerified === "boolean" ? data.emailVerified : user.emailVerified,
-        role: typeof data.role === "string" ? data.role : null,
-        organizationName: typeof data.organizationName === "string" ? data.organizationName : null,
-        preferredName: typeof data.preferredName === "string" ? data.preferredName : null,
-        jobTitle: typeof data.jobTitle === "string" ? data.jobTitle : null,
-        department: typeof data.department === "string" ? data.department : null,
-        timezone: typeof data.timezone === "string" ? data.timezone : null,
-        phone: typeof data.phone === "string" ? data.phone : null,
-        location: typeof data.location === "string" ? data.location : null,
-        language: typeof data.language === "string" ? data.language : null,
-        bio: typeof data.bio === "string" ? data.bio : null,
-        skills: Array.isArray(data.skills) ? data.skills.filter((value): value is string => typeof value === "string") : undefined,
-        notificationPreferences:
-          data.notificationPreferences && typeof data.notificationPreferences === "object"
-            ? Object.fromEntries(
-                Object.entries(data.notificationPreferences as Record<string, unknown>).filter(
-                  (entry): entry is [string, boolean] => typeof entry[0] === "string" && typeof entry[1] === "boolean",
-                ),
-              )
-            : null,
-        lastLoginAt: data.lastLoginAt ?? null,
-      });
-    });
-
-    return () => unsubscribe();
-  }, [user]);
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      try {
+        const nextProfile = await fetchCurrentProfile();
+        if (!mounted) return;
+        setProfile(nextProfile);
+        setError(null);
+      } catch (authError) {
+        if (!mounted) return;
+        if (authError instanceof ApiError && authError.status === 401) {
+          setProfile(null);
+          setError(null);
+        } else {
+          setError(authError instanceof Error ? authError.message : "Could not load your session.");
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const heading = useMemo(() => {
-    if (!isFirebaseConfigured()) return "Firebase configuration missing";
-    if (user) return `Signed in as ${maskEmail(user.email)}`;
+    if (sessionUser) return `Signed in as ${maskEmail(sessionUser.email)}`;
     if (pathname === "/signup") return "Create your company workspace";
     if (pathname === "/join") return mode === "register" ? "Create your employee account" : "Sign in to join your workspace";
     return mode === "register" ? "Create your TENDYY account" : "Sign in to TENDYY";
-  }, [mode, pathname, user]);
+  }, [mode, pathname, sessionUser]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -185,18 +144,15 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const credentials =
+      const endpoint = mode === "register" ? "/sign-up/email" : "/sign-in/email";
+      const payload =
         mode === "register"
-          ? await createUserWithEmailAndPassword(getFirebaseAuth(), email.trim(), password)
-          : await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
-
-      if (mode === "register" && !credentials.user.emailVerified) {
-        await sendEmailVerification(credentials.user);
-      }
-      setUser(credentials.user);
-      await syncFirebaseUserProfile(credentials.user);
+          ? { email: email.trim(), password, name: email.trim().split("@")[0] || "TENDYY user" }
+          : { email: email.trim(), password, rememberMe: true };
+      await betterAuthRequest(endpoint, payload);
+      await refreshProfile();
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : "Firebase sign-in failed.");
+      setError(authError instanceof Error ? authError.message : "Sign-in failed.");
     } finally {
       setBusy(false);
     }
@@ -206,11 +162,10 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      await signOut(getFirebaseAuth());
-      setUser(null);
+      await betterAuthRequest("/sign-out", {});
       setProfile(null);
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : "Firebase sign-out failed.");
+      setError(authError instanceof Error ? authError.message : "Sign-out failed.");
     } finally {
       setBusy(false);
     }
@@ -221,26 +176,20 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const credentials = await signInWithPopup(getFirebaseAuth(), new GoogleAuthProvider());
-      setUser(credentials.user);
-      await syncFirebaseUserProfile(credentials.user);
+      const result = await betterAuthRequest<{ url?: string; redirectURL?: string }>("/sign-in/social", {
+        provider: "google",
+        callbackURL: window.location.href,
+      });
+      const target = result.url ?? result.redirectURL;
+      if (target) {
+        window.location.assign(target);
+        return;
+      }
+      await refreshProfile();
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : "Google sign-in failed.");
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function resendVerification() {
-    if (!user) return;
-    setVerificationBusy(true);
-    setError(null);
-    try {
-      await sendEmailVerification(user);
-    } catch (authError) {
-      setError(authError instanceof Error ? authError.message : "Could not send the verification email.");
-    } finally {
-      setVerificationBusy(false);
     }
   }
 
@@ -260,15 +209,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isFirebaseConfigured()) {
-    return (
-      <AuthShell heading={heading} description="Set the Firebase environment variables before using the dashboard.">
-        <ConfigNotice />
-      </AuthShell>
-    );
-  }
-
-  if (!user) {
+  if (!sessionUser) {
     const isRegister = mode === "register";
     return (
       <AuthShell
@@ -276,71 +217,34 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
         description={pathname === "/signup" ? "Create the first account for your company. You will set up the organization and its first workspace next." : pathname === "/join" ? "Use the exact email address that received the workspace invitation." : isRegister ? "Create a company account, or create your account with the email from an employee invitation." : "Sign in as a company owner or an invited employee to continue into TENDYY."}
       >
         <div className="mb-5 grid grid-cols-2 gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-muted)] p-1">
-          <button
-            type="button"
-            onClick={() => setMode("sign-in")}
-            className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${!isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}
-          >
+          <button type="button" onClick={() => setMode("sign-in")} className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${!isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}>
             Sign in
           </button>
-          <button
-            type="button"
-            onClick={() => setMode("register")}
-            className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}
-          >
+          <button type="button" onClick={() => setMode("register")} className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}>
             Create account
           </button>
         </div>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="firebase-email">
+            <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="auth-email">
               Email
             </label>
-            <input
-              id="firebase-email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-3 text-[var(--text)] outline-none ring-0 transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]"
-              placeholder="name@company.com"
-              required
-            />
+            <input id="auth-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-3 text-[var(--text)] outline-none ring-0 transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]" placeholder="name@company.com" required />
           </div>
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="firebase-password">
+            <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="auth-password">
               Password
             </label>
-            <input
-              id="firebase-password"
-              type="password"
-              autoComplete={mode === "register" ? "new-password" : "current-password"}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-3 text-[var(--text)] outline-none ring-0 transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]"
-              placeholder="********"
-              required
-              minLength={6}
-            />
+            <input id="auth-password" type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-3 text-[var(--text)] outline-none ring-0 transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]" placeholder="************" required minLength={12} />
           </div>
 
-          {error ? (
-            <p className="rounded-[var(--radius-sm)] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
-          ) : null}
+          {error ? <p className="rounded-[var(--radius-sm)] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
           <div className="flex flex-wrap gap-3">
-            <button
-              type="submit"
-              disabled={busy}
-              className="inline-flex items-center justify-center rounded-[var(--radius-sm)] bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <button type="submit" disabled={busy} className="inline-flex items-center justify-center rounded-[var(--radius-sm)] bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-60">
               {busy ? "Working..." : isRegister ? "Create account" : "Sign in"}
             </button>
-            <button
-              type="button"
-              onClick={() => setMode(mode === "register" ? "sign-in" : "register")}
-              className="inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-5 py-3 text-sm font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)]"
-            >
+            <button type="button" onClick={() => setMode(mode === "register" ? "sign-in" : "register")} className="inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-5 py-3 text-sm font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)]">
               {isRegister ? "Already have an account? Sign in" : "New here? Create account"}
             </button>
           </div>
@@ -355,12 +259,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
             <span className="relative z-10 bg-white px-3">or continue with</span>
             <span className="absolute inset-x-0 top-1/2 border-t border-slate-200" aria-hidden="true" />
           </div>
-          <button
-            type="button"
-            onClick={() => void handleGoogleSignIn()}
-            disabled={busy}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-5 py-3 text-sm font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
-          >
+          <button type="button" onClick={() => void handleGoogleSignIn()} disabled={busy} className="inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-5 py-3 text-sm font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)] disabled:cursor-not-allowed disabled:opacity-60">
             <span className="text-base font-bold text-blue-600" aria-hidden="true">G</span>
             {isRegister ? "Create with Google" : "Continue with Google"}
           </button>
@@ -370,31 +269,24 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
   }
 
   const session = {
-    user,
-    profile,
+    user: sessionUser,
+    profile: sessionProfile,
     loading,
     busy,
     error,
     signOut: handleSignOut,
+    refresh: refreshProfile,
   } satisfies FirebaseSessionState;
 
   return (
     <FirebaseSessionContext.Provider value={session}>
       <div className="min-h-screen min-w-0 max-w-full bg-[var(--bg-deep)] text-slate-900">
-          {error ? (
-            <div className="tendyy-wrap-anywhere relative z-[60] mx-3 mt-3 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:mx-4">
-              {error}
-            </div>
-          ) : null}
-          {!user.emailVerified ? (
-            <div className="relative z-[60] mx-3 mt-3 flex min-w-0 flex-wrap items-center justify-between gap-3 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:mx-4">
-              <span className="tendyy-wrap-anywhere min-w-0">Verify {user.email ?? "your email"} before creating a company, accepting an invitation, or opening company data.</span>
-              <button type="button" disabled={verificationBusy} onClick={() => void resendVerification()} className="font-semibold text-amber-900 underline disabled:opacity-60">
-                {verificationBusy ? "Sending..." : "Resend email"}
-              </button>
-            </div>
-          ) : null}
-          <OnboardingRedirect>{children}</OnboardingRedirect>
+        {error ? (
+          <div className="tendyy-wrap-anywhere relative z-[60] mx-3 mt-3 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:mx-4">
+            {error}
+          </div>
+        ) : null}
+        <OnboardingRedirect>{children}</OnboardingRedirect>
       </div>
     </FirebaseSessionContext.Provider>
   );
@@ -461,15 +353,69 @@ function AuthShell({
   );
 }
 
-function ConfigNotice() {
-  return (
-    <div className="space-y-3">
-      <p className="rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        Firebase environment variables are missing. Set `NEXT_PUBLIC_FIREBASE_*` in `.env` and restart the app.
-      </p>
-      <p className="text-sm leading-6 text-slate-600">
-        The app still needs the Firebase public config values at runtime before sign-in and onboarding can work.
-      </p>
-    </div>
-  );
+async function betterAuthRequest<T = unknown>(path: string, body: Record<string, unknown>): Promise<T> {
+  const baseUrl = getApiBaseUrl().replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/api/auth${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (response.redirected) {
+    window.location.assign(response.url);
+    return {} as T;
+  }
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      (data as { message?: string; error?: { message?: string } } | null)?.error?.message ??
+      (data as { message?: string } | null)?.message ??
+      response.statusText ??
+      "Authentication failed.";
+    throw new Error(message);
+  }
+
+  return (data ?? {}) as T;
+}
+
+function toSessionUser(profile: CurrentProfile): BetterAuthUser {
+  return {
+    uid: profile.uid,
+    id: profile.id,
+    email: profile.email,
+    displayName: profile.displayName ?? profile.name,
+    photoURL: profile.photoURL,
+    emailVerified: profile.emailVerified,
+    metadata: { lastSignInTime: profile.lastLoginAt },
+    providerData: [
+      { providerId: "password", displayName: profile.displayName, email: profile.email },
+      ...(profile.image ? [{ providerId: "google.com", displayName: profile.displayName, email: profile.email }] : []),
+    ],
+  };
+}
+
+function toSessionProfile(profile: CurrentProfile): FirebaseUserProfile {
+  return {
+    uid: profile.uid,
+    email: profile.email,
+    displayName: profile.displayName ?? profile.name,
+    photoURL: profile.photoURL,
+    emailVerified: profile.emailVerified,
+    role: profile.role,
+    organizationName: profile.organizationName,
+    preferredName: profile.preferredName,
+    jobTitle: profile.jobTitle,
+    department: profile.department,
+    timezone: profile.timezone,
+    phone: profile.phone,
+    location: profile.location,
+    language: profile.language,
+    bio: profile.bio,
+    skills: profile.skills,
+    notificationPreferences: profile.notificationPreferences,
+    lastLoginAt: profile.lastLoginAt,
+  };
 }

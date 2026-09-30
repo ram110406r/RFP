@@ -4,8 +4,26 @@ export type TenderSummaryLike = {
   title: string;
   referenceNumber: string | null;
   status: string;
+  ownerId?: string | null;
   dueAt: string | Date | null;
 };
+
+export type DashboardOwner = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+export const PIPELINE_STAGES = [
+  { id: "intake", label: "Intake" },
+  { id: "answering", label: "Answering" },
+  { id: "review", label: "Review" },
+  { id: "approval", label: "Approval" },
+  { id: "ready", label: "Ready" },
+  { id: "submitted", label: "Submitted" },
+] as const;
+
+export type PipelineStageId = (typeof PIPELINE_STAGES)[number]["id"];
 
 export type KnowledgeItemLike = {
   id: string;
@@ -40,6 +58,7 @@ export type DashboardIssue = {
 
 export type DashboardTenderCard = {
   tender: TenderSummaryLike;
+  owner?: DashboardOwner | null;
   readiness: number | null;
   ready: boolean;
   issueCount: number;
@@ -71,6 +90,27 @@ export type DashboardTenderCard = {
     notes: string;
     createdAt: string | Date;
   } | null;
+};
+
+export type PipelineTenderCard = DashboardTenderCard & {
+  pipelineStageId: PipelineStageId;
+  availableTransitions: Array<{
+    to: string;
+    label: string;
+    description: string;
+  }>;
+};
+
+export type PipelineSummary = {
+  generatedAt: string;
+  metrics: DashboardSummary["metrics"];
+  stages: Array<(typeof PIPELINE_STAGES)[number] & { count: number }>;
+  items: PipelineTenderCard[];
+  errors: DashboardSectionError[];
+  /** Present only when the caller asked for a page (`pageSize`). */
+  total?: number;
+  page?: number;
+  pageSize?: number;
 };
 
 export type DashboardKnowledgeHealth = {
@@ -330,14 +370,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
     evidenceFreshnessCount = input.evidenceHealth.fresh + input.evidenceHealth.aging;
   }
 
-  const pipeline = [
-    { id: "intake", label: "Intake", count: pipelineCounts.get("intake") ?? 0 },
-    { id: "answering", label: "Answering", count: pipelineCounts.get("answering") ?? 0 },
-    { id: "review", label: "Review", count: pipelineCounts.get("review") ?? 0 },
-    { id: "approval", label: "Approval", count: pipelineCounts.get("approval") ?? 0 },
-    { id: "ready", label: "Ready", count: pipelineCounts.get("ready") ?? 0 },
-    { id: "submitted", label: "Submitted", count: pipelineCounts.get("submitted") ?? 0 },
-  ];
+  const pipeline = PIPELINE_STAGES.map((stage) => ({ ...stage, count: pipelineCounts.get(stage.id) ?? 0 }));
 
   reviewQueueItems.sort((a, b) => {
     if (b.pendingReviews !== a.pendingReviews) return b.pendingReviews - a.pendingReviews;
@@ -409,7 +442,7 @@ export function buildDashboardSummary(input: DashboardSummaryInput): DashboardSu
   };
 }
 
-export function mapPipelineStage(status: string) {
+export function mapPipelineStage(status: string): PipelineStageId {
   const normalized = status.toUpperCase();
   if (["DRAFT", "INTAKE", "PROCESSING"].includes(normalized)) return "intake";
   if (normalized === "IN_PROGRESS") return "answering";
@@ -418,6 +451,43 @@ export function mapPipelineStage(status: string) {
   if (normalized === "READY") return "ready";
   if (["SUBMITTED", "CLOSED"].includes(normalized)) return "submitted";
   return "intake";
+}
+
+export function isActivePipelineStatus(status: string) {
+  return !["CANCELLED", "ARCHIVED"].includes(status.toUpperCase());
+}
+
+export function buildPipelineSummary(
+  input: DashboardSummaryInput & {
+    items: PipelineTenderCard[];
+    pagination?: { page?: number; pageSize?: number };
+  },
+): PipelineSummary {
+  const summary = buildDashboardSummary(input);
+  const stageCounts = new Map<string, number>();
+  for (const item of input.items) {
+    stageCounts.set(item.pipelineStageId, (stageCounts.get(item.pipelineStageId) ?? 0) + 1);
+  }
+  const result: PipelineSummary = {
+    generatedAt: input.generatedAt,
+    metrics: summary.metrics,
+    stages: PIPELINE_STAGES.map((stage) => ({ ...stage, count: stageCounts.get(stage.id) ?? 0 })),
+    items: input.items,
+    errors: input.errors,
+  };
+  // Stages and metrics always describe the whole readable pipeline; only the
+  // item list is paged, and only when a page size was requested.
+  const pageSize = input.pagination?.pageSize;
+  if (pageSize === undefined) return result;
+  const page = input.pagination?.page ?? 1;
+  const start = (page - 1) * pageSize;
+  return {
+    ...result,
+    items: input.items.slice(start, start + pageSize),
+    total: input.items.length,
+    page,
+    pageSize,
+  };
 }
 
 function classifyDueDate(value: string | Date | null): "overdue" | "dueThisWeek" | "later" | "unscheduled" {

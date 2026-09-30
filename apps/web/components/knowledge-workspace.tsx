@@ -138,7 +138,7 @@ function KnowledgeBrowser() {
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [askBrainOpen, setAskBrainOpen] = useState(searchParams.get("ask") === "1");
-  const [askQuestion, setAskQuestion] = useState("What knowledge do we have for active applications?");
+  const [askQuestion, setAskQuestion] = useState("");
   const [openActionRow, setOpenActionRow] = useState<string | null>(null);
 
   const summaryQuery = useKnowledgeSummary();

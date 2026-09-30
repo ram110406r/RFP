@@ -19,17 +19,22 @@ interface PolicyRow {
  * stub applies the same filter in memory and hands back the rows — keeping the
  * test about policy evaluation rather than about Drizzle.
  */
-function stubDb(rows: PolicyRow[], auth: AuthContext) {
+function stubDb(rows: PolicyRow[], auth: AuthContext, counter?: { selects: number }) {
   const matching = rows.filter(
     (row) =>
       row.organizationId === auth.organizationId && (row.role === null || row.role === auth.role),
   );
+  // Both the policy query and the condition query resolve to the same rows;
+  // policy rows carry no `attribute`, so the service drops them as conditions.
   return {
-    select: () => ({
-      from: () => ({
-        where: (..._args: unknown[]) => Promise.resolve(matching),
-      }),
-    }),
+    select: () => {
+      if (counter) counter.selects += 1;
+      return {
+        from: () => ({
+          where: (..._args: unknown[]) => Promise.resolve(matching),
+        }),
+      };
+    },
   } as never;
 }
 
@@ -127,6 +132,80 @@ describe("PolicyService", () => {
     const service = new PolicyService(stubDb(rows, auth));
     await expect(service.evaluate(auth, "requirement", "approve")).resolves.toEqual({
       allowed: true,
+    });
+  });
+  describe("evaluateMany", () => {
+    it("returns one decision per attribute set, in order", async () => {
+      const rows = [policy({ effect: "deny", description: "No critical.", condition: { risk: "critical" } })];
+      const service = new PolicyService(stubDb(rows, auth));
+      const decisions = await service.evaluateMany(auth, "requirement", "approve", [
+        { risk: "low" },
+        { risk: "critical" },
+        { risk: "medium" },
+      ]);
+      expect(decisions).toEqual([
+        { allowed: true },
+        { allowed: false, reason: "No critical." },
+        { allowed: true },
+      ]);
+    });
+
+    it("loads policies and conditions once for the whole batch", async () => {
+      const counter = { selects: 0 };
+      const rows = [policy({ effect: "deny", condition: { risk: "critical" } })];
+      const service = new PolicyService(stubDb(rows, auth, counter));
+      await service.evaluateMany(
+        auth,
+        "requirement",
+        "approve",
+        Array.from({ length: 25 }, (_, index) => ({ risk: index % 2 ? "critical" : "low" })),
+      );
+      expect(counter.selects).toBe(2);
+    });
+
+    it("allows everything with a single query when no policies apply", async () => {
+      const counter = { selects: 0 };
+      const service = new PolicyService(stubDb([], auth, counter));
+      await expect(
+        service.evaluateMany(auth, "requirement", "approve", [{}, { risk: "critical" }]),
+      ).resolves.toEqual([{ allowed: true }, { allowed: true }]);
+      expect(counter.selects).toBe(1);
+    });
+
+    it("skips the database for an empty batch", async () => {
+      const counter = { selects: 0 };
+      const service = new PolicyService(stubDb([policy({ effect: "deny" })], auth, counter));
+      await expect(service.evaluateMany(auth, "requirement", "approve", [])).resolves.toEqual([]);
+      expect(counter.selects).toBe(0);
+    });
+
+    it("matches evaluate() for each item", async () => {
+      const rows = [policy({ effect: "deny", condition: { authorId: "$subject.userId" } })];
+      const service = new PolicyService(stubDb(rows, auth));
+      const attributes = [{ authorId: "user-1" }, { authorId: "user-2" }];
+      const batched = await service.evaluateMany(auth, "requirement", "approve", attributes);
+      const single = await Promise.all(
+        attributes.map((item) => service.evaluate(auth, "requirement", "approve", item)),
+      );
+      expect(batched).toEqual(single);
+    });
+  });
+
+  describe("hasActivePolicies", () => {
+    it("reports whether any policy applies to the caller", async () => {
+      await expect(
+        new PolicyService(stubDb([], auth)).hasActivePolicies(auth, "requirement", "approve"),
+      ).resolves.toBe(false);
+      await expect(
+        new PolicyService(stubDb([policy()], auth)).hasActivePolicies(auth, "requirement", "approve"),
+      ).resolves.toBe(true);
+      await expect(
+        new PolicyService(stubDb([policy({ role: "CONTRIBUTOR" })], auth)).hasActivePolicies(
+          auth,
+          "requirement",
+          "approve",
+        ),
+      ).resolves.toBe(false);
     });
   });
 });

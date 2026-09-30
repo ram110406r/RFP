@@ -19,6 +19,15 @@ import { users } from "./identity";
 import { knowledgeSources } from "./knowledge";
 import { customers, organizations, projects } from "./organization";
 
+/**
+ * Legacy compatibility schema.
+ *
+ * The active product domain is `tenders`: discovery/opportunity/application
+ * workspace, answer/evidence/review, automation, and package generation.
+ * Keep these `rfp_*` tables for migration compatibility until an explicit
+ * retirement plan removes them; do not anchor new product behavior here.
+ */
+
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------

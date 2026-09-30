@@ -30,6 +30,8 @@ import {
   tenderQuestionRequirements,
   tenderQuestions,
   tenderRequirements,
+  tenderSubmissionPackages,
+  tenderSubmissions,
   tenderSources,
   tenders,
   teams,
@@ -51,15 +53,11 @@ import { AuthService, type ResolvedSession } from "../auth/auth.service";
 import { AssignmentsService } from "../assignments/assignments.service";
 import { AnswerGenerationService } from "./answer-generation";
 import { EvidenceRankingService, EvidenceRetrievalService, EvidenceSelectionService } from "./evidence";
-import {
-  TenderAnswerReviewsController,
-  TenderReviewsController,
-  TendersController,
-} from "./tenders.controller";
 import { TendersService } from "./tenders.service";
 
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 const aiRequests: CompletionRequest[] = [];
 const mockModelRouter = {
@@ -156,7 +154,7 @@ class FakeObjectStorage {
 }
 
 describeDb("Tender integration", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const orgA = randomUUID();
   const orgB = randomUUID();
   const ownerA = randomUUID();
@@ -188,6 +186,15 @@ describeDb("Tender integration", () => {
   });
 
   beforeAll(async () => {
+    const {
+      RequirementsController,
+      ResponsesController,
+      SubmissionsController,
+      TenderAnswerReviewsController,
+      TenderReviewsController,
+      TendersController,
+    } = await import("./tenders.controller");
+
     storage = new FakeObjectStorage();
 
     await db.insert(organizations).values([
@@ -293,7 +300,7 @@ describeDb("Tender integration", () => {
 
     const moduleRef = await Test.createTestingModule({
       imports: [DatabaseModule],
-      controllers: [TendersController, TenderAnswerReviewsController, TenderReviewsController],
+      controllers: [TendersController, RequirementsController, ResponsesController, SubmissionsController, TenderAnswerReviewsController, TenderReviewsController],
       providers: [
         TendersService,
         AnswerGenerationService,
@@ -508,6 +515,17 @@ describeDb("Tender integration", () => {
     expect(listForOwner.body.items.map((item: { id: string }) => item.id)).toEqual(
       expect.arrayContaining([documentTenderId, onlineTenderId]),
     );
+
+    const pipelineForOwner = await requestJson("GET", "/api/v1/tenders/pipeline", ownerA, orgA);
+    expect(pipelineForOwner.status).toBe(200);
+    expect(pipelineForOwner.body.items.map((item: { tender: { id: string } }) => item.tender.id)).toEqual(
+      expect.arrayContaining([documentTenderId, onlineTenderId, workspaceTwoTenderId]),
+    );
+    expect(pipelineForOwner.body.items.some((item: { tender: { id: string } }) => item.tender.id === tenantBTenderId)).toBe(false);
+    const documentPipelineRow = pipelineForOwner.body.items.find((item: { tender: { id: string } }) => item.tender.id === documentTenderId);
+    expect(documentPipelineRow?.pipelineStageId).toBe("intake");
+    expect(documentPipelineRow?.owner?.name).toBeTruthy();
+    expect(documentPipelineRow?.availableTransitions.map((transition: { to: string }) => transition.to)).toContain("INTAKE");
 
     const getById = await requestJson("GET", `/api/v1/tenders/${documentTenderId}`, ownerA, orgA);
     expect(getById.status).toBe(200);
@@ -841,6 +859,258 @@ describeDb("Tender integration", () => {
       comment: "Rejected",
     });
     expect(rejected.status).toBe(200);
+
+    const myReviewQueue = await requestJson("GET", "/api/v1/reviews/queue", reviewerA, orgA);
+    expect(myReviewQueue.status).toBe(200);
+    expect(myReviewQueue.body.total).toBe(1);
+    expect(myReviewQueue.body.counts).toMatchObject({
+      total: 3,
+      actionable: 1,
+      pending: 0,
+      changesRequested: 1,
+      approved: 1,
+      rejected: 1,
+    });
+    expect(myReviewQueue.body.items).toHaveLength(1);
+    expect(myReviewQueue.body.items[0].review.id).toBe(reviewTwo.body.id);
+    expect(myReviewQueue.body.items[0].review.reviewerName).toBe("Reviewer A");
+    expect(myReviewQueue.body.items[0].tender.id).toBe(onlineTenderId);
+    expect(myReviewQueue.body.items[0].answer.id).toBe(answerTwoId);
+    expect(myReviewQueue.body.items[0].question.id).toBe(questionTwoId);
+    expect(myReviewQueue.body.items[0].requirement.id).toBe(requirementTwo.body.id);
+    expect(myReviewQueue.body.items[0].reviewer).toMatchObject({ id: reviewerA, name: "Reviewer A" });
+    expect(myReviewQueue.body.items[0].canAct).toBe(true);
+
+    const allStatusQueue = await requestJson("GET", "/api/v1/reviews/queue?scope=all&statuses=PENDING,CHANGES_REQUESTED,APPROVED,REJECTED", ownerA, orgA);
+    expect(allStatusQueue.status).toBe(200);
+    expect(allStatusQueue.body.total).toBe(3);
+    expect(allStatusQueue.body.items.map((item: { review: { status: string } }) => item.review.status).sort()).toEqual(["APPROVED", "CHANGES_REQUESTED", "REJECTED"]);
+
+    const ownerDefaultQueue = await requestJson("GET", "/api/v1/reviews/queue", ownerA, orgA);
+    expect(ownerDefaultQueue.status).toBe(200);
+    expect(ownerDefaultQueue.body.total).toBe(0);
+    expect(ownerDefaultQueue.body.counts.total).toBe(0);
+
+    const invalidReviewQueue = await requestJson("GET", "/api/v1/reviews/queue?statuses=BOGUS", reviewerA, orgA);
+    expect(invalidReviewQueue.status).toBe(400);
+
+    const responsesQueue = await requestJson("GET", `/api/v1/responses/workspace-queue?workspaceId=${workspaceA1}&pageSize=2&sort=review_urgency`, contributorA, orgA);
+    expect(responsesQueue.status).toBe(200);
+    expect(responsesQueue.body.pageSize).toBe(2);
+    expect(responsesQueue.body.total).toBeGreaterThanOrEqual(3);
+    expect(responsesQueue.body.items).toHaveLength(2);
+    expect(responsesQueue.body.counts).toMatchObject({
+      total: expect.any(Number),
+      missingEvidence: expect.any(Number),
+      lowConfidence: expect.any(Number),
+      changesRequested: expect.any(Number),
+      final: expect.any(Number),
+    });
+    expect(responsesQueue.body.counts.total).toBeGreaterThanOrEqual(3);
+    expect(responsesQueue.body.counts.lowConfidence).toBeGreaterThanOrEqual(2);
+    expect(responsesQueue.body.counts.changesRequested).toBeGreaterThanOrEqual(1);
+    const responseIds = responsesQueue.body.items.map((item: { answer: { id: string } }) => item.answer.id);
+    expect(responseIds).toEqual(expect.arrayContaining([answerTwoId]));
+    const answerTwoQueueRow = responsesQueue.body.items.find((item: { answer: { id: string } }) => item.answer.id === answerTwoId);
+    expect(answerTwoQueueRow.question.id).toBe(questionTwoId);
+    expect(answerTwoQueueRow.requirement.id).toBe(requirementTwo.body.id);
+    expect(answerTwoQueueRow.reviewSummary.latestStatus).toBe("CHANGES_REQUESTED");
+    expect(answerTwoQueueRow.reviewSummary.latestComment).toBe("Please revise");
+    expect(answerTwoQueueRow.navigation.applyHref).toBe(`/apply/${onlineTenderId}`);
+    expect(answerTwoQueueRow.navigation.primaryHref).toBe(`/tenders/${onlineTenderId}/requirements/${requirementTwo.body.id}`);
+
+    const searchResponsesQueue = await requestJson("GET", `/api/v1/responses/workspace-queue?workspaceId=${workspaceA1}&q=Please%20revise`, contributorA, orgA);
+    expect(searchResponsesQueue.status).toBe(200);
+    expect(searchResponsesQueue.body.items.map((item: { answer: { id: string } }) => item.answer.id)).toEqual([answerTwoId]);
+
+    const lowConfidenceResponsesQueue = await requestJson("GET", `/api/v1/responses/workspace-queue?workspaceId=${workspaceA1}&confidence=low&sort=confidence_asc`, contributorA, orgA);
+    expect(lowConfidenceResponsesQueue.status).toBe(200);
+    expect(lowConfidenceResponsesQueue.body.items[0].answer.id).toBe(answerTwoId);
+    expect(lowConfidenceResponsesQueue.body.items.every((item: { answer: { confidence: number } }) => item.answer.confidence < 0.65)).toBe(true);
+
+    const changesRequestedResponsesQueue = await requestJson("GET", `/api/v1/responses/workspace-queue?workspaceId=${workspaceA1}&review=changes_requested`, contributorA, orgA);
+    expect(changesRequestedResponsesQueue.status).toBe(200);
+    expect(changesRequestedResponsesQueue.body.items.map((item: { answer: { id: string } }) => item.answer.id)).toContain(answerTwoId);
+
+    const missingEvidenceResponsesQueue = await requestJson("GET", `/api/v1/responses/workspace-queue?workspaceId=${workspaceA1}&evidence=missing`, contributorA, orgA);
+    expect(missingEvidenceResponsesQueue.status).toBe(200);
+    expect(missingEvidenceResponsesQueue.body.items.every((item: { answer: { evidenceCount: number } }) => item.answer.evidenceCount === 0)).toBe(true);
+
+    const invalidResponsesQueue = await requestJson("GET", "/api/v1/responses/workspace-queue?status=BOGUS", contributorA, orgA);
+    expect(invalidResponsesQueue.status).toBe(400);
+
+    const queueRiskRequirement = await requestJson("POST", `/api/v1/tenders/${onlineTenderId}/requirements`, contributorA, orgA, {
+      requirementCode: "R3",
+      title: "Mandatory unanswered requirement",
+      description: "This should be treated as high risk in the workspace queue.",
+      requirementType: "TECHNICAL",
+      mandatory: true,
+      status: "ASSIGNED",
+    });
+    expect(queueRiskRequirement.status).toBe(201);
+
+    const archivedTender = await requestJson("POST", "/api/v1/tenders", ownerA, orgA, {
+      workspaceId: workspaceA1,
+      name: `Archived Queue Tender ${suffix}`,
+      title: "Archived Queue Tender",
+      referenceNumber: `ARCH-${suffix}`,
+      description: "Archived tender should not appear in the default queue.",
+      tenderType: "DOCUMENT",
+      sourceType: "MANUAL",
+      ownerId: ownerA,
+    });
+    expect(archivedTender.status).toBe(201);
+    const archivedRequirement = await requestJson("POST", `/api/v1/tenders/${archivedTender.body.id}/requirements`, ownerA, orgA, {
+      title: "Archived requirement",
+      requirementType: "GENERAL",
+      mandatory: true,
+    });
+    expect(archivedRequirement.status).toBe(201);
+    await db.update(tenders).set({ archivedAt: new Date() }).where(eq(tenders.id, archivedTender.body.id));
+
+    const requirementsQueue = await requestJson("GET", `/api/v1/requirements/workspace-queue?workspaceId=${workspaceA1}`, contributorA, orgA);
+    expect(requirementsQueue.status).toBe(200);
+    expect(requirementsQueue.body.items.map((item: { requirement: { id: string } }) => item.requirement.id)).toEqual(
+      expect.arrayContaining([requirementOneId, requirementTwoId, queueRiskRequirement.body.id]),
+    );
+    expect(requirementsQueue.body.items.map((item: { requirement: { id: string } }) => item.requirement.id)).not.toContain(archivedRequirement.body.id);
+    const requirementOneQueueRow = requirementsQueue.body.items.find((item: { requirement: { id: string } }) => item.requirement.id === requirementOneId);
+    expect(requirementOneQueueRow.requirement.questionIds).toEqual(expect.arrayContaining([questionOneId, questionTwoId, questionThreeId]));
+    expect(requirementOneQueueRow.questionIds).toEqual(requirementOneQueueRow.requirement.questionIds);
+    expect(requirementOneQueueRow.answerState.approved).toBe(true);
+    expect(requirementOneQueueRow.answerState.pendingReview).toBe(true);
+    const riskQueueRow = requirementsQueue.body.items.find((item: { requirement: { id: string } }) => item.requirement.id === queueRiskRequirement.body.id);
+    expect(riskQueueRow.answerState.answered).toBe(false);
+    expect(riskQueueRow.riskState.highRisk).toBe(true);
+    expect(requirementsQueue.body.counts.tenders).toBeGreaterThanOrEqual(1);
+    expect(requirementsQueue.body.counts.requirements).toBeGreaterThanOrEqual(3);
+    expect(requirementsQueue.body.counts.highRisk).toBeGreaterThanOrEqual(1);
+    expect(requirementsQueue.body.counts.unanswered).toBeGreaterThanOrEqual(1);
+
+    const requirementsQueueWithArchived = await requestJson("GET", `/api/v1/requirements/workspace-queue?workspaceId=${workspaceA1}&includeArchived=true`, contributorA, orgA);
+    expect(requirementsQueueWithArchived.body.items.map((item: { requirement: { id: string } }) => item.requirement.id)).toContain(archivedRequirement.body.id);
+
+    const workspaceTwoQueueDenied = await requestJson("GET", `/api/v1/requirements/workspace-queue?workspaceId=${workspaceA2}`, contributorA, orgA);
+    expect(workspaceTwoQueueDenied.status).toBe(403);
+
+    const invalidQueue = await requestJson("GET", "/api/v1/requirements/workspace-queue?pageSize=101", contributorA, orgA);
+    expect(invalidQueue.status).toBe(400);
+
+    const readySubmissionTender = await requestJson("POST", "/api/v1/tenders", ownerA, orgA, {
+      workspaceId: workspaceA1,
+      name: `Submission Ready Tender ${suffix}`,
+      title: "Submission Ready Tender",
+      referenceNumber: `SUB-READY-${suffix}`,
+      description: "Tender with a ready package for the submissions queue.",
+      tenderType: "DOCUMENT",
+      sourceType: "MANUAL",
+      ownerId: ownerA,
+    });
+    expect(readySubmissionTender.status).toBe(201);
+    const submittedTender = await requestJson("POST", "/api/v1/tenders", ownerA, orgA, {
+      workspaceId: workspaceA1,
+      name: `Submitted Queue Tender ${suffix}`,
+      title: "Submitted Queue Tender",
+      referenceNumber: `SUB-DONE-${suffix}`,
+      description: "Tender with a recorded submission for the submissions queue.",
+      tenderType: "DOCUMENT",
+      sourceType: "MANUAL",
+      ownerId: ownerA,
+    });
+    expect(submittedTender.status).toBe(201);
+    const archivedSubmissionTender = await requestJson("POST", "/api/v1/tenders", ownerA, orgA, {
+      workspaceId: workspaceA1,
+      name: `Archived Submission Tender ${suffix}`,
+      title: "Archived Submission Tender",
+      referenceNumber: `SUB-ARCH-${suffix}`,
+      description: "Archived submission queue tender.",
+      tenderType: "DOCUMENT",
+      sourceType: "MANUAL",
+      ownerId: ownerA,
+    });
+    expect(archivedSubmissionTender.status).toBe(201);
+    const [readyPackage] = await db.insert(tenderSubmissionPackages).values({
+      organizationId: orgA,
+      workspaceId: workspaceA1,
+      tenderId: readySubmissionTender.body.id,
+      version: 1,
+      status: "READY",
+      contentDigest: `ready-${suffix}`,
+      generatorVersion: "test",
+      createdBy: ownerA,
+      completedAt: new Date(),
+    }).returning();
+    const [approvedPackage] = await db.insert(tenderSubmissionPackages).values({
+      organizationId: orgA,
+      workspaceId: workspaceA1,
+      tenderId: submittedTender.body.id,
+      version: 1,
+      status: "APPROVED",
+      contentDigest: `approved-${suffix}`,
+      generatorVersion: "test",
+      createdBy: ownerA,
+      completedAt: new Date(),
+    }).returning();
+    const [archivedPackage] = await db.insert(tenderSubmissionPackages).values({
+      organizationId: orgA,
+      workspaceId: workspaceA1,
+      tenderId: archivedSubmissionTender.body.id,
+      version: 1,
+      status: "FAILED",
+      contentDigest: `archived-sub-${suffix}`,
+      generatorVersion: "test",
+      failureReason: "Archived package should be hidden by default.",
+      createdBy: ownerA,
+      completedAt: new Date(),
+    }).returning();
+    await db.insert(tenderSubmissions).values({
+      organizationId: orgA,
+      workspaceId: workspaceA1,
+      tenderId: submittedTender.body.id,
+      packageId: approvedPackage!.id,
+      portal: "Test portal",
+      portalReference: `ACK-${suffix}`,
+      submittedAt: new Date(),
+      submittedBy: ownerA,
+      notes: "Submitted through test portal.",
+    });
+    await db.update(tenders).set({ archivedAt: new Date() }).where(eq(tenders.id, archivedSubmissionTender.body.id));
+
+    const submissionsQueue = await requestJson("GET", `/api/v1/submissions/workspace-queue?workspaceId=${workspaceA1}&pageSize=1`, contributorA, orgA);
+    expect(submissionsQueue.status).toBe(200);
+    expect(submissionsQueue.body.page).toBe(1);
+    expect(submissionsQueue.body.pageSize).toBe(1);
+    expect(submissionsQueue.body.items).toHaveLength(1);
+    expect(submissionsQueue.body.total).toBeGreaterThan(1);
+    expect(submissionsQueue.body.counts.ready).toBeGreaterThanOrEqual(1);
+    expect(submissionsQueue.body.counts.submitted).toBeGreaterThanOrEqual(1);
+
+    const submissionsQueueAll = await requestJson("GET", `/api/v1/submissions/workspace-queue?workspaceId=${workspaceA1}&pageSize=100`, contributorA, orgA);
+    expect(submissionsQueueAll.status).toBe(200);
+    expect(submissionsQueueAll.body.items.map((item: { tender: { id: string } }) => item.tender.id)).toEqual(
+      expect.arrayContaining([readySubmissionTender.body.id, submittedTender.body.id]),
+    );
+    expect(submissionsQueueAll.body.items.map((item: { tender: { id: string } }) => item.tender.id)).not.toContain(archivedSubmissionTender.body.id);
+    const readyQueueRow = submissionsQueueAll.body.items.find((item: { tender: { id: string } }) => item.tender.id === readySubmissionTender.body.id);
+    expect(readyQueueRow.latestPackage.id).toBe(readyPackage!.id);
+    expect(readyQueueRow.latestSubmission).toBeNull();
+    expect(readyQueueRow.actionState).toBe("APPROVE_PACKAGE");
+    expect(typeof readyQueueRow.readiness === "number" || readyQueueRow.readiness === null).toBe(true);
+    const submittedQueueRow = submissionsQueueAll.body.items.find((item: { tender: { id: string } }) => item.tender.id === submittedTender.body.id);
+    expect(submittedQueueRow.latestSubmission.portalReference).toBe(`ACK-${suffix}`);
+    expect(submittedQueueRow.actionState).toBe("VIEW_RECEIPT");
+
+    const submissionsQueueWithArchived = await requestJson("GET", `/api/v1/submissions/workspace-queue?workspaceId=${workspaceA1}&includeArchived=true&pageSize=100`, contributorA, orgA);
+    expect(submissionsQueueWithArchived.body.items.map((item: { tender: { id: string } }) => item.tender.id)).toContain(archivedSubmissionTender.body.id);
+    const archivedQueueRow = submissionsQueueWithArchived.body.items.find((item: { tender: { id: string } }) => item.tender.id === archivedSubmissionTender.body.id);
+    expect(archivedQueueRow.latestPackage.id).toBe(archivedPackage!.id);
+    expect(archivedQueueRow.actionState).toBe("REBUILD_PACKAGE");
+
+    const workspaceTwoSubmissionsDenied = await requestJson("GET", `/api/v1/submissions/workspace-queue?workspaceId=${workspaceA2}`, contributorA, orgA);
+    expect(workspaceTwoSubmissionsDenied.status).toBe(403);
+
+    const invalidSubmissionsQueue = await requestJson("GET", "/api/v1/submissions/workspace-queue?pageSize=101", contributorA, orgA);
+    expect(invalidSubmissionsQueue.status).toBe(400);
 
     const tenderAssignment = await assignmentsService.create(ownerAuth(ownerA, orgA), {
       workspaceId: workspaceA1,
@@ -1874,6 +2144,171 @@ describeDb("Tender integration", () => {
     const answers = await requestJson("GET", `/api/v1/tenders/${tenderId}/answers`, ownerA, orgA);
     expect(answers.status).toBe(200);
     expect(answers.body.items).toHaveLength(0);
+  });
+
+  dbTest("excludes policy-denied tenders from list, dashboard, pipeline and every queue", async () => {
+    const [policyWorkspace] = await db.insert(workspaces).values({
+      id: randomUUID(),
+      organizationId: orgA,
+      name: `Policy Workspace ${suffix}`,
+      slug: `policy-${suffix}`,
+    }).returning();
+    const policyWorkspaceId = policyWorkspace!.id;
+
+    const createTender = async (label: string) => {
+      const response = await requestJson("POST", "/api/v1/tenders", ownerA, orgA, {
+        workspaceId: policyWorkspaceId,
+        name: `Policy ${label} ${suffix}`,
+        title: `Policy ${label}`,
+        referenceNumber: `POL-${label}-${suffix}`,
+        description: "Read-policy filtering probe",
+        tenderType: "ONLINE",
+        sourceType: "PORTAL",
+        ownerId: ownerA,
+        sourceUrl: `https://example.invalid/policy-${label}`,
+      });
+      expect(response.status).toBe(201);
+      return response.body.id as string;
+    };
+    const visibleTenderId = await createTender("visible");
+    const deniedTenderId = await createTender("denied");
+
+    // Give both tenders a requirement, a linked question, an answer and a
+    // pending review, so every queue has rows for each of them.
+    const answerIds: Record<string, string> = {};
+    for (const tenderId of [visibleTenderId, deniedTenderId]) {
+      const requirement = await requestJson("POST", `/api/v1/tenders/${tenderId}/requirements`, ownerA, orgA, {
+        requirementCode: "POL-R1",
+        title: "Policy requirement",
+        description: "Requirement for the read-policy probe",
+        requirementType: "SECURITY",
+        mandatory: true,
+        status: "ASSIGNED",
+      });
+      expect(requirement.status).toBe(201);
+      const question = await requestJson("POST", `/api/v1/tenders/${tenderId}/questions`, ownerA, orgA, {
+        questionNumber: "POL-Q1",
+        section: "Security",
+        questionText: "Describe the policy probe controls.",
+        questionType: "LONG_TEXT",
+        required: true,
+        status: "ASSIGNED",
+        sortOrder: 1,
+        requirementIds: [requirement.body.id],
+      });
+      expect(question.status).toBe(201);
+      const answer = await requestJson(
+        "POST",
+        `/api/v1/tenders/${tenderId}/questions/${question.body.id}/answer`,
+        ownerA,
+        orgA,
+        { answerText: "Policy probe answer", source: "MANUAL", confidence: 0.8 },
+      );
+      expect(answer.status).toBe(201);
+      answerIds[tenderId] = answer.body.id as string;
+      const review = await requestJson("POST", `/api/v1/answers/${answer.body.id}/reviews`, ownerA, orgA, {
+        comment: "Policy probe review",
+      });
+      expect(review.status).toBe(201);
+    }
+
+    const tenderIdsOf = (items: Array<{ tender?: { id: string }; id?: string; tenderId?: string }>) =>
+      items.map((item) => item.tender?.id ?? item.tenderId ?? item.id);
+    const genericErrors = new Set(["Some tender details could not be loaded.", "AI activity could not be loaded."]);
+    const snapshot = async () => {
+      const [list, dashboard, pipeline, pagedPipeline, requirementsQueue, responsesQueue, submissionsQueue, reviewQueue] =
+        await Promise.all([
+          requestJson("GET", `/api/v1/tenders?workspaceId=${policyWorkspaceId}`, ownerA, orgA),
+          requestJson("GET", "/api/v1/tenders/dashboard?pageSize=25", ownerA, orgA),
+          requestJson("GET", "/api/v1/tenders/pipeline", ownerA, orgA),
+          requestJson("GET", "/api/v1/tenders/pipeline?page=1&pageSize=200", ownerA, orgA),
+          requestJson("GET", `/api/v1/requirements/workspace-queue?workspaceId=${policyWorkspaceId}`, ownerA, orgA),
+          requestJson("GET", `/api/v1/responses/workspace-queue?workspaceId=${policyWorkspaceId}`, ownerA, orgA),
+          requestJson("GET", `/api/v1/submissions/workspace-queue?workspaceId=${policyWorkspaceId}`, ownerA, orgA),
+          requestJson("GET", `/api/v1/reviews/queue?scope=all&workspaceId=${policyWorkspaceId}`, ownerA, orgA),
+        ]);
+      for (const response of [list, dashboard, pipeline, pagedPipeline, requirementsQueue, responsesQueue, submissionsQueue, reviewQueue]) {
+        expect(response.status).toBe(200);
+      }
+      for (const body of [dashboard.body, pipeline.body]) {
+        for (const error of body.errors as Array<{ message: string }>) {
+          expect(genericErrors.has(error.message)).toBe(true);
+        }
+      }
+      return { list, dashboard, pipeline, pagedPipeline, requirementsQueue, responsesQueue, submissionsQueue, reviewQueue };
+    };
+
+    const before = await snapshot();
+    expect(tenderIdsOf(before.list.body.items)).toEqual(expect.arrayContaining([visibleTenderId, deniedTenderId]));
+    expect(before.list.body.total).toBe(2);
+    expect(tenderIdsOf(before.pipeline.body.items)).toEqual(expect.arrayContaining([visibleTenderId, deniedTenderId]));
+    expect(JSON.stringify(before.dashboard.body)).toContain(deniedTenderId);
+    expect(before.submissionsQueue.body.total).toBe(2);
+    expect(JSON.stringify(before.requirementsQueue.body)).toContain(deniedTenderId);
+    expect(JSON.stringify(before.responsesQueue.body)).toContain(answerIds[deniedTenderId]!);
+    expect(JSON.stringify(before.reviewQueue.body)).toContain(deniedTenderId);
+
+    // The batched validation used by the pipeline must score a tender exactly
+    // as the single-tender validation endpoint does.
+    const single = await requestJson("GET", `/api/v1/tenders/${visibleTenderId}/validation`, ownerA, orgA);
+    expect(single.status).toBe(200);
+    const visibleCard = before.pipeline.body.items.find(
+      (item: { tender: { id: string } }) => item.tender.id === visibleTenderId,
+    );
+    expect(visibleCard.readiness).toBe(single.body.current.score);
+    expect(visibleCard.ready).toBe(single.body.current.ready);
+    expect(visibleCard.issueCount).toBe(single.body.current.issues.length);
+    expect(visibleCard.totalReviews).toBe(1);
+    expect(visibleCard.pendingReviews).toBe(1);
+
+    const [denyPolicy] = await db.insert(accessPolicies).values({
+      organizationId: orgA,
+      workspaceId: policyWorkspaceId,
+      name: `Deny read on one tender ${suffix}`,
+      description: "Read deny probe",
+      role: null,
+      resource: "tender",
+      action: "read",
+      effect: "deny",
+      condition: { tenderId: deniedTenderId },
+      priority: 100,
+      status: "active",
+    }).returning({ id: accessPolicies.id });
+
+    try {
+      const after = await snapshot();
+
+      expect(tenderIdsOf(after.list.body.items)).toEqual([visibleTenderId]);
+      expect(after.list.body.total).toBe(1);
+
+      for (const body of [after.pipeline.body, after.pagedPipeline.body]) {
+        expect(tenderIdsOf(body.items)).not.toContain(deniedTenderId);
+        expect(tenderIdsOf(body.items)).toContain(visibleTenderId);
+      }
+      expect(after.pipeline.body.items).toHaveLength(before.pipeline.body.items.length - 1);
+      expect(after.pipeline.body.metrics.activeRfps).toBe(before.pipeline.body.metrics.activeRfps - 1);
+      expect(after.pagedPipeline.body.total).toBe(before.pagedPipeline.body.total - 1);
+      expect(after.pipeline.body).not.toHaveProperty("total");
+
+      expect(JSON.stringify(after.dashboard.body)).not.toContain(deniedTenderId);
+      expect(JSON.stringify(after.dashboard.body)).toContain(visibleTenderId);
+      expect(after.dashboard.body.metrics.activeRfps).toBe(before.dashboard.body.metrics.activeRfps - 1);
+      expect(after.dashboard.body.aiActivity.totalAnswers).toBe(before.dashboard.body.aiActivity.totalAnswers - 1);
+
+      expect(JSON.stringify(after.requirementsQueue.body)).not.toContain(deniedTenderId);
+      expect(after.requirementsQueue.body.total).toBe(before.requirementsQueue.body.total - 1);
+      expect(JSON.stringify(after.responsesQueue.body)).not.toContain(answerIds[deniedTenderId]!);
+      expect(after.responsesQueue.body.total).toBe(before.responsesQueue.body.total - 1);
+      expect(JSON.stringify(after.submissionsQueue.body)).not.toContain(deniedTenderId);
+      expect(after.submissionsQueue.body.total).toBe(1);
+      expect(JSON.stringify(after.reviewQueue.body)).not.toContain(deniedTenderId);
+      expect(JSON.stringify(after.reviewQueue.body)).toContain(visibleTenderId);
+
+      const deniedDirect = await requestJson("GET", `/api/v1/tenders/${deniedTenderId}/validation`, ownerA, orgA);
+      expect(deniedDirect.status).toBe(403);
+    } finally {
+      await db.delete(accessPolicies).where(eq(accessPolicies.id, denyPolicy!.id));
+    }
   });
 
   async function requestJson(

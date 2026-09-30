@@ -22,17 +22,31 @@ import {
   fetchOrganizationInvitations,
   fetchOrganizationMembers,
   fetchDashboardSummary,
+  fetchPipeline,
+  fetchRequirementsQueue,
+  fetchResponsesQueue,
+  fetchReviewQueue,
+  fetchSubmissionsQueue,
   approveKnowledge,
+  approveKnowledgeSource,
+  approveResponseTemplate,
   archiveKnowledge,
+  archiveKnowledgeSource,
+  archiveResponseTemplate,
   createAnswer,
   createKnowledge,
+  createKnowledgeSource,
+  createResponseTemplate,
   createTender,
   createReview,
   fetchAnswerEvidence,
   fetchAnswerVersions,
   fetchKnowledgeItem,
+  fetchKnowledgeIssues,
   fetchKnowledgeList,
+  fetchKnowledgeSources,
   fetchKnowledgeSummary,
+  fetchResponseTemplates,
   fetchRequirementEvidence,
   fetchTender,
   fetchTenderAnswers,
@@ -62,6 +76,8 @@ import {
   removeAnswerEvidence,
   updateAnswer,
   updateKnowledge,
+  updateKnowledgeSource,
+  updateResponseTemplate,
   updateReview,
   updateOrganizationCurrent,
   updateOrganizationMember,
@@ -101,12 +117,18 @@ import {
   updateTenderMilestones,
   fetchTenderSubmissions,
   createTenderSubmission,
+  duplicateResponseTemplate,
+  resolveKnowledgeIssue,
+  verifyKnowledgeSource,
 } from "./api";
-import type { TenderDiscoveryParams } from "./api";
+import type { KnowledgeListParams, KnowledgeSourceInput, ResponseTemplateInput, TenderDiscoveryParams } from "./api";
 import type {
   DashboardOverview,
   KnowledgeItem,
+  KnowledgeIssuesPayload,
   KnowledgeListPayload,
+  ResponseTemplate,
+  ResponseTemplatesPayload,
   AnswerWorkspacePayload,
   RequirementEvidenceSearchPayload,
   TenderAnswer,
@@ -125,6 +147,10 @@ import type {
   OrganizationMemberSummary,
   OrganizationInvitationSummary,
   RoleSummary,
+  RequirementsQueuePayload,
+  ResponsesQueuePayload,
+  ReviewQueuePayload,
+  SubmissionsQueuePayload,
   TeamSummary,
   WorkspaceMemberSummary,
   TeamMemberSummary,
@@ -157,15 +183,28 @@ export const tenderKeys = {
 };
 
 export const knowledgeKeys = {
-  list: (params?: { status?: string | null; search?: string; page?: number; pageSize?: number }) =>
+  list: (params?: KnowledgeListParams) =>
     [
       "knowledge",
       params?.status ?? "all",
+      params?.category ?? "all-categories",
+      params?.type ?? "all-types",
+      params?.authority ?? "all-authorities",
+      params?.ownerId ?? "all-owners",
+      params?.sourceKind ?? "all-source-kinds",
+      params?.expires ?? "all-expiry",
+      params?.reviewState ?? "all-review-states",
       params?.search ?? "all",
       params?.page ?? 1,
       params?.pageSize ?? 25,
     ] as const,
+  sources: (params?: KnowledgeListParams) => ["knowledge", "sources", params ?? {}] as const,
+  issues: (params?: { type?: string; status?: "OPEN" | "RESOLVED" | "ALL"; search?: string; page?: number; pageSize?: number }) =>
+    ["knowledge", "issues", params ?? {}] as const,
+  templates: (params?: { status?: "DRAFT" | "ACTIVE" | "ARCHIVED" | "ALL"; category?: string; ownerId?: string; search?: string; page?: number; pageSize?: number }) =>
+    ["knowledge", "templates", params ?? {}] as const,
   item: (id: string) => ["knowledge", id] as const,
+  template: (id: string) => ["knowledge", "templates", id] as const,
 };
 
 export const tenderListKeys = {
@@ -206,6 +245,77 @@ export const tenderListKeys = {
       params?.includeArchived ? "archived" : "active",
       params?.page ?? 1,
       params?.pageSize ?? 25,
+    ] as const,
+};
+
+export const requirementsQueueKeys = {
+  list: (params?: { workspaceId?: string; includeArchived?: boolean; page?: number; pageSize?: number }) =>
+    [
+      "requirements",
+      "workspace-queue",
+      params?.workspaceId ?? "all-workspaces",
+      params?.includeArchived ? "archived" : "active",
+      params?.page ?? 1,
+      params?.pageSize ?? 100,
+    ] as const,
+};
+
+type ResponsesQueueParams = {
+  workspaceId?: string;
+  includeArchived?: boolean;
+  q?: string;
+  status?: string;
+  source?: string;
+  evidence?: string;
+  confidence?: string;
+  review?: string;
+  sort?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export const responsesQueueKeys = {
+  list: (params?: ResponsesQueueParams) =>
+    [
+      "responses",
+      "workspace-queue",
+      params?.workspaceId ?? "all-workspaces",
+      params?.includeArchived ? "archived" : "active",
+      params?.q ?? "all-search",
+      params?.status ?? "all",
+      params?.source ?? "all",
+      params?.evidence ?? "all",
+      params?.confidence ?? "all",
+      params?.review ?? "all",
+      params?.sort ?? "updated_desc",
+      params?.page ?? 1,
+      params?.pageSize ?? 50,
+    ] as const,
+};
+
+export const submissionsQueueKeys = {
+  list: (params?: { workspaceId?: string; includeArchived?: boolean; page?: number; pageSize?: number }) =>
+    [
+      "submissions",
+      "workspace-queue",
+      params?.workspaceId ?? "all-workspaces",
+      params?.includeArchived ? "archived" : "active",
+      params?.page ?? 1,
+      params?.pageSize ?? 100,
+    ] as const,
+};
+
+export const reviewQueueKeys = {
+  list: (params?: { workspaceId?: string; scope?: "mine" | "all"; statuses?: string[]; q?: string; page?: number; pageSize?: number }) =>
+    [
+      "reviews",
+      "queue",
+      params?.workspaceId ?? "all-workspaces",
+      params?.scope ?? "mine",
+      (params?.statuses ?? ["PENDING", "CHANGES_REQUESTED"]).join(","),
+      params?.q ?? "all-search",
+      params?.page ?? 1,
+      params?.pageSize ?? 50,
     ] as const,
 };
 
@@ -404,18 +514,45 @@ export function useRequirementEvidence(
 }
 
 export function useKnowledgeList(
-  params: { status?: string | null; search?: string; page?: number; pageSize?: number } = {},
+  params: KnowledgeListParams = {},
   initialData?: KnowledgeListPayload | null,
 ) {
   return useQuery({
     queryKey: knowledgeKeys.list(params),
-    queryFn: () =>
-      fetchKnowledgeList({
-        status: params.status ?? undefined,
-        search: params.search,
-        page: params.page,
-        pageSize: params.pageSize,
-      }),
+    queryFn: () => fetchKnowledgeList({ ...params, status: params.status ?? undefined }),
+    initialData: initialData ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useKnowledgeSources(params: KnowledgeListParams = {}, initialData?: KnowledgeListPayload | null) {
+  return useQuery({
+    queryKey: knowledgeKeys.sources(params),
+    queryFn: () => fetchKnowledgeSources({ ...params, status: params.status ?? undefined }),
+    initialData: initialData ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useKnowledgeIssues(
+  params: { type?: string; status?: "OPEN" | "RESOLVED" | "ALL"; search?: string; page?: number; pageSize?: number } = {},
+  initialData?: KnowledgeIssuesPayload | null,
+) {
+  return useQuery({
+    queryKey: knowledgeKeys.issues(params),
+    queryFn: () => fetchKnowledgeIssues(params),
+    initialData: initialData ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useResponseTemplates(
+  params: { status?: "DRAFT" | "ACTIVE" | "ARCHIVED" | "ALL"; category?: string; ownerId?: string; search?: string; page?: number; pageSize?: number } = {},
+  initialData?: ResponseTemplatesPayload | null,
+) {
+  return useQuery({
+    queryKey: knowledgeKeys.templates(params),
+    queryFn: () => fetchResponseTemplates(params),
     initialData: initialData ?? undefined,
     placeholderData: keepPreviousData,
   });
@@ -426,6 +563,15 @@ export function useDashboardSummary(pageSize = 6, initialData?: DashboardOvervie
     queryKey: ["dashboard", "summary", pageSize] as const,
     queryFn: () => fetchDashboardSummary({ pageSize }),
     initialData: initialData ?? undefined,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function usePipeline() {
+  return useQuery({
+    queryKey: ["tenders", "pipeline"] as const,
+    queryFn: () => fetchPipeline(),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
@@ -461,6 +607,74 @@ export function useTenders(
   return useQuery({
     queryKey: tenderListKeys.list(effectiveParams),
     queryFn: () => fetchTenders(effectiveParams),
+    initialData: initialData ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useRequirementsQueue(
+  params: { workspaceId?: string; includeArchived?: boolean; page?: number; pageSize?: number } = {},
+  initialData?: RequirementsQueuePayload | null,
+) {
+  const selectedWorkspaceId = useSelectedWorkspaceId();
+  const effectiveParams = {
+    ...params,
+    workspaceId: params.workspaceId ?? selectedWorkspaceId ?? undefined,
+  };
+  return useQuery({
+    queryKey: requirementsQueueKeys.list(effectiveParams),
+    queryFn: () => fetchRequirementsQueue(effectiveParams),
+    initialData: initialData ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useResponsesQueue(
+  params: ResponsesQueueParams = {},
+  initialData?: ResponsesQueuePayload | null,
+) {
+  const selectedWorkspaceId = useSelectedWorkspaceId();
+  const effectiveParams = {
+    ...params,
+    workspaceId: params.workspaceId ?? selectedWorkspaceId ?? undefined,
+  };
+  return useQuery({
+    queryKey: responsesQueueKeys.list(effectiveParams),
+    queryFn: () => fetchResponsesQueue(effectiveParams),
+    initialData: initialData ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useSubmissionsQueue(
+  params: { workspaceId?: string; includeArchived?: boolean; page?: number; pageSize?: number } = {},
+  initialData?: SubmissionsQueuePayload | null,
+) {
+  const selectedWorkspaceId = useSelectedWorkspaceId();
+  const effectiveParams = {
+    ...params,
+    workspaceId: params.workspaceId ?? selectedWorkspaceId ?? undefined,
+  };
+  return useQuery({
+    queryKey: submissionsQueueKeys.list(effectiveParams),
+    queryFn: () => fetchSubmissionsQueue(effectiveParams),
+    initialData: initialData ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useReviewQueue(
+  params: { workspaceId?: string; scope?: "mine" | "all"; statuses?: string[]; q?: string; page?: number; pageSize?: number } = {},
+  initialData?: ReviewQueuePayload | null,
+) {
+  const selectedWorkspaceId = useSelectedWorkspaceId();
+  const effectiveParams = {
+    ...params,
+    workspaceId: params.workspaceId ?? selectedWorkspaceId ?? undefined,
+  };
+  return useQuery({
+    queryKey: reviewQueueKeys.list(effectiveParams),
+    queryFn: () => fetchReviewQueue(effectiveParams),
     initialData: initialData ?? undefined,
     placeholderData: keepPreviousData,
   });
@@ -822,6 +1036,7 @@ export function useTransitionTender(tenderId: string) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["tenders", "pipeline"] }),
         queryClient.invalidateQueries({ queryKey: tenderKeys.detail(tenderId) }),
         queryClient.invalidateQueries({ queryKey: tenderKeys.workspace(tenderId) }),
         queryClient.invalidateQueries({ queryKey: tenderListKeys.list() }),
@@ -976,6 +1191,7 @@ export function useSubmitReview(tenderId: string) {
         queryClient.invalidateQueries({ queryKey: tenderKeys.reviews(tenderId) }),
         queryClient.invalidateQueries({ queryKey: tenderKeys.answers(tenderId) }),
         queryClient.invalidateQueries({ queryKey: ["tender", tenderId, "answers"] }),
+        queryClient.invalidateQueries({ queryKey: ["reviews", "queue"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
       ]);
     },
@@ -1044,6 +1260,7 @@ export function useUpdateReview(tenderId: string) {
         queryClient.invalidateQueries({ queryKey: tenderKeys.reviews(tenderId) }),
         queryClient.invalidateQueries({ queryKey: tenderKeys.answers(tenderId) }),
         queryClient.invalidateQueries({ queryKey: ["tender", tenderId, "answers"] }),
+        queryClient.invalidateQueries({ queryKey: ["reviews", "queue"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
       ]);
     },
@@ -1108,6 +1325,71 @@ export function useCreateKnowledge() {
       ]);
     },
   });
+}
+
+function useKnowledgeMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["knowledge"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+      ]);
+    },
+  });
+}
+
+export function useCreateKnowledgeSource() {
+  return useKnowledgeMutation<KnowledgeSourceInput, KnowledgeItem>((body) => createKnowledgeSource(body));
+}
+
+export function useUpdateKnowledgeSource() {
+  return useKnowledgeMutation<{ id: string; body: Partial<KnowledgeSourceInput> }, KnowledgeItem>(({ id, body }) =>
+    updateKnowledgeSource(id, body),
+  );
+}
+
+export function useApproveKnowledgeSource() {
+  return useKnowledgeMutation<string, KnowledgeItem>((id) => approveKnowledgeSource(id));
+}
+
+export function useArchiveKnowledgeSource() {
+  return useKnowledgeMutation<string, KnowledgeItem>((id) => archiveKnowledgeSource(id));
+}
+
+export function useVerifyKnowledgeSource() {
+  return useKnowledgeMutation<{ id: string; note?: string; expiresAt?: string | null }, KnowledgeItem>(({ id, note, expiresAt }) =>
+    verifyKnowledgeSource(id, { note, expiresAt }),
+  );
+}
+
+export function useResolveKnowledgeIssue() {
+  return useKnowledgeMutation<{ id: string; action: "approve" | "verify" | "archive" | "resolve_conflict"; note?: string }, unknown>(
+    ({ id, action, note }) => resolveKnowledgeIssue(id, { action, note }),
+  );
+}
+
+export function useCreateResponseTemplate() {
+  return useKnowledgeMutation<ResponseTemplateInput, ResponseTemplate>((body) => createResponseTemplate(body));
+}
+
+export function useUpdateResponseTemplate() {
+  return useKnowledgeMutation<{ id: string; body: Partial<ResponseTemplateInput> }, ResponseTemplate>(({ id, body }) =>
+    updateResponseTemplate(id, body),
+  );
+}
+
+export function useApproveResponseTemplate() {
+  return useKnowledgeMutation<string, ResponseTemplate>((id) => approveResponseTemplate(id));
+}
+
+export function useArchiveResponseTemplate() {
+  return useKnowledgeMutation<string, ResponseTemplate>((id) => archiveResponseTemplate(id));
+}
+
+export function useDuplicateResponseTemplate() {
+  return useKnowledgeMutation<string, ResponseTemplate>((id) => duplicateResponseTemplate(id));
 }
 
 export function useUpdateKnowledge() {

@@ -1,4 +1,25 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
+
+/**
+ * SHA-256 of the BETTER_AUTH_SECRET fallback that docker-compose.yml used to
+ * ship. That string is public in git history, so a deployment still carrying
+ * it (e.g. copied into a .env) must not boot. Stored as a hash so the literal
+ * is not repeated here.
+ */
+const LEAKED_AUTH_SECRET_SHA256 = "ce95891a8bbde99d5da2b92c3d2dd01f811e44e52f23b639690d7970cc24b025";
+
+/** Local-dev default for Postgres and MinIO (docker-compose.yml, .env.example). */
+const DEV_DEFAULT_PASSWORD = "rfpos_dev_password";
+
+function databaseUrlPassword(databaseUrl: string | undefined): string | undefined {
+  if (!databaseUrl) return undefined;
+  try {
+    return decodeURIComponent(new URL(databaseUrl).password) || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Treats an empty or whitespace-only value as absent.
@@ -11,6 +32,29 @@ function blankToUndefined<T extends z.ZodTypeAny>(schema: T) {
   return z.preprocess(
     (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
     schema.optional(),
+  );
+}
+
+/**
+ * Parses a boolean flag from its env-string form.
+ *
+ * z.coerce.boolean() is Boolean(value), so the string "false" becomes true —
+ * the opposite of what anyone setting FLAG=false means. Only explicit
+ * true/false spellings are accepted; blank falls back to the default and
+ * anything else fails validation.
+ */
+export function envBoolean(defaultValue: boolean) {
+  return z.preprocess(
+    (value) => {
+      if (typeof value === "boolean") return value;
+      if (value === undefined || value === null) return undefined;
+      const normalized = String(value).trim().toLowerCase();
+      if (normalized === "") return undefined;
+      if (["true", "1", "yes", "on"].includes(normalized)) return true;
+      if (["false", "0", "no", "off"].includes(normalized)) return false;
+      return value;
+    },
+    z.boolean({ invalid_type_error: "must be true or false" }).default(defaultValue),
   );
 }
 
@@ -32,6 +76,9 @@ export const envSchema = z.object({
    */
   BETTER_AUTH_SECRET: blankToUndefined(z.string().min(32, "must be at least 32 characters")),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:4100"),
+  BETTER_AUTH_GOOGLE_CLIENT_ID: blankToUndefined(z.string().min(1)),
+  BETTER_AUTH_GOOGLE_CLIENT_SECRET: blankToUndefined(z.string().min(1)),
+  ENABLE_FIREBASE_AUTH_COMPAT: envBoolean(false),
   FIREBASE_PROJECT_ID: z.string().min(1).optional(),
   APP_COMMIT_SHA: z.string().min(1).optional(),
   APP_BUILD_TIME: blankToUndefined(z.string().datetime()),
@@ -64,7 +111,7 @@ export const envSchema = z.object({
   STORAGE_ACCESS_KEY_ID: blankToUndefined(z.string().min(1)),
   STORAGE_SECRET_ACCESS_KEY: blankToUndefined(z.string().min(1)),
   /** MinIO addresses buckets by path; real S3 uses a subdomain. */
-  STORAGE_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
+  STORAGE_FORCE_PATH_STYLE: envBoolean(true),
   /** 100 MB. Enforced before presigning, so oversized uploads never start. */
   UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(104_857_600),
   UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
@@ -104,20 +151,42 @@ export function validateEnv(config: Record<string, unknown>): Env {
       Boolean(config.POSTGRES_DB);
     if (!result.data.BETTER_AUTH_SECRET) {
       missing.push("BETTER_AUTH_SECRET: required in production (min 32 characters)");
+    } else if (
+      createHash("sha256").update(result.data.BETTER_AUTH_SECRET).digest("hex") === LEAKED_AUTH_SECRET_SHA256
+    ) {
+      missing.push("BETTER_AUTH_SECRET: is the old public docker-compose fallback; generate a new secret");
     }
-    if (!result.data.FIREBASE_PROJECT_ID) {
-      missing.push("FIREBASE_PROJECT_ID: required in production for Firebase token verification");
+    if (!result.data.BETTER_AUTH_URL) {
+      missing.push("BETTER_AUTH_URL: required in production");
+    }
+    if (!result.data.BETTER_AUTH_GOOGLE_CLIENT_ID || !result.data.BETTER_AUTH_GOOGLE_CLIENT_SECRET) {
+      missing.push("BETTER_AUTH_GOOGLE_CLIENT_ID / BETTER_AUTH_GOOGLE_CLIENT_SECRET: both required in production");
+    }
+    if (result.data.ENABLE_FIREBASE_AUTH_COMPAT && !result.data.FIREBASE_PROJECT_ID) {
+      missing.push("FIREBASE_PROJECT_ID: required only when ENABLE_FIREBASE_AUTH_COMPAT=true");
     }
     if (!hasDatabaseUrl && !hasPostgresEnv) {
       missing.push(
         "DATABASE_URL or POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB: required in production",
       );
     }
+    if (
+      databaseUrlPassword(result.data.DATABASE_URL) === DEV_DEFAULT_PASSWORD ||
+      config.POSTGRES_PASSWORD === DEV_DEFAULT_PASSWORD
+    ) {
+      missing.push("POSTGRES_PASSWORD / DATABASE_URL: still the local development password; set a real one");
+    }
+    if (result.data.STORAGE_SECRET_ACCESS_KEY === DEV_DEFAULT_PASSWORD) {
+      missing.push("STORAGE_SECRET_ACCESS_KEY: still the local development password; set a real one");
+    }
     if (!result.data.REDIS_URL) {
       missing.push("REDIS_URL: required in production for background jobs");
     }
     if (result.data.AI_PROVIDER === "mock") {
       missing.push("AI_PROVIDER: mock is not allowed in production");
+    }
+    if (result.data.AI_PROVIDER === "groq" && !result.data.GROQ_API_KEY) {
+      missing.push("GROQ_API_KEY: required when AI_PROVIDER=groq");
     }
     /*
      * Storage is optional in development so the API boots without MinIO, but

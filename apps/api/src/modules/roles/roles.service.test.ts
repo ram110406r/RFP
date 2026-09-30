@@ -17,11 +17,12 @@ import { RolesService } from "./roles.service";
 import { ActivityService } from "../../infrastructure/activity";
 import { AuditService } from "../../infrastructure/audit";
 
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 describeDb("RolesService", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const service = new RolesService(db, new ActivityService(db), new AuditService(db));
 
   const orgId = randomUUID();

@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { load } from "cheerio";
 
+import { fetchPublicUrl, fetchWithTimeout, readJsonLimited, readTextLimited } from "../lib/http";
+
 export type NoticeStatus = "ACTIVE" | "CLOSED" | "CANCELLED" | "AWARDED" | "EXPIRED" | "UNKNOWN";
 
 export interface ConnectorDocument {
@@ -76,11 +78,14 @@ class JsonFeedConnector implements TenderConnector {
   async fetchPage(cursor?: string | null): Promise<ConnectorPage> {
     const url = new URL(this.feedUrl);
     if (cursor) url.searchParams.set("cursor", cursor);
-    const response = await fetch(url, {
-      headers: { accept: "application/json", "user-agent": "TENDYY-TenderDiscovery/1.0" },
-    });
-    if (!response.ok) throw new Error(`Official feed returned HTTP ${response.status}.`);
-    const payload = (await response.json()) as { items?: unknown; nextCursor?: unknown };
+    // The feed URL is portal configuration, so it gets the same private-host
+    // checks as a notice document URL.
+    const response = await fetchPublicUrl(url, { headers: { accept: "application/json" } });
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error(`Official feed returned HTTP ${response.status}.`);
+    }
+    const payload = await readJsonLimited<{ items?: unknown; nextCursor?: unknown }>(response);
     if (!Array.isArray(payload.items))
       throw new Error("Official feed response does not contain an items array.");
     return {
@@ -121,7 +126,7 @@ export class GemConnector implements TenderConnector {
       payload: JSON.stringify(requestPayload),
       [this.csrfName!]: this.csrfValue!,
     });
-    const response = await fetch(GEM_DATA_URL, {
+    const response = await fetchWithTimeout(GEM_DATA_URL, {
       method: "POST",
       headers: {
         accept: "application/json",
@@ -129,12 +134,11 @@ export class GemConnector implements TenderConnector {
         cookie: this.cookie,
         origin: "https://bidplus.gem.gov.in",
         referer: GEM_LIST_URL,
-        "user-agent": "TENDYY-TenderDiscovery/1.0",
       },
       body,
     });
     if (!response.ok) throw new Error(`GeM public listing returned HTTP ${response.status}.`);
-    const responsePayload = (await response.json()) as Record<string, unknown>;
+    const responsePayload = await readJsonLimited<Record<string, unknown>>(response);
     const result = objectValue(objectValue(responsePayload.response).response);
     const docs = Array.isArray(result.docs) ? result.docs : [];
     const total = numericValue(result.numFound) ?? 0;
@@ -148,12 +152,10 @@ export class GemConnector implements TenderConnector {
   }
 
   private async createSession() {
-    const response = await fetch(GEM_LIST_URL, {
-      headers: { accept: "text/html", "user-agent": "TENDYY-TenderDiscovery/1.0" },
-    });
+    const response = await fetchWithTimeout(GEM_LIST_URL, { headers: { accept: "text/html" } });
     if (!response.ok)
       throw new Error(`GeM public listing session returned HTTP ${response.status}.`);
-    const html = await response.text();
+    const html = await readTextLimited(response);
     const name = html.match(/id=["']cname["'][^>]*value=["']([^"']+)["']/i)?.[1];
     const value = html.match(/id=["']chash["'][^>]*value=["']([^"']+)["']/i)?.[1];
     if (!name || !value) throw new Error("GeM public listing did not provide its request token.");
@@ -172,12 +174,12 @@ export class GemConnector implements TenderConnector {
 export class CpppLatestConnector implements TenderConnector {
   async fetchPage(cursor?: string | null): Promise<ConnectorPage> {
     if (cursor) return { items: [], nextCursor: null };
-    const response = await fetch("https://eprocure.gov.in/eprocure/app", {
-      headers: { accept: "text/html", "user-agent": "TENDYY-TenderDiscovery/1.0" },
+    const response = await fetchWithTimeout("https://eprocure.gov.in/eprocure/app", {
+      headers: { accept: "text/html" },
     });
     if (!response.ok)
       throw new Error(`CPPP public latest-tenders page returned HTTP ${response.status}.`);
-    return { items: parseCpppLatestHtml(await response.text()), nextCursor: null };
+    return { items: parseCpppLatestHtml(await readTextLimited(response)), nextCursor: null };
   }
 }
 
@@ -188,12 +190,10 @@ export class GepnicLatestConnector implements TenderConnector {
     if (cursor) return { items: [], nextCursor: null };
     const appPath = typeof this.portal.metadata.appPath === "string" ? this.portal.metadata.appPath : "/nicgep/app";
     const appUrl = new URL(appPath, this.portal.officialUrl).toString();
-    const response = await fetch(appUrl, {
-      headers: { accept: "text/html", "user-agent": "TENDYY-TenderDiscovery/1.0" },
-    });
+    const response = await fetchWithTimeout(appUrl, { headers: { accept: "text/html" } });
     if (!response.ok) throw new Error(`GePNIC public latest-tenders page returned HTTP ${response.status}.`);
     return {
-      items: parseGepnicLatestHtml(await response.text(), {
+      items: parseGepnicLatestHtml(await readTextLimited(response), {
         portalName: this.portal.key,
         state: this.portal.state ?? null,
         entryUrl: appUrl,

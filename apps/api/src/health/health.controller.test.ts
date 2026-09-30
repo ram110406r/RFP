@@ -3,8 +3,9 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const SOURCE_DIR = import.meta.dir;
+const apiPackageTest = process.cwd().replace(/\\/g, "/").endsWith("/apps/api") ? describe : describe.skip;
 
-describe("Health endpoints", () => {
+apiPackageTest("Health endpoints", () => {
   let HealthController: any;
   let HealthService: any;
   let HealthV1Controller: any;

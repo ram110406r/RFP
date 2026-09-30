@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("lifecycle routing", () => {
+if (typeof Bun === "undefined") test.describe("lifecycle routing", () => {
   test.skip(!process.env.PLAYWRIGHT_E2E, "Set PLAYWRIGHT_E2E=1 with Firebase Emulator and a disposable API/database.");
 
   for (const width of [390, 414, 768, 1024, 1280, 1440]) {

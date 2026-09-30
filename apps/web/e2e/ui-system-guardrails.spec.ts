@@ -23,7 +23,7 @@ function files(root: string): string[] {
   });
 }
 
-test("TENDYY UI keeps enterprise visual guardrails", () => {
+if (typeof Bun === "undefined") test("TENDYY UI keeps enterprise visual guardrails", () => {
   const violations = roots
     .flatMap((root) => files(root))
     .flatMap((file) => {

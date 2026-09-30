@@ -70,6 +70,100 @@ export const dashboardSummarySchema = z
   .strict();
 export type DashboardSummaryInput = z.infer<typeof dashboardSummarySchema>;
 
+/**
+ * Pipeline pagination is opt-in: without `pageSize` the full readable set is
+ * returned, which is what the web app relies on for client-side filtering.
+ */
+export const pipelineQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().optional(),
+    pageSize: z.coerce.number().int().positive().max(200).optional(),
+  })
+  .strict();
+export type PipelineQueryInput = z.infer<typeof pipelineQuerySchema>;
+
+export const requirementsQueueSchema = z
+  .object({
+    workspaceId: uuid.optional(),
+    includeArchived: z
+      .union([z.boolean(), z.enum(["true", "false"])])
+      .transform((value) => value === true || value === "true")
+      .optional(),
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(100),
+  })
+  .strict();
+export type RequirementsQueueInput = z.infer<typeof requirementsQueueSchema>;
+
+export const responsesQueueSchema = z
+  .object({
+    workspaceId: uuid.optional(),
+    includeArchived: z
+      .union([z.boolean(), z.enum(["true", "false"])])
+      .transform((value) => value === true || value === "true")
+      .optional(),
+    q: z.string().trim().max(500).optional(),
+    status: z.enum(["all", ...TENDER_ANSWER_STATUSES]).default("all"),
+    source: z.enum(["all", ...TENDER_ANSWER_SOURCES]).default("all"),
+    evidence: z.enum(["all", "missing", "linked"]).default("all"),
+    confidence: z.enum(["all", "low", "medium", "high"]).default("all"),
+    review: z.enum(["all", "not_sent", "pending", "changes_requested", "approved", "rejected"]).default("all"),
+    sort: z
+      .enum(["updated_desc", "updated_asc", "confidence_asc", "confidence_desc", "evidence_asc", "review_urgency"])
+      .default("updated_desc"),
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(50),
+  })
+  .strict();
+export type ResponsesQueueInput = z.infer<typeof responsesQueueSchema>;
+
+const reviewQueueStatusValues = ["PENDING", "APPROVED", "CHANGES_REQUESTED", "REJECTED"] as const;
+
+export const reviewQueueSchema = z
+  .object({
+    workspaceId: uuid.optional(),
+    scope: z.enum(["mine", "all"]).default("mine"),
+    statuses: z
+      .string()
+      .trim()
+      .optional()
+      .transform((value, context) => {
+        const statuses = value
+          ? value
+              .split(",")
+              .map((item) => item.trim().toUpperCase())
+              .filter(Boolean)
+          : ["PENDING", "CHANGES_REQUESTED"];
+        const invalid = statuses.find((status) => !reviewQueueStatusValues.includes(status as (typeof reviewQueueStatusValues)[number]));
+        if (invalid) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Invalid review status: ${invalid}`,
+          });
+          return z.NEVER;
+        }
+        return [...new Set(statuses)] as Array<(typeof reviewQueueStatusValues)[number]>;
+      }),
+    q: z.string().trim().max(200).optional(),
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(50),
+  })
+  .strict();
+export type ReviewQueueInput = z.infer<typeof reviewQueueSchema>;
+
+export const submissionsQueueSchema = z
+  .object({
+    workspaceId: uuid.optional(),
+    includeArchived: z
+      .union([z.boolean(), z.enum(["true", "false"])])
+      .transform((value) => value === true || value === "true")
+      .optional(),
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(100),
+  })
+  .strict();
+export type SubmissionsQueueInput = z.infer<typeof submissionsQueueSchema>;
+
 export const createTenderSchema = z
   .object({
     workspaceId: uuid,

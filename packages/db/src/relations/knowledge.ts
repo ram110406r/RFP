@@ -7,6 +7,7 @@ import {
   knowledgeConflicts,
   knowledgeSources,
   knowledgeVersions,
+  responseTemplates,
 } from "../schema/knowledge";
 
 export const knowledgeSourcesRelations = relations(knowledgeSources, ({ many, one }) => ({
@@ -22,4 +23,8 @@ export const knowledgeConflictsRelations = relations(knowledgeConflicts, ({ many
     fields: [knowledgeConflicts.sourceId],
     references: [knowledgeSources.id],
   }),
+}));
+
+export const responseTemplatesRelations = relations(responseTemplates, ({ one }) => ({
+  owner: one(users, { fields: [responseTemplates.ownerId], references: [users.id] }),
 }));

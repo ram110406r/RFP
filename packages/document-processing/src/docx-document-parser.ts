@@ -54,12 +54,22 @@ export interface DocxExtractionResult {
 }
 
 const EXTRACTOR = "docx-ooxml@1";
+const DOCUMENT_XML_PATH = "word/document.xml";
+
+/**
+ * Decompression limits. A DOCX is a ZIP, so a few kilobytes on disk can claim
+ * gigabytes once inflated. Only word/document.xml is ever read, so nothing
+ * else is decompressed, and that one entry is capped well above any real
+ * tender document.
+ */
+export const MAX_DOCX_XML_BYTES = 50 * 1024 * 1024;
+export const MAX_DOCX_ENTRIES = 2_000;
 
 export class DocxDocumentParser {
   async parse(bytes: Uint8Array): Promise<DocxExtractionResult> {
-    const entries = this.unzip(bytes);
-    const documentXml = this.requireEntry(entries, "word/document.xml");
-    const documentRoot = parseXml(documentXml, "word/document.xml");
+    const archive = this.unzip(bytes);
+    const documentXml = this.requireEntry(archive, DOCUMENT_XML_PATH);
+    const documentRoot = parseXml(documentXml, DOCUMENT_XML_PATH);
     const body = findDirectChild(documentRoot, "w:body");
 
     if (!body) {
@@ -78,21 +88,51 @@ export class DocxDocumentParser {
     };
   }
 
-  private unzip(bytes: Uint8Array): Record<string, Uint8Array> {
+  private unzip(bytes: Uint8Array): { entries: Record<string, Uint8Array>; names: string[] } {
+    const names: string[] = [];
+    let entries: Record<string, Uint8Array>;
     try {
-      return unzipSync(bytes);
+      entries = unzipSync(bytes, {
+        /*
+         * Called once per central-directory entry before that entry is
+         * inflated, so the count and the declared size are checked before any
+         * memory is committed. Encryption markers are only needed by name.
+         */
+        filter: (file) => {
+          names.push(file.name);
+          if (names.length > MAX_DOCX_ENTRIES) {
+            throw new DocxParseError(`DOCX package has more than ${MAX_DOCX_ENTRIES} entries.`);
+          }
+          if (file.name !== DOCUMENT_XML_PATH) return false;
+          if (file.originalSize > MAX_DOCX_XML_BYTES) {
+            throw new DocxParseError(`${DOCUMENT_XML_PATH} exceeds the ${MAX_DOCX_XML_BYTES} byte limit.`);
+          }
+          return true;
+        },
+      });
     } catch (error) {
+      if (error instanceof DocxParseError) throw error;
       throw new DocxParseError(`Invalid DOCX ZIP: ${(error as Error).message}`);
     }
+
+    // fflate sizes its output from the declared size; check what was produced too.
+    const documentXml = entries[DOCUMENT_XML_PATH];
+    if (documentXml && documentXml.byteLength > MAX_DOCX_XML_BYTES) {
+      throw new DocxParseError(`${DOCUMENT_XML_PATH} exceeds the ${MAX_DOCX_XML_BYTES} byte limit.`);
+    }
+    return { entries, names };
   }
 
-  private requireEntry(entries: Record<string, Uint8Array>, path: string): string {
+  private requireEntry(
+    { entries, names }: { entries: Record<string, Uint8Array>; names: string[] },
+    path: string,
+  ): string {
     const file = entries[path];
     if (file) {
       return new TextDecoder().decode(file);
     }
 
-    if (isEncryptedPackage(entries)) {
+    if (isEncryptedPackage(names)) {
       throw new DocxParseError("Encrypted or password-protected DOCX packages are not supported.");
     }
 
@@ -293,8 +333,8 @@ function parseInteger(value: string | null): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function isEncryptedPackage(entries: Record<string, Uint8Array>): boolean {
-  return Object.keys(entries).some((entry) =>
+function isEncryptedPackage(names: string[]): boolean {
+  return names.some((entry) =>
     entry === "EncryptedPackage" ||
     entry === "EncryptionInfo" ||
     entry.endsWith("/EncryptedPackage") ||

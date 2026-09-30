@@ -119,7 +119,7 @@ export function createDocumentsWorker(connection: IORedis): Worker {
         throw error;
       }
     },
-    { connection, concurrency: CONCURRENCY, ...jobDefaults() },
+    { connection, concurrency: CONCURRENCY },
   );
 
   /**
@@ -191,13 +191,10 @@ async function enqueueRequirementExtractionIfReady(
 }
 
 /**
- * The producer sets these per job, so they are only a fallback for jobs added
- * by another route (a manual replay, a future scheduler). Keeping the same
- * defaults in one shared package is what stops the two from drifting.
+ * Options for the follow-up jobs this worker enqueues itself (OCR, requirement
+ * extraction). They take the full shared defaults, attempts and backoff
+ * included, so a transient failure there is retried like a producer-added job.
  */
 function jobDefaults() {
-  return {
-    removeOnComplete: DEFAULT_JOB_OPTIONS.removeOnComplete,
-    removeOnFail: DEFAULT_JOB_OPTIONS.removeOnFail,
-  };
+  return { ...DEFAULT_JOB_OPTIONS };
 }

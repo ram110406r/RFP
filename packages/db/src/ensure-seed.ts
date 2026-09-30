@@ -1,10 +1,9 @@
 import { eq } from "drizzle-orm";
 
 import { closeDb, getDb } from "./client";
+import { DEMO_LOGIN_EMAIL } from "./seed/demo-credentials";
 import { seedDevelopmentData } from "./seed/index";
 import { users } from "./schema";
-
-const DEMO_LOGIN_EMAIL = process.env.VITE_DEV_LOGIN_EMAIL ?? "priya.nair@halcyonsystems.com";
 
 function maskEmail(email: string): string {
   const [local = "", domain] = email.split("@");
@@ -13,6 +12,12 @@ function maskEmail(email: string): string {
 }
 
 async function main() {
+  // The demo dataset ships a known login; never plant it in production by accident.
+  if (process.env.APP_ENV === "production" && process.env.ALLOW_DEMO_SEED !== "true") {
+    console.log("[seed] APP_ENV=production and ALLOW_DEMO_SEED is not true, skipping demo seed");
+    return;
+  }
+
   const db = getDb();
   try {
     const [existingUser] = await db

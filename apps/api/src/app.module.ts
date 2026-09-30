@@ -34,6 +34,7 @@ import { RolesModule } from "./modules/roles";
 import { TeamsModule } from "./modules/teams";
 import { WorkspacesModule } from "./modules/workspaces";
 import { OnboardingModule } from "./modules/onboarding/onboarding.module";
+import { ProfileModule } from "./modules/profile";
 import { RfpApplyModule } from "./modules/rfp-apply/rfp-apply.module";
 
 @Module({
@@ -66,6 +67,7 @@ import { RfpApplyModule } from "./modules/rfp-apply/rfp-apply.module";
     DashboardModule,
     WorkspacesModule,
     OnboardingModule,
+    ProfileModule,
     TeamsModule,
     AssignmentsModule,
     ActivitiesModule,

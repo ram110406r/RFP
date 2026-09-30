@@ -32,11 +32,12 @@ import {
   docxTable,
 } from "./docx-test-fixtures";
 
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
-const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
+const describeDb = shouldRunDbTests ? describe : describe.skip;
 
 describeDb("Requirement extraction", () => {
-  const db = getDb();
+  const db = shouldRunDbTests ? getDb() : (undefined as never);
   const storage = new FakeStorage();
   const documentProcessor = new DocumentProcessor(storage as unknown as ObjectStorage);
   const requirementProcessor = new RequirementExtractionProcessor();
@@ -597,6 +598,11 @@ class FakeStorage {
 
   put(objectKey: string, bytes: Uint8Array): void {
     this.objects.set(objectKey, bytes);
+  }
+
+  async headObject(objectKey: string): Promise<{ sizeBytes: number } | null> {
+    const bytes = this.objects.get(objectKey);
+    return bytes ? { sizeBytes: bytes.byteLength } : null;
   }
 
   async readObjectPrefix(objectKey: string, length: number): Promise<Uint8Array | null> {

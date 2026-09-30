@@ -24,6 +24,13 @@ export const knowledgeClaimSchema = z
 export const listKnowledgeSchema = z
   .object({
     status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
+    category: z.enum(knowledgeCategories).optional(),
+    type: z.string().trim().max(120).optional(),
+    authority: z.enum(["high", "medium", "low"]).optional(),
+    ownerId: uuid.optional(),
+    sourceKind: z.string().trim().max(80).optional(),
+    expires: z.enum(["expired", "expiring", "active", "all"]).optional(),
+    reviewState: z.enum(["draft", "stale", "expired", "expiring", "healthy", "all"]).optional(),
     search: z.string().trim().max(200).optional(),
     page: z.coerce.number().int().positive().default(1),
     pageSize: z.coerce.number().int().positive().max(100).default(25),
@@ -42,6 +49,8 @@ export const createKnowledgeSchema = z
     summary: longText.optional(),
     lastVerified: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     expiresAt: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    sourceKind: z.string().trim().max(80).optional(),
+    metadata: z.record(z.unknown()).optional(),
     claims: z.array(knowledgeClaimSchema).optional(),
   })
   .strict();
@@ -58,6 +67,8 @@ export const updateKnowledgeSchema = z
     summary: longText.optional(),
     lastVerified: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     expiresAt: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    sourceKind: z.string().trim().max(80).optional(),
+    metadata: z.record(z.unknown()).optional(),
     claims: z.array(knowledgeClaimSchema).optional(),
   })
   .strict()
@@ -65,3 +76,81 @@ export const updateKnowledgeSchema = z
     message: "Provide at least one field to update.",
   });
 export type UpdateKnowledgeInput = z.infer<typeof updateKnowledgeSchema>;
+
+export const verifyKnowledgeSchema = z
+  .object({
+    note: z.string().trim().max(500).optional(),
+    expiresAt: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  })
+  .strict();
+export type VerifyKnowledgeInput = z.infer<typeof verifyKnowledgeSchema>;
+
+export const listKnowledgeIssuesSchema = z
+  .object({
+    type: z.enum(["DRAFT", "STALE", "EXPIRED", "EXPIRING_SOON", "CONFLICT"]).optional(),
+    status: z.enum(["OPEN", "RESOLVED", "ALL"]).default("OPEN"),
+    search: z.string().trim().max(200).optional(),
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(50),
+  })
+  .strict();
+export type ListKnowledgeIssuesInput = z.infer<typeof listKnowledgeIssuesSchema>;
+
+export const resolveKnowledgeIssueSchema = z
+  .object({
+    action: z.enum(["approve", "verify", "archive", "resolve_conflict"]),
+    note: z.string().trim().max(1_000).optional(),
+  })
+  .strict();
+export type ResolveKnowledgeIssueInput = z.infer<typeof resolveKnowledgeIssueSchema>;
+
+export const templateSectionSchema = z
+  .object({
+    id: z.string().trim().max(80).optional(),
+    title: text.max(200),
+    body: longText,
+  })
+  .strict();
+
+export const templateVariableSchema = z
+  .object({
+    key: z.string().trim().regex(/^[a-zA-Z][a-zA-Z0-9_]*$/).max(80),
+    label: text.max(160),
+    required: z.boolean().optional(),
+    defaultValue: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+export const listResponseTemplatesSchema = z
+  .object({
+    status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED", "ALL"]).default("ALL"),
+    category: z.enum(knowledgeCategories).optional(),
+    ownerId: uuid.optional(),
+    search: z.string().trim().max(200).optional(),
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(25),
+  })
+  .strict();
+export type ListResponseTemplatesInput = z.infer<typeof listResponseTemplatesSchema>;
+
+export const createResponseTemplateSchema = z
+  .object({
+    name: text.max(300),
+    category: z.enum(knowledgeCategories),
+    ownerId: uuid.optional(),
+    description: longText.optional(),
+    sections: z.array(templateSectionSchema).min(1).max(20),
+    variables: z.array(templateVariableSchema).max(50).optional(),
+    version: z.string().trim().max(40).optional(),
+    usageMetadata: z.record(z.unknown()).optional(),
+  })
+  .strict();
+export type CreateResponseTemplateInput = z.infer<typeof createResponseTemplateSchema>;
+
+export const updateResponseTemplateSchema = createResponseTemplateSchema
+  .partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Provide at least one field to update.",
+  });
+export type UpdateResponseTemplateInput = z.infer<typeof updateResponseTemplateSchema>;

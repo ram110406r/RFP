@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -63,6 +64,14 @@ export const users = pgTable(
     department: text("department").notNull().default(""),
     timezone: text("timezone").notNull().default("UTC"),
     phone: text("phone").notNull().default(""),
+    location: text("location").notNull().default(""),
+    language: text("language").notNull().default("en-US"),
+    bio: text("bio").notNull().default(""),
+    skills: jsonb("skills").$type<string[]>().notNull().default([]),
+    notificationPreferences: jsonb("notification_preferences")
+      .$type<Record<string, boolean>>()
+      .notNull()
+      .default({}),
     team: text("team").notNull().default(""),
     memberRole: memberRoleEnum("member_role").notNull().default("Contributor"),
     status: memberStatusEnum("status").notNull().default("active"),

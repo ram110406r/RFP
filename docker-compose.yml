@@ -5,6 +5,14 @@
 #
 # Dokploy production, with bundled Postgres:
 #   COMPOSE_PROFILES=dokploy-bundled docker compose --env-file .env.production up -d --build
+#
+# Demo dataset (never in real production; it ships a known login):
+#   COMPOSE_PROFILES=dokploy-bundled,demo-seed docker compose ...
+#
+# Secrets deliberately have no usable fallback here. Compose interpolates the
+# whole file for every profile, so `${VAR:?}` would break local infra; instead
+# the API's env validation refuses to boot in production when a secret is
+# missing or still set to a known development value.
 
 networks:
   dokploy-network:
@@ -32,6 +40,7 @@ x-app-env: &app-env
   STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
   STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
   AI_PROVIDER: ${AI_PROVIDER:-groq}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
   OPENSEARCH_URL: ${OPENSEARCH_URL:-}
 
 x-firebase-build-args: &firebase-build-args
@@ -67,7 +76,7 @@ x-internal-service-depends: &internal-service-depends
     condition: service_healthy
   minio:
     condition: service_started
-  seed:
+  migrate:
     condition: service_completed_successfully
   postgres:
     condition: service_healthy
@@ -176,7 +185,9 @@ services:
     working_dir: /repo/packages/db
     command: ["bun", "run", "db:ensure-seed"]
     restart: "no"
-    profiles: *app-profiles
+    # Opt-in only: the demo dataset includes a known login.
+    profiles:
+      - demo-seed
     networks: [internal]
     environment:
       <<: *database-url
@@ -199,8 +210,10 @@ services:
       CORS_ORIGIN: ${PUBLIC_URL:-http://localhost:3000}
       FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-tendyy}
       BETTER_AUTH_URL: ${PUBLIC_URL:-http://localhost:3000}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-rfp-os_dokploy_auth_secret_20260830_fallback}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      BETTER_AUTH_GOOGLE_CLIENT_ID: ${BETTER_AUTH_GOOGLE_CLIENT_ID:-}
+      BETTER_AUTH_GOOGLE_CLIENT_SECRET: ${BETTER_AUTH_GOOGLE_CLIENT_SECRET:-}
+      ENABLE_FIREBASE_AUTH_COMPAT: ${ENABLE_FIREBASE_AUTH_COMPAT:-false}
       APP_COMMIT_SHA: ${APP_COMMIT_SHA:-unknown}
       APP_BUILD_TIME: ${APP_BUILD_TIME:-}
     depends_on:

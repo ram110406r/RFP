@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { PdfDocumentParser } from "@rfp-os/document-processing";
+import { PdfDocumentParser, PdfParseError } from "@rfp-os/document-processing";
 
 const parser = new PdfDocumentParser();
 
@@ -38,6 +38,18 @@ describe("PdfDocumentParser", () => {
     );
 
     expect(error).toBeInstanceOf(Error);
+  });
+
+  test("rejects PDFs with more pages than the configured limit", async () => {
+    const limited = new PdfDocumentParser({ maxPages: 2 });
+
+    const error = await limited.parse(buildPdf(["One", "Two", "Three"])).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(PdfParseError);
+    expect((error as Error).message).toContain("limit is 2");
+    expect((await limited.parse(buildPdf(["One", "Two"]))).pageCount).toBe(2);
   });
 
   test("rejects password-protected PDFs", async () => {

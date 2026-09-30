@@ -15,9 +15,10 @@ import { and, eq } from "drizzle-orm";
 import { OnboardingService } from "./onboarding.service";
 import type { OrganizationsService } from "../organizations/organizations.service";
 
-const dbTest = process.env.DATABASE_URL ? test : test.skip;
+const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
+const dbTest = shouldRunDbTests ? test : test.skip;
 // Database scenarios are skipped locally unless a disposable DATABASE_URL is supplied.
-const db = process.env.DATABASE_URL ? getDb() : (undefined as never);
+const db = shouldRunDbTests ? getDb() : (undefined as never);
 const service = new OnboardingService(db, {} as OrganizationsService);
 const suffix = randomUUID().slice(0, 8);
 const email = `onboarding-${suffix}@example.invalid`;

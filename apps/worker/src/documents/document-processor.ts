@@ -71,6 +71,19 @@ export class SidecarOcrExtractor implements OcrExtractor {
   }
 }
 
+/**
+ * Largest object the worker will pull into memory, matching the API's
+ * UPLOAD_MAX_BYTES default. The upload flow already checks size on completion,
+ * but objects can also arrive by other routes (imports, manual replays), and a
+ * full read happens before any parser limit can apply.
+ */
+export const DEFAULT_MAX_DOCUMENT_BYTES = 100 * 1024 * 1024;
+
+export function maxDocumentBytesFromEnv(): number {
+  const value = Number(process.env.WORKER_MAX_DOCUMENT_BYTES);
+  return Number.isInteger(value) && value > 0 ? value : DEFAULT_MAX_DOCUMENT_BYTES;
+}
+
 export interface ProcessResult {
   /** False when the document was already past this stage. */
   processed: boolean;
@@ -97,6 +110,7 @@ export class DocumentProcessor {
     private readonly docxParser: DocxDocumentParser = new DocxDocumentParser(),
     private readonly extractions: ExtractionRepository = new ExtractionRepository(),
     private readonly ocr: OcrExtractor = new SidecarOcrExtractor(storage),
+    private readonly maxDocumentBytes: number = maxDocumentBytesFromEnv(),
   ) {}
 
   async process(name: DocumentJobName, payload: DocumentJobPayload): Promise<ProcessResult> {
@@ -167,6 +181,7 @@ export class DocumentProcessor {
       );
     }
 
+    await this.assertWithinSizeLimit(payload.objectKey);
     const bytes = await this.storage.readObject(payload.objectKey);
     if (!bytes) {
       throw new PermanentJobError(
@@ -264,6 +279,7 @@ export class DocumentProcessor {
     }
 
     await this.setStatusIfCurrent(payload, "processing", null);
+    await this.assertWithinSizeLimit(payload.objectKey);
     const bytes = await this.storage.readObject(payload.objectKey);
     if (!bytes) {
       throw new PermanentJobError(
@@ -301,6 +317,18 @@ export class DocumentProcessor {
     });
 
     return { processed: true, status: "parsed" };
+  }
+
+  private async assertWithinSizeLimit(objectKey: string): Promise<void> {
+    const head = await this.storage.headObject(objectKey);
+    if (!head) {
+      throw new PermanentJobError(`Object ${objectKey} is missing from storage; the upload did not survive.`);
+    }
+    if (head.sizeBytes > this.maxDocumentBytes) {
+      throw new PermanentJobError(
+        `Object ${objectKey} is ${head.sizeBytes} bytes, over the ${this.maxDocumentBytes} byte processing limit.`,
+      );
+    }
   }
 
   private selectParser(documentType: string): PdfDocumentParser | DocxDocumentParser | null {

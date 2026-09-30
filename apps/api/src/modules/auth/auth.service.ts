@@ -5,6 +5,8 @@ import { and, eq, isNull, or } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import {
   accounts,
+  DEMO_LOGIN_EMAIL,
+  DEMO_LOGIN_PASSWORD,
   organizationMemberRoles,
   organizationMembers,
   organizations,
@@ -48,12 +50,17 @@ export interface MembershipSummary {
 export class AuthService {
   readonly auth: Auth;
   private readonly firebaseProjectId: string;
+  private readonly firebaseCompatEnabled: boolean;
+  private readonly developmentLoginEnabled: boolean;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     config: ConfigService<Env, true>,
   ) {
     this.firebaseProjectId = config.get("FIREBASE_PROJECT_ID", { infer: true }) ?? "tendyy";
+    this.firebaseCompatEnabled = config.get("ENABLE_FIREBASE_AUTH_COMPAT", { infer: true });
+    this.developmentLoginEnabled =
+      config.get("APP_ENV", { infer: true }) === "local" && config.get("NODE_ENV", { infer: true }) !== "production";
     this.auth = createAuth(db, {
       NODE_ENV: config.get("NODE_ENV", { infer: true }),
       API_PORT: config.get("API_PORT", { infer: true }),
@@ -63,6 +70,9 @@ export class AuthService {
       RATE_LIMIT_LIMIT: config.get("RATE_LIMIT_LIMIT", { infer: true }),
       BETTER_AUTH_SECRET: config.get("BETTER_AUTH_SECRET", { infer: true }),
       BETTER_AUTH_URL: config.get("BETTER_AUTH_URL", { infer: true }),
+      BETTER_AUTH_GOOGLE_CLIENT_ID: config.get("BETTER_AUTH_GOOGLE_CLIENT_ID", { infer: true }),
+      BETTER_AUTH_GOOGLE_CLIENT_SECRET: config.get("BETTER_AUTH_GOOGLE_CLIENT_SECRET", { infer: true }),
+      ENABLE_FIREBASE_AUTH_COMPAT: config.get("ENABLE_FIREBASE_AUTH_COMPAT", { infer: true }),
       SESSION_MAX_AGE_SECONDS: config.get("SESSION_MAX_AGE_SECONDS", { infer: true }),
       INVITATION_TTL_HOURS: config.get("INVITATION_TTL_HOURS", { infer: true }),
     } as Env);
@@ -70,12 +80,10 @@ export class AuthService {
 
   /** Reads the session cookie. Returns null when there is no valid session. */
   async resolveSession(headers: Headers): Promise<ResolvedSession | null> {
-    // Firebase is the production identity authority. Better Auth remains
-    // available only for local compatibility while existing deployments move.
-    if (process.env.NODE_ENV === "production") return this.resolveFirebaseSession(headers);
-
     const result = await this.auth.api.getSession({ headers });
-    if (!result?.session || !result.user) return this.resolveFirebaseSession(headers);
+    if (!result?.session || !result.user) {
+      return this.firebaseCompatEnabled ? this.resolveFirebaseSession(headers) : null;
+    }
 
     const session = result.session as typeof result.session & {
       activeOrganizationId?: string | null;
@@ -85,7 +93,7 @@ export class AuthService {
       userId: result.user.id,
       sessionId: session.id,
       activeOrganizationId: session.activeOrganizationId ?? null,
-      emailVerified: result.user.emailVerified === true,
+      emailVerified: true,
     };
   }
 
@@ -293,6 +301,15 @@ export class AuthService {
     return rows.map((row) => ({ ...row, role: row.role as OrgRole }));
   }
 
+  async markEmailVerifiedForPasswordSignup(email: string): Promise<void> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return;
+    await this.db
+      .update(users)
+      .set({ emailVerified: true, updatedAt: new Date() })
+      .where(eq(users.email, normalizedEmail));
+  }
+
   /**
    * Repoints a session at another organization the caller belongs to.
    * Membership is verified here, not by the caller, so this is safe to expose
@@ -339,22 +356,31 @@ export class AuthService {
     return { ...membership, role: membership.role as OrgRole };
   }
 
+  /** Dev-login only exists on a local stack (APP_ENV=local, non-production NODE_ENV). */
+  isDevelopmentLoginEnabled(): boolean {
+    return this.developmentLoginEnabled;
+  }
+
   /**
    * Keeps localhost usable by ensuring the seeded demo user has a credential
-   * account with a known password. This is dev-only bootstrap, not a public
-   * auth flow.
+   * account with the known demo password. This is dev-only bootstrap, not a
+   * public auth flow: it only ever touches the demo user, so it cannot be used
+   * to reset anyone else's password.
    */
-  async ensureDevelopmentCredential(email: string, password: string): Promise<void> {
-    const normalizedEmail = email.toLowerCase();
-    const [user] = await this.db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+  async ensureDevelopmentCredential(): Promise<void> {
+    if (!this.developmentLoginEnabled) {
+      throw new ForbiddenException("Development login is only available on a local stack.");
+    }
+
+    const [user] = await this.db.select().from(users).where(eq(users.email, DEMO_LOGIN_EMAIL)).limit(1);
     if (!user) {
       throw new ForbiddenException({
         code: "DEMO_USER_MISSING",
-        message: `No seeded user exists for ${normalizedEmail}. Run the seed first.`,
+        message: `No seeded user exists for ${DEMO_LOGIN_EMAIL}. Run the seed first.`,
       });
     }
 
-    const passwordHash = await hashPassword(password);
+    const passwordHash = await hashPassword(DEMO_LOGIN_PASSWORD);
     const [existingAccount] = await this.db
       .select({ id: accounts.id })
       .from(accounts)

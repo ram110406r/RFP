@@ -20,6 +20,7 @@ export function buildDocx(bodyChildren: string[], options: BuildDocxOptions = {}
   if (options.includeDocumentXml !== false) {
     files["word/document.xml"] = strToU8(options.documentXml ?? wrapDocumentXml(bodyChildren.join("")));
   }
+  Object.assign(files, options.extraEntries);
 
   return zipSync(files);
 }
@@ -59,6 +60,8 @@ export interface BuildDocxOptions {
   documentXml?: string;
   includeDocumentXml?: boolean;
   encrypted?: boolean;
+  /** Additional package parts, e.g. media or padding for limit tests. */
+  extraEntries?: Record<string, Uint8Array>;
 }
 
 function wrapDocumentXml(body: string): string {
