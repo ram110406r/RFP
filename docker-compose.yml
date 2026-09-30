@@ -24,13 +24,16 @@ x-postgres-env: &postgres-env
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rfpos_dev_password}
   POSTGRES_DB: ${POSTGRES_DB:-rfpos}
 
-x-database-url: &database-url
+x-database-env: &database-env
+  <<: *postgres-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
   DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-rfpos}:${POSTGRES_PASSWORD:-rfpos_dev_password}@postgres:5432/${POSTGRES_DB:-rfpos}}
 
 x-app-env: &app-env
   APP_ENV: ${APP_ENV:-production}
   NODE_ENV: production
-  <<: *database-url
+  <<: *database-env
   REDIS_URL: redis://redis:6379
   STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
   STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-http://localhost:3000}
@@ -173,7 +176,7 @@ services:
     profiles: *app-profiles
     networks: [internal]
     environment:
-      <<: *database-url
+      <<: *database-env
     depends_on:
       postgres:
         condition: service_healthy
@@ -190,7 +193,7 @@ services:
       - demo-seed
     networks: [internal]
     environment:
-      <<: *database-url
+      <<: *database-env
     depends_on:
       migrate:
         condition: service_completed_successfully
