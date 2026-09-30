@@ -43,7 +43,11 @@ function blankToUndefined<T extends z.ZodTypeAny>(schema: T) {
  * true/false spellings are accepted; blank falls back to the default and
  * anything else fails validation.
  */
-export function envBoolean(defaultValue: boolean) {
+type EnvBooleanOptions = {
+  fallbackOnInvalid?: boolean;
+};
+
+export function envBoolean(defaultValue: boolean, options: EnvBooleanOptions = {}) {
   return z.preprocess(
     (value) => {
       if (typeof value === "boolean") return value;
@@ -61,6 +65,7 @@ export function envBoolean(defaultValue: boolean) {
       if (normalized === "") return undefined;
       if (["true", "1", "yes", "on"].includes(normalized)) return true;
       if (["false", "0", "no", "off"].includes(normalized)) return false;
+      if (options.fallbackOnInvalid) return undefined;
       return value;
     },
     z.boolean({ invalid_type_error: "must be true or false" }).default(defaultValue),
@@ -120,7 +125,7 @@ export const envSchema = z.object({
   STORAGE_ACCESS_KEY_ID: blankToUndefined(z.string().min(1)),
   STORAGE_SECRET_ACCESS_KEY: blankToUndefined(z.string().min(1)),
   /** MinIO addresses buckets by path; real S3 uses a subdomain. */
-  STORAGE_FORCE_PATH_STYLE: envBoolean(true),
+  STORAGE_FORCE_PATH_STYLE: envBoolean(true, { fallbackOnInvalid: true }),
   /** 100 MB. Enforced before presigning, so oversized uploads never start. */
   UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(104_857_600),
   UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),

@@ -50,6 +50,13 @@ describe("envBoolean flags", () => {
   it("rejects values that are not a recognisable boolean", () => {
     expect(envSchema.safeParse({ ENABLE_FIREBASE_AUTH_COMPAT: "maybe" }).success).toBe(false);
   });
+
+  it("falls back for malformed storage path-style values without weakening auth flags", () => {
+    const env = envSchema.parse({ STORAGE_FORCE_PATH_STYLE: "path-style" });
+
+    expect(env.STORAGE_FORCE_PATH_STYLE).toBe(true);
+    expect(envSchema.safeParse({ ENABLE_FIREBASE_AUTH_COMPAT: "path-style" }).success).toBe(false);
+  });
 });
 
 describe("validateEnv production checks", () => {
