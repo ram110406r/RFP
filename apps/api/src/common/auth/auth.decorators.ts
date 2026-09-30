@@ -5,6 +5,7 @@ import type { AuthContext, Permission } from "@rfp-os/types";
 export const IS_PUBLIC = "auth:public";
 export const REQUIRED_PERMISSIONS = "auth:required-permissions";
 export const ALLOW_WITHOUT_ORG = "auth:allow-without-org";
+export const ALLOW_UNVERIFIED = "auth:allow-unverified";
 
 /**
  * Opts a route out of authentication.
@@ -23,6 +24,16 @@ export const Public = () => SetMetadata(IS_PUBLIC, true);
  * organization.
  */
 export const AllowWithoutOrg = () => SetMetadata(ALLOW_WITHOUT_ORG, true);
+
+/**
+ * Lets a signed-in user whose email is not yet verified reach the route.
+ *
+ * Verification is otherwise required everywhere, including @AllowWithoutOrg
+ * routes: accepting an invitation or creating a company on the strength of an
+ * unproven email is exactly what verification exists to stop. Reserve this for
+ * read-only routes the client needs in order to send the user to /verify-email.
+ */
+export const AllowUnverified = () => SetMetadata(ALLOW_UNVERIFIED, true);
 
 /**
  * Declares the permissions a route needs. All listed permissions must be held

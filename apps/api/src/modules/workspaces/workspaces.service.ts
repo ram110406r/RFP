@@ -5,8 +5,9 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import {
+  invitations,
   organizationMembers,
   teamMembers,
   teams,
@@ -31,6 +32,25 @@ import type {
   UpdateWorkspaceInput,
 } from "./workspaces.dto";
 
+/**
+ * Each listed workspace carries its active member count, so a list view does
+ * not have to fetch every workspace's member list just to show a number.
+ *
+ * Written with explicit aliases: Drizzle renders column references in a
+ * select list without their table name, which makes `id`/`status` ambiguous
+ * inside a correlated subquery.
+ */
+const workspaceWithMemberCount = {
+  ...getTableColumns(workspaces),
+  memberCount: sql<number>`(
+    select count(*) from "workspace_members" wm
+    inner join "organization_members" om on om."id" = wm."organization_member_id"
+    where wm."workspace_id" = "workspaces"."id"
+      and wm."status" = 'active'
+      and om."status" = 'active'
+  )`.mapWith(Number),
+};
+
 @Injectable()
 export class WorkspacesService {
   constructor(
@@ -50,7 +70,7 @@ export class WorkspacesService {
     }
     if (hasOrganizationPermission(auth, "workspace:read")) {
       return this.db
-        .select()
+        .select(workspaceWithMemberCount)
         .from(workspaces)
         .where(and(eq(workspaces.organizationId, auth.organizationId), ...(requestedStatus === "all" ? [] : [eq(workspaces.status, workspaceStatus)])))
         .orderBy(desc(workspaces.createdAt));
@@ -61,7 +81,7 @@ export class WorkspacesService {
     }
 
     return this.db
-      .select()
+      .select(workspaceWithMemberCount)
       .from(workspaces)
       .where(
         and(
@@ -209,6 +229,21 @@ export class WorkspacesService {
         throw new NotFoundException({ code: "NOT_FOUND", message: "Workspace not found." });
       }
 
+      /*
+       * Nothing should keep pointing into an archived workspace: pending
+       * invitations for it are revoked and its teams archived. Memberships are
+       * kept — an archived workspace grants nothing (AuthService skips it), and
+       * keeping them lets unarchive restore access as it was.
+       */
+      await tx
+        .update(invitations)
+        .set({ status: "revoked", updatedAt: new Date() })
+        .where(and(eq(invitations.workspaceId, workspaceId), eq(invitations.status, "pending")));
+      await tx
+        .update(teams)
+        .set({ status: "archived", updatedAt: new Date() })
+        .where(and(eq(teams.workspaceId, workspaceId), eq(teams.status, "active")));
+
       await this.audit.record(
         {
           organizationId: auth.organizationId,
@@ -244,6 +279,51 @@ export class WorkspacesService {
     return archived;
   }
 
+  /** Restores an archived workspace. Its teams stay archived until someone reopens them. */
+  async unarchive(auth: AuthContext, workspaceId: string) {
+    this.assertWorkspacePermission(auth, workspaceId, "workspace:archive");
+    const existing = await this.requireWorkspace(auth.organizationId, workspaceId);
+    if (existing.status === "active") return existing;
+
+    const [restored] = await withTransaction(async (tx) => {
+      const [next] = await tx
+        .update(workspaces)
+        .set({ status: "active", updatedAt: new Date() })
+        .where(and(eq(workspaces.id, workspaceId), eq(workspaces.organizationId, auth.organizationId)))
+        .returning();
+      await this.audit.record(
+        {
+          organizationId: auth.organizationId,
+          workspaceId,
+          actorId: auth.userId,
+          action: "WORKSPACE_UNARCHIVED",
+          entityType: "workspace",
+          entityId: workspaceId,
+          previousValue: existing,
+          newValue: next,
+        },
+        tx,
+      );
+      await this.activity.record(
+        {
+          organizationId: auth.organizationId,
+          workspaceId,
+          actorId: auth.userId,
+          action: "WORKSPACE_UNARCHIVED",
+          entityType: "workspace",
+          entityId: workspaceId,
+          kind: "approved",
+          label: `Workspace restored: ${next!.name}`,
+          summary: `Restored workspace ${next!.name}`,
+        },
+        tx,
+      );
+      return [next];
+    });
+
+    return restored;
+  }
+
   async listMembers(auth: AuthContext, workspaceId: string) {
     this.assertWorkspacePermission(auth, workspaceId, "workspace:member:read");
     await this.requireWorkspace(auth.organizationId, workspaceId);
@@ -262,13 +342,20 @@ export class WorkspacesService {
         eq(organizationMembers.id, workspaceMembers.organizationMemberId),
       )
       .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(eq(workspaceMembers.workspaceId, workspaceId))
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, workspaceId),
+          eq(workspaceMembers.status, "active"),
+          eq(organizationMembers.status, "active"),
+        ),
+      )
       .orderBy(desc(users.createdAt));
   }
 
   async addMember(auth: AuthContext, workspaceId: string, input: AddWorkspaceMemberInput) {
     this.assertWorkspacePermission(auth, workspaceId, "workspace:member:manage");
     const workspace = await this.requireWorkspace(auth.organizationId, workspaceId);
+    this.assertActive(workspace);
     const member = await this.requireActiveOrganizationMember(
       auth.organizationId,
       input.organizationMemberId,
@@ -412,6 +499,15 @@ export class WorkspacesService {
       throw new NotFoundException({ code: "NOT_FOUND", message: "Workspace not found." });
     }
     return workspace;
+  }
+
+  private assertActive(workspace: { status: string }) {
+    if (workspace.status !== "active") {
+      throw new ConflictException({
+        code: "WORKSPACE_ARCHIVED",
+        message: "This workspace is archived. Restore it before changing its members.",
+      });
+    }
   }
 
   private async requireActiveOrganizationMember(organizationId: string, organizationMemberId: string) {

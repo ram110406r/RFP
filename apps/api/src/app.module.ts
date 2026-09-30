@@ -20,6 +20,7 @@ import { ActivityModule } from "./infrastructure/activity";
 import { EventsModule } from "./infrastructure/events";
 import { QueueModule } from "./infrastructure/queue";
 import { StorageModule } from "./infrastructure/storage";
+import { MailModule } from "./infrastructure/mail";
 import { AuthModule } from "./modules/auth";
 import { ActivitiesModule } from "./modules/activities";
 import { AssignmentsModule } from "./modules/assignments";
@@ -59,6 +60,7 @@ import { RfpApplyModule } from "./modules/rfp-apply/rfp-apply.module";
     EventsModule,
     QueueModule,
     StorageModule,
+    MailModule,
     AuthModule,
     OrganizationsModule,
     RolesModule,

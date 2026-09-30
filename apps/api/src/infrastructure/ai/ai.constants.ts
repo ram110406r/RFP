@@ -13,3 +13,6 @@ export const TIER_2_AI_MODELS = [
   GROUNDED_REQUIREMENT_ANALYSIS_MODEL,
   GROUNDED_CLARIFICATION_MODEL,
 ] as const;
+
+/** DI token for the optional knowledge embedder (see AiModule). */
+export const KNOWLEDGE_EMBEDDER = Symbol("KNOWLEDGE_EMBEDDER");

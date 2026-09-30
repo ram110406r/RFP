@@ -16,6 +16,8 @@ export const createOrganizationSchema = z.object({
   name: z.string().trim().min(2).max(120),
   domain: z.string().trim().min(2).max(190),
   industry: z.string().trim().max(120).optional(),
+  /** Name of the first workspace, created with the organization. */
+  workspaceName: z.string().trim().min(2).max(120).optional(),
 });
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
 

@@ -13,8 +13,31 @@ const knowledgeCategories = [
   "Support",
 ] as const;
 
+export const KNOWLEDGE_SORTS = [
+  "updatedAt:desc",
+  "updatedAt:asc",
+  "name:asc",
+  "lastVerified:asc",
+  "lastUsed:desc",
+  "usage:desc",
+] as const;
+export type KnowledgeSort = (typeof KNOWLEDGE_SORTS)[number];
+
+export const KNOWLEDGE_ISSUE_TYPES = [
+  "DRAFT",
+  "REVISION",
+  "UNVERIFIED",
+  "STALE",
+  "EXPIRED",
+  "EXPIRING_SOON",
+  "CONFLICT",
+] as const;
+export type KnowledgeIssueType = (typeof KNOWLEDGE_ISSUE_TYPES)[number];
+
 export const knowledgeClaimSchema = z
   .object({
+    /** Present when editing an existing claim; its id is kept so citations stay valid. */
+    id: uuid.optional(),
     label: text.max(200),
     value: text.max(5_000),
     confidence: z.coerce.number().min(0).max(1).optional(),
@@ -30,8 +53,9 @@ export const listKnowledgeSchema = z
     ownerId: uuid.optional(),
     sourceKind: z.string().trim().max(80).optional(),
     expires: z.enum(["expired", "expiring", "active", "all"]).optional(),
-    reviewState: z.enum(["draft", "stale", "expired", "expiring", "healthy", "all"]).optional(),
+    reviewState: z.enum(["draft", "stale", "expired", "expiring", "unverified", "healthy", "all"]).optional(),
     search: z.string().trim().max(200).optional(),
+    sort: z.enum(KNOWLEDGE_SORTS).default("updatedAt:desc"),
     page: z.coerce.number().int().positive().default(1),
     pageSize: z.coerce.number().int().positive().max(100).default(25),
   })
@@ -87,7 +111,7 @@ export type VerifyKnowledgeInput = z.infer<typeof verifyKnowledgeSchema>;
 
 export const listKnowledgeIssuesSchema = z
   .object({
-    type: z.enum(["DRAFT", "STALE", "EXPIRED", "EXPIRING_SOON", "CONFLICT"]).optional(),
+    type: z.enum(KNOWLEDGE_ISSUE_TYPES).optional(),
     status: z.enum(["OPEN", "RESOLVED", "ALL"]).default("OPEN"),
     search: z.string().trim().max(200).optional(),
     page: z.coerce.number().int().positive().default(1),
@@ -98,11 +122,35 @@ export type ListKnowledgeIssuesInput = z.infer<typeof listKnowledgeIssuesSchema>
 
 export const resolveKnowledgeIssueSchema = z
   .object({
-    action: z.enum(["approve", "verify", "archive", "resolve_conflict"]),
+    action: z.enum(["approve", "verify", "archive", "resolve_conflict", "apply_revision", "reject_revision"]),
     note: z.string().trim().max(1_000).optional(),
   })
   .strict();
 export type ResolveKnowledgeIssueInput = z.infer<typeof resolveKnowledgeIssueSchema>;
+
+export const revisionDecisionSchema = z
+  .object({
+    note: z.string().trim().max(1_000).optional(),
+  })
+  .strict();
+export type RevisionDecisionInput = z.infer<typeof revisionDecisionSchema>;
+
+export const bulkClaimDecisionSchema = z
+  .object({
+    claimIds: z.array(uuid).min(1).max(200),
+    decision: z.enum(["accept", "reject"]),
+  })
+  .strict();
+export type BulkClaimDecisionInput = z.infer<typeof bulkClaimDecisionSchema>;
+
+export const knowledgeDocumentIntentSchema = z
+  .object({
+    filename: text.max(255),
+    mimeType: z.string().trim().min(1).max(200),
+    sizeBytes: z.coerce.number().int().positive(),
+  })
+  .strict();
+export type KnowledgeDocumentIntentInput = z.infer<typeof knowledgeDocumentIntentSchema>;
 
 export const templateSectionSchema = z
   .object({

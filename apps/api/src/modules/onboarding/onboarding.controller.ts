@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Post } from "@nestjs/common";
+import { Body, Controller, Get, Post, Req } from "@nestjs/common";
 
-import { AllowWithoutOrg, CurrentUserId } from "../../common/auth";
+import { AllowUnverified, AllowWithoutOrg, CurrentUserId, type RequestWithAuth } from "../../common/auth";
+import { AuthService } from "../auth/auth.service";
+import { switchSessionTo } from "../organizations/organizations.controller";
 import { ZodBody } from "../../common/decorators/zod-schema.decorator";
 import {
   companySchema,
@@ -24,11 +26,15 @@ import { OnboardingService } from "./onboarding.service";
 @Controller({ path: "onboarding", version: "1" })
 @AllowWithoutOrg()
 export class OnboardingController {
-  constructor(private readonly onboarding: OnboardingService) {}
+  constructor(
+    private readonly onboarding: OnboardingService,
+    private readonly authService: AuthService,
+  ) {}
 
+  @AllowUnverified()
   @Get("status")
-  status(@CurrentUserId() userId: string) {
-    return this.onboarding.status(userId);
+  status(@CurrentUserId() userId: string, @Req() request: RequestWithAuth) {
+    return this.onboarding.status(userId, request.auth?.organizationId ?? null);
   }
 
   @Post("start")
@@ -39,14 +45,26 @@ export class OnboardingController {
 
   @Post("invitation/accept")
   @ZodBody(invitationAcceptanceSchema)
-  acceptInvitation(@CurrentUserId() userId: string, @Body() body: { invitationId: string }) {
-    return this.onboarding.acceptInvitation(userId, body.invitationId);
+  async acceptInvitation(
+    @CurrentUserId() userId: string,
+    @Req() request: RequestWithAuth,
+    @Body() body: { invitationId: string },
+  ) {
+    const progress = await this.onboarding.acceptInvitation(userId, body.invitationId);
+    if (progress?.organizationId) await switchSessionTo(this.authService, request, userId, progress.organizationId);
+    return progress;
   }
 
   @Post("invitation/accept-token")
   @ZodBody(invitationTokenAcceptanceSchema)
-  acceptInvitationToken(@CurrentUserId() userId: string, @Body() body: { token: string }) {
-    return this.onboarding.acceptInvitationToken(userId, body.token);
+  async acceptInvitationToken(
+    @CurrentUserId() userId: string,
+    @Req() request: RequestWithAuth,
+    @Body() body: { token: string },
+  ) {
+    const progress = await this.onboarding.acceptInvitationToken(userId, body.token);
+    if (progress?.organizationId) await switchSessionTo(this.authService, request, userId, progress.organizationId);
+    return progress;
   }
 
   @Post("company")

@@ -93,6 +93,11 @@ export const invitationStatusEnum = pgEnum("invitation_status", [
  * organization and role, so accepting never trusts an organization id sent by
  * the client. Status is checked alongside `expiresAt` on every acceptance,
  * because an expired row is only lazily marked.
+ *
+ * Only a SHA-256 hash of the token is stored (`token_hash`); the plaintext
+ * exists in the emailed link and nowhere else, so a database read does not
+ * yield working join links. `token` is the retired plaintext column, kept
+ * nullable for one release so a rollback still boots; it is always null now.
  */
 export const invitations = pgTable(
   "invitations",
@@ -106,7 +111,9 @@ export const invitations = pgTable(
     role: orgRoleEnum("role").notNull().default("VIEWER"),
     proposedDepartment: text("proposed_department"),
     proposedTeamId: uuid("proposed_team_id").references(() => teams.id, { onDelete: "set null" }),
-    token: text("token").notNull(),
+    /** @deprecated Always null. Dropped in a follow-up migration. */
+    token: text("token"),
+    tokenHash: text("token_hash").notNull(),
     status: invitationStatusEnum("status").notNull().default("pending"),
     invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -116,6 +123,7 @@ export const invitations = pgTable(
   },
   (t) => [
     uniqueIndex("invitations_token_uq").on(t.token),
+    uniqueIndex("invitations_token_hash_uq").on(t.tokenHash),
     index("invitations_org_idx").on(t.organizationId),
     index("invitations_workspace_idx").on(t.workspaceId),
     index("invitations_team_idx").on(t.proposedTeamId),

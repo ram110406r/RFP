@@ -3,12 +3,14 @@ export { PermissionsGuard } from "./permissions.guard";
 export { PolicyService } from "./policy.service";
 export type { PolicyDecision, ResourceAttributes } from "./policy.service";
 export {
+  AllowUnverified,
   AllowWithoutOrg,
   CurrentAuth,
   CurrentUserId,
   OrgId,
   Public,
   RequirePermissions,
+  ALLOW_UNVERIFIED,
   ALLOW_WITHOUT_ORG,
   IS_PUBLIC,
   REQUIRED_PERMISSIONS,

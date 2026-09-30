@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Patch } from "@nestjs/common";
 
-import { AllowWithoutOrg, CurrentUserId } from "../../common/auth";
+import { AllowUnverified, AllowWithoutOrg, CurrentUserId } from "../../common/auth";
 import { ZodBody } from "../../common/decorators/zod-schema.decorator";
 import { updateProfileSchema, type UpdateProfileInput } from "./profile.dto";
 import { ProfileService } from "./profile.service";
@@ -10,6 +10,7 @@ import { ProfileService } from "./profile.service";
 export class ProfileController {
   constructor(private readonly profiles: ProfileService) {}
 
+  @AllowUnverified()
   @Get()
   async current(@CurrentUserId() userId: string) {
     return this.profiles.getProfile(userId);

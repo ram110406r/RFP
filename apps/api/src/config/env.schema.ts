@@ -99,6 +99,16 @@ export const envSchema = z.object({
   GROQ_MODEL: z.string().min(1).default("openai/gpt-oss-20b"),
   GROQ_BASE_URL: z.string().url().default("https://api.groq.com/openai/v1"),
   GROQ_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  /**
+   * Knowledge embeddings (Voyage AI). Optional: without a key, knowledge
+   * retrieval is keyword-only. The dimension is fixed by the knowledge_chunks
+   * vector column (migration 0038), so it is validated, not free.
+   */
+  VOYAGE_API_KEY: blankToUndefined(z.string().min(1)),
+  EMBEDDING_MODEL: z.string().min(1).default("voyage-3.5"),
+  EMBEDDING_DIMENSIONS: z.coerce.number().int().refine((value) => value === 1024, {
+    message: "must be 1024 to match the knowledge_chunks vector column",
+  }).default(1024),
   /** How long a session stays valid, in seconds. Default 7 days. */
   SESSION_MAX_AGE_SECONDS: z.coerce
     .number()
@@ -107,6 +117,23 @@ export const envSchema = z.object({
     .default(60 * 60 * 24 * 7),
   /** How long an organization invitation remains acceptable, in hours. */
   INVITATION_TTL_HOURS: z.coerce.number().int().positive().default(72),
+
+  /**
+   * The browser-facing web app origin. Links in emails (verification, join)
+   * point here. Distinct from CORS_ORIGIN, which may list several origins.
+   */
+  WEB_APP_URL: z.string().url().default("http://localhost:3000"),
+  /*
+   * Outbound mail. Email ownership is what makes an invitation safe to accept,
+   * so production refuses to boot without a transport. Locally these default
+   * to the Mailpit container (docker-compose, profile "local").
+   */
+  SMTP_HOST: blankToUndefined(z.string().min(1)),
+  SMTP_PORT: z.coerce.number().int().positive().default(51025),
+  SMTP_SECURE: envBoolean(false, { fallbackOnInvalid: true }),
+  SMTP_USER: blankToUndefined(z.string().min(1)),
+  SMTP_PASS: blankToUndefined(z.string().min(1)),
+  MAIL_FROM: z.string().min(3).default("TENDYY <no-reply@tendyy.local>"),
 
   /*
    * Object storage (Phase 6a). Declared in .env.example since Phase 1 but not
@@ -190,6 +217,17 @@ export function validateEnv(config: Record<string, unknown>): Env {
     }
     if (!result.data.REDIS_URL) {
       missing.push("REDIS_URL: required in production for background jobs");
+    }
+    if (!result.data.SMTP_HOST) {
+      missing.push("SMTP_HOST: required in production so users can verify their email");
+    }
+    if (!config.MAIL_FROM) {
+      missing.push("MAIL_FROM: required in production (e.g. \"TENDYY <no-reply@example.com>\")");
+    }
+    if (!config.WEB_APP_URL) {
+      missing.push("WEB_APP_URL: required in production (the public web app origin)");
+    } else if (!result.data.WEB_APP_URL.startsWith("https://")) {
+      missing.push("WEB_APP_URL: must use HTTPS in production");
     }
     if (result.data.AI_PROVIDER === "mock") {
       missing.push("AI_PROVIDER: mock is not allowed in production");

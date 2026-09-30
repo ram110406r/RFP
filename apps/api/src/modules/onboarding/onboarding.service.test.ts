@@ -8,22 +8,38 @@ import {
   organizationMembers,
   organizations,
   users,
+  workspaceMembers,
   workspaces,
 } from "@rfp-os/db";
 import { and, eq } from "drizzle-orm";
 
 import { OnboardingService } from "./onboarding.service";
-import type { OrganizationsService } from "../organizations/organizations.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 
 const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
 const dbTest = shouldRunDbTests ? test : test.skip;
 // Database scenarios are skipped locally unless a disposable DATABASE_URL is supplied.
 const db = shouldRunDbTests ? getDb() : (undefined as never);
-const service = new OnboardingService(db, {} as OrganizationsService);
+const recorder = { record: async () => undefined };
+const sentInvitations: Array<{ to: string; url: string }> = [];
+const mailer = {
+  sendInvitation: async (input: { to: string; url: string }) => {
+    sentInvitations.push({ to: input.to, url: input.url });
+  },
+};
+const organizationsService = new OrganizationsService(
+  db,
+  { get: (key: string) => (key === "WEB_APP_URL" ? "http://localhost:3000" : 72) } as never,
+  recorder as never,
+  recorder as never,
+  mailer as never,
+);
+const service = new OnboardingService(db, organizationsService, recorder as never);
 const suffix = randomUUID().slice(0, 8);
 const email = `onboarding-${suffix}@example.invalid`;
 let userId = "";
 let organizationId = "";
+let secondOwnerId = "";
 
 describe("OnboardingService database flow", () => {
   dbTest("persists and completes one idempotent owner onboarding", async () => {
@@ -83,6 +99,17 @@ describe("OnboardingService database flow", () => {
       teams: ["Bid Management"],
       invites: [{ email: `employee-${suffix}@example.invalid`, role: "VIEWER" }],
     });
+    const employeeEmail = `employee-${suffix}@example.invalid`;
+    expect(sentInvitations.filter((mail) => mail.to === employeeEmail)).toHaveLength(1);
+    expect(sentInvitations[0]!.url).toStartWith("http://localhost:3000/join#token=");
+
+    // Re-submitting the step must not re-send an unchanged invitation.
+    await service.saveTeam(userId, {
+      teams: ["Bid Management"],
+      invites: [{ email: employeeEmail, role: "VIEWER" }],
+    });
+    expect(sentInvitations.filter((mail) => mail.to === employeeEmail)).toHaveLength(1);
+
     await service.saveRfpContext(userId, { typicalRfpTypes: ["Security"], mainIndustries: [], commonCategories: ["Legal"] });
     await service.complete(userId);
 
@@ -116,6 +143,52 @@ describe("OnboardingService database flow", () => {
     expect(organizationRows).toHaveLength(1);
     expect(workspaceRows).toHaveLength(1);
   });
+
+  dbTest("an owner has workspace access without an explicit workspace membership", async () => {
+    // Relies on the owner and organization created by the first test.
+    const [ownerMembership] = await db
+      .select({ id: organizationMembers.id })
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.userId, userId)));
+    await db.delete(workspaceMembers).where(eq(workspaceMembers.organizationMemberId, ownerMembership!.id));
+
+    const state = await service.status(userId);
+    expect(state.hasWorkspaceAccess).toBe(true);
+    expect(state.lifecycleState).toBe("ACTIVE_MEMBER");
+  });
+
+  dbTest("refuses team setup and invitations once the founder is no longer an admin", async () => {
+    // Relies on the owner, organization and workspace created by the test above.
+    expect(organizationId).not.toBe("");
+    const secondOwnerEmail = `second-owner-${suffix}@example.invalid`;
+    const [secondOwner] = await db
+      .insert(users)
+      .values({ name: "Second Owner", email: secondOwnerEmail, emailVerified: true })
+      .returning({ id: users.id });
+    secondOwnerId = secondOwner!.id;
+    await db.insert(organizationMembers).values({ organizationId, userId: secondOwnerId, role: "OWNER", status: "active" });
+
+    for (const [role, status] of [["VIEWER", "active"], ["OWNER", "suspended"], ["OWNER", "removed"]] as const) {
+      await db
+        .update(organizationMembers)
+        .set({ role, status })
+        .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.userId, userId)));
+
+      const error = await service
+        .saveTeam(userId, {
+          teams: [`Shadow Team ${role}-${status}`],
+          invites: [{ email: `shadow-admin-${suffix}@example.invalid`, role: "ADMIN" }],
+        })
+        .then(() => null, (rejection: unknown) => rejection);
+      expect((error as { response?: { code?: string } } | null)?.response?.code).toBe("ORG_ADMIN_REQUIRED");
+    }
+
+    const shadowInvites = await db
+      .select({ id: invitations.id })
+      .from(invitations)
+      .where(and(eq(invitations.organizationId, organizationId), eq(invitations.email, `shadow-admin-${suffix}@example.invalid`)));
+    expect(shadowInvites).toHaveLength(0);
+  });
 });
 
 afterAll(async () => {
@@ -123,4 +196,5 @@ afterAll(async () => {
   if (userId) await db.delete(onboardingProgress).where(eq(onboardingProgress.userId, userId));
   if (organizationId) await db.delete(organizations).where(eq(organizations.id, organizationId));
   if (userId) await db.delete(users).where(eq(users.id, userId));
+  if (secondOwnerId) await db.delete(users).where(eq(users.id, secondOwnerId));
 });

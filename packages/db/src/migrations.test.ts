@@ -146,4 +146,37 @@ describe("migration history", () => {
     expect(sql).toContain('ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "usage_metadata" jsonb');
     expect(sql).toContain('UPDATE "response_templates" SET');
   });
+
+  test("0037 promotes knowledge lifecycle to indexed columns and backfills from metadata", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0037_knowledge_lifecycle_columns.sql"), "utf8");
+    expect(sql).toContain('ADD COLUMN IF NOT EXISTS "lifecycle_status" "knowledge_lifecycle_status"');
+    expect(sql).toContain("\"metadata\" ->> 'lifecycleStatus'");
+    expect(sql).toContain('ADD COLUMN IF NOT EXISTS "citation_status" text');
+    expect(sql).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+    expect(sql).toContain('"response_templates_org_status_idx"');
+  });
+
+  test("0038 adds knowledge documents and hybrid-searchable chunks", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0038_knowledge_documents_chunks.sql"), "utf8");
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "knowledge_documents"');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "knowledge_chunks"');
+    expect(sql).toContain('"embedding" vector(1024)');
+    expect(sql).toContain("USING hnsw (\"embedding\" vector_cosine_ops)");
+    expect(sql).toContain('"search_vector" tsvector GENERATED ALWAYS AS');
+  });
+
+  test("0039 adds pending revisions, version snapshots and claim lifecycle", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0039_knowledge_revisions_claims.sql"), "utf8");
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "knowledge_source_revisions"');
+    expect(sql).toContain('"knowledge_source_revisions_pending_uq"');
+    expect(sql).toContain('ALTER TABLE "knowledge_versions" ADD COLUMN IF NOT EXISTS "snapshot" jsonb');
+    expect(sql).toContain('ALTER TABLE "knowledge_claims" ADD COLUMN IF NOT EXISTS "status" "knowledge_claim_status"');
+    expect(sql).toContain('"knowledge_conflicts_pair_key_uq"');
+  });
+
+  test("0040 gives claims a label embedding for semantic conflict matching", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0040_knowledge_claim_label_embeddings.sql"), "utf8");
+    expect(sql).toContain('ADD COLUMN IF NOT EXISTS "label_embedding" vector(1024)');
+    expect(sql).toContain('USING hnsw ("label_embedding" vector_cosine_ops)');
+  });
 });

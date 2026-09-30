@@ -37,12 +37,44 @@ export type TenderContext = {
   tenderType: string;
 };
 
+export type AnswerTemplateContext = {
+  id: string;
+  name: string;
+  version: string;
+  sections: Array<{ title: string; body: string }>;
+};
+
 export type AnswerGenerationContext = {
   tender: TenderContext;
   requirement: RequirementContext;
   question: QuestionContext;
   evidence: AnswerGenerationEvidenceSummary[];
+  /** An approved response template for this requirement category, used for structure and tone only. */
+  template?: AnswerTemplateContext | null;
 };
+
+/** At most this many evidence items reach the model… */
+export const ANSWER_PROMPT_MAX_EVIDENCE = 6;
+/** …and their combined content stays under this many characters. */
+export const ANSWER_PROMPT_EVIDENCE_CHAR_BUDGET = 6_000;
+
+/**
+ * Evidence arrives ranked best-first. Take items until the count or the
+ * character budget runs out, truncating a long item rather than dropping it
+ * so a large document chunk cannot crowd out every other source.
+ */
+export function selectPromptEvidence(evidence: AnswerGenerationEvidenceSummary[]): AnswerGenerationEvidenceSummary[] {
+  const selected: AnswerGenerationEvidenceSummary[] = [];
+  let remaining = ANSWER_PROMPT_EVIDENCE_CHAR_BUDGET;
+  for (const item of evidence.slice(0, ANSWER_PROMPT_MAX_EVIDENCE)) {
+    if (remaining < 200) break;
+    const perItem = Math.min(remaining, Math.max(600, Math.floor(ANSWER_PROMPT_EVIDENCE_CHAR_BUDGET / 3)));
+    const content = item.content.length > perItem ? `${item.content.slice(0, perItem)}…` : item.content;
+    remaining -= content.length;
+    selected.push({ ...item, content });
+  }
+  return selected;
+}
 
 export const answerGenerationModelOutputSchema = z
   .object({
@@ -87,7 +119,7 @@ export function buildAnswerGenerationRequest(
       type: context.requirement.requirementType,
       mandatory: context.requirement.mandatory,
       },
-      evidence: context.evidence.slice(0, 3).map((item) => ({
+      evidence: selectPromptEvidence(context.evidence).map((item) => ({
         evidenceId: item.evidenceId,
         sourceId: item.sourceId,
         sourceVersion: item.sourceVersion,
@@ -104,6 +136,14 @@ export function buildAnswerGenerationRequest(
     targetRisk: options.targetRisk,
     targetStatus: options.targetStatus,
     provider: options.providerName,
+    ...(context.template
+      ? {
+          responseTemplate: {
+            name: context.template.name,
+            sections: context.template.sections.map((section) => ({ title: section.title, body: section.body.slice(0, 1_500) })),
+          },
+        }
+      : {}),
   };
 
   const userMessage = [
@@ -124,6 +164,11 @@ export function buildAnswerGenerationRequest(
     "If the evidence is insufficient, return INSUFFICIENT_EVIDENCE.",
     "Use status AI_DRAFT for a supported answer, NEEDS_REVIEW for partial or uncertain support, and INSUFFICIENT_EVIDENCE only when no usable answer can be formed.",
     "Do not return SUPPORTED, PARTIALLY_SUPPORTED, or UNSUPPORTED in the status field.",
+    ...(context.template
+      ? [
+          "A responseTemplate is included: follow its structure and tone, but take every fact from the evidence. Omit template sections the evidence cannot support rather than filling them.",
+        ]
+      : []),
     'Return JSON like {"answer":"...","confidence":0,"evidenceIds":["..."],"risk":"LOW","status":"AI_DRAFT","metadata":{}}.',
     "",
     "CONTEXT_JSON:",
@@ -135,7 +180,9 @@ export function buildAnswerGenerationRequest(
   return {
     model: GROUNDED_ANSWER_MODEL,
     temperature: 0,
-    maxTokens: 128,
+    // Room for a real multi-sentence answer plus the JSON envelope; 128 cut
+    // grounded answers off mid-sentence.
+    maxTokens: context.template ? 900 : 600,
     messages: [
       {
         role: "system",

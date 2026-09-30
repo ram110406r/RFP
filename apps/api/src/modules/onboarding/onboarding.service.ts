@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   invitations,
   onboardingProgress,
@@ -12,9 +12,11 @@ import {
   workspaces,
   type Database,
 } from "@rfp-os/db";
-import { randomBytes } from "node:crypto";
+import { ORG_ADMIN_ROLES, type OrgRole } from "@rfp-os/types";
 
+import { AuditService } from "../../infrastructure/audit";
 import { DATABASE } from "../../infrastructure/database";
+import { hashInvitationToken } from "../organizations/invitation-token";
 import { OrganizationsService } from "../organizations/organizations.service";
 import type { CompanyInput, JourneyInput, ProfileInput, RfpContextInput, TeamInput, WorkspaceInput } from "./onboarding.dto";
 
@@ -25,6 +27,7 @@ export class OnboardingService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly organizationsService: OrganizationsService,
+    private readonly audit: AuditService,
   ) {}
 
   private async ensure(userId: string) {
@@ -34,7 +37,12 @@ export class OnboardingService {
     return progress;
   }
 
-  async status(userId: string) {
+  /**
+   * `activeOrganizationId` is the organization the caller's session is acting
+   * in (when it resolved to one). With several memberships, that is the one
+   * this status describes; the full list is returned as `memberships`.
+   */
+  async status(userId: string, activeOrganizationId: string | null = null) {
     let progress = await this.ensure(userId);
     if (!progress.journey && progress.organizationId && !progress.completed) {
       const [migrated] = await this.db
@@ -68,17 +76,30 @@ export class OnboardingService {
       .set({ status: "expired", updatedAt: new Date() })
       .where(and(eq(invitations.status, "pending"), sql`lower(${invitations.email}) = lower(${user.email})`, sql`${invitations.expiresAt} <= now()`));
 
-    const [membership] = await this.db
+    const memberships = await this.db
       .select({
         id: organizationMembers.id,
         organizationId: organizationMembers.organizationId,
         organizationName: organizations.name,
         role: organizationMembers.role,
+        joinedAt: organizationMembers.joinedAt,
       })
       .from(organizationMembers)
       .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-      .where(and(eq(organizationMembers.userId, userId), eq(organizationMembers.status, "active")))
-      .limit(1);
+      .where(
+        and(
+          eq(organizationMembers.userId, userId),
+          eq(organizationMembers.status, "active"),
+          eq(organizations.status, "active"),
+        ),
+      )
+      .orderBy(organizationMembers.joinedAt);
+    // Same precedence as AuthService: the session's organization, then the
+    // onboarding one, then the oldest membership.
+    const membership =
+      memberships.find((row) => row.organizationId === activeOrganizationId) ??
+      memberships.find((row) => row.organizationId === progress.organizationId) ??
+      memberships[0];
 
     const [currentWorkspace] = progress.workspaceId
       ? await this.db
@@ -88,7 +109,19 @@ export class OnboardingService {
           .limit(1)
       : [];
 
-    const workspaceAccess = membership
+    /*
+     * OWNER and ADMIN hold every workspace permission organization-wide (see
+     * resolveAuthContext), so they have access to every active workspace
+     * whether or not they were ever added to one. Requiring a membership row
+     * here would lock an owner out of their own company at /access.
+     */
+    const isOrganizationAdmin = Boolean(membership && ORG_ADMIN_ROLES.includes(membership.role as OrgRole));
+    const workspaceAccess = membership && isOrganizationAdmin
+      ? await this.db
+          .select({ id: workspaces.id })
+          .from(workspaces)
+          .where(and(eq(workspaces.organizationId, membership.organizationId), eq(workspaces.status, "active")))
+      : membership
       ? await this.db
           .select({ id: workspaceMembers.workspaceId })
           .from(workspaceMembers)
@@ -168,6 +201,7 @@ export class OnboardingService {
       workspaceId: progress.workspaceId,
       workspace: currentWorkspace ?? null,
       membership: membership ?? null,
+      memberships: memberships.map(({ organizationId, organizationName, role }) => ({ organizationId, organizationName, role })),
       invitations: pendingInvitations,
       controlledValues: {
         departments: ["executive", "sales", "presales", "bid_management", "engineering", "product", "security", "legal", "finance", "operations", "other"],
@@ -197,7 +231,7 @@ export class OnboardingService {
     if (progress.journey !== "EMPLOYEE" || progress.invitationId !== invitationId) {
       throw new ForbiddenException("Start employee onboarding with this invitation first.");
     }
-    const accepted = await this.organizationsService.acceptDetectedInvitation(userId, invitationId);
+    const accepted = await this.organizationsService.acceptInvitationById(userId, invitationId);
     const [updated] = await this.db
       .update(onboardingProgress)
       .set({
@@ -219,12 +253,9 @@ export class OnboardingService {
     const [invitation] = await this.db
       .select({ id: invitations.id, status: invitations.status, acceptedBy: invitations.acceptedBy })
       .from(invitations)
-      .where(eq(invitations.token, token))
+      .where(eq(invitations.tokenHash, hashInvitationToken(token)))
       .limit(1);
     const retryingOwnAcceptedInvitation = invitation?.status === "accepted" && invitation.acceptedBy === userId;
-    if (state.hasMembership && !retryingOwnAcceptedInvitation) {
-      throw new ConflictException("This account already has an active organization membership.");
-    }
 
     // A join link can be opened again from a browser history entry. Once the
     // employee has completed their profile, accepting the same consumed token
@@ -234,6 +265,19 @@ export class OnboardingService {
     }
 
     const accepted = await this.organizationsService.acceptInvitation(userId, token);
+
+    /*
+     * Someone who already finished onboarding (a member of another company)
+     * joins without being sent back through the employee journey.
+     */
+    if (state.progress.completed) {
+      await this.db
+        .update(onboardingProgress)
+        .set({ organizationId: accepted.organizationId, workspaceId: accepted.workspaceId, updatedAt: new Date() })
+        .where(eq(onboardingProgress.userId, userId));
+      return { ...state.progress, organizationId: accepted.organizationId, workspaceId: accepted.workspaceId };
+    }
+
     const [updated] = await this.db
       .update(onboardingProgress)
       .set({
@@ -324,23 +368,94 @@ export class OnboardingService {
   }
 
   async saveTeam(userId: string, input: TeamInput) {
+    await this.requireVerifiedUser(userId);
     const progress = await this.ensure(userId);
     if (progress.journey === "EMPLOYEE") {
       throw new ForbiddenException("Employees cannot create teams or invite members during onboarding.");
     }
     await this.requireJourney(userId, "COMPANY");
     if (!progress.organizationId || !progress.workspaceId) throw new ConflictException("Create the company workspace first.");
+    /*
+     * The progress row only records which company this user once set up. It is
+     * not a grant: re-derive a live admin membership, so an owner who has since
+     * been demoted, suspended or removed cannot keep creating teams and
+     * invitations through this tenant-less route.
+     */
+    const actor = await this.requireOrganizationAdmin(userId, progress.organizationId);
+    const organizationId = actor.organizationId;
+    const workspaceId = progress.workspaceId;
+
     for (const name of input.teams) {
-      const [existing] = await this.db.select({ id: teams.id }).from(teams).where(and(eq(teams.organizationId, progress.organizationId), eq(teams.workspaceId, progress.workspaceId), eq(teams.name, name), eq(teams.status, "active"))).limit(1);
-      if (!existing) await this.db.insert(teams).values({ organizationId: progress.organizationId, workspaceId: progress.workspaceId, name });
+      const [existing] = await this.db.select({ id: teams.id }).from(teams).where(and(eq(teams.organizationId, organizationId), eq(teams.workspaceId, workspaceId), eq(teams.name, name), eq(teams.status, "active"))).limit(1);
+      if (existing) continue;
+      await withTransaction(async (tx) => {
+        const [created] = await tx.insert(teams).values({ organizationId, workspaceId, name }).returning();
+        await this.audit.record(
+          {
+            organizationId,
+            workspaceId,
+            actorId: userId,
+            action: "TEAM_CREATED",
+            entityType: "team",
+            entityId: created!.id,
+            newValue: created,
+            metadata: { source: "onboarding" },
+          },
+          tx,
+        );
+      });
     }
+
     for (const invite of input.invites) {
-      const [pending] = await this.db.select({ id: invitations.id }).from(invitations).where(and(eq(invitations.organizationId, progress.organizationId), eq(invitations.email, invite.email), eq(invitations.status, "pending"))).limit(1);
-      const values = { workspaceId: progress.workspaceId, role: invite.role, proposedDepartment: invite.proposedDepartment ?? null, proposedTeamId: invite.proposedTeamId ?? null, invitedBy: userId, expiresAt: new Date(Date.now() + 7 * 86_400_000), updatedAt: new Date() };
-      if (pending) await this.db.update(invitations).set(values).where(eq(invitations.id, pending.id));
-      else await this.db.insert(invitations).values({ organizationId: progress.organizationId, email: invite.email, token: randomBytes(32).toString("base64url"), ...values });
+      /* Re-submitting this step must not re-send an unchanged invitation. */
+      const [pending] = await this.db
+        .select({ id: invitations.id })
+        .from(invitations)
+        .where(
+          and(
+            eq(invitations.organizationId, organizationId),
+            eq(invitations.email, invite.email),
+            eq(invitations.status, "pending"),
+            eq(invitations.role, invite.role),
+            invite.proposedTeamId ? eq(invitations.proposedTeamId, invite.proposedTeamId) : isNull(invitations.proposedTeamId),
+            sql`${invitations.expiresAt} > now()`,
+          ),
+        )
+        .limit(1);
+      if (pending) continue;
+      await this.organizationsService.invite(actor, {
+        email: invite.email,
+        role: invite.role,
+        workspaceId,
+        proposedDepartment: invite.proposedDepartment,
+        proposedTeamId: invite.proposedTeamId,
+      });
     }
     return this.updateProgress(userId, { team: input, currentState: "RFP_CONTEXT", currentStep: 6 });
+  }
+
+  /** A live OWNER/ADMIN membership in an active organization, or 403. */
+  private async requireOrganizationAdmin(userId: string, organizationId: string) {
+    const [membership] = await this.db
+      .select({ role: organizationMembers.role })
+      .from(organizationMembers)
+      .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+      .where(
+        and(
+          eq(organizationMembers.userId, userId),
+          eq(organizationMembers.organizationId, organizationId),
+          eq(organizationMembers.status, "active"),
+          eq(organizations.status, "active"),
+        ),
+      )
+      .limit(1);
+    if (!membership || !ORG_ADMIN_ROLES.includes(membership.role as OrgRole)) {
+      throw new ForbiddenException({
+        code: "ORG_ADMIN_REQUIRED",
+        message: "Only an active owner or admin of this company can set up teams and invitations.",
+      });
+    }
+    return { userId, organizationId, role: membership.role as OrgRole };
   }
 
   async saveRfpContext(userId: string, rfpContext: RfpContextInput) {

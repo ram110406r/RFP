@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { Database } from "@rfp-os/db";
 import { ObjectStorage } from "@rfp-os/storage";
@@ -7,6 +7,7 @@ import IORedis from "ioredis";
 
 import type { Env } from "../config/env.schema";
 import { DATABASE } from "../infrastructure/database";
+import { MailService } from "../infrastructure/mail";
 
 export type CheckStatus = "ok" | "error" | "skipped";
 
@@ -21,6 +22,7 @@ export class HealthService {
     private readonly config: ConfigService<Env, true>,
     @Inject(DATABASE) private readonly db: Database,
     private readonly storage: ObjectStorage,
+    @Optional() private readonly mail?: MailService,
   ) {}
 
   liveness() {
@@ -42,13 +44,14 @@ export class HealthService {
    * deployment for an optional dependency teaches people to ignore it.
    */
   async readiness(): Promise<ReadinessResult> {
-    const [database, redis, storage, opensearch] = await Promise.all([
+    const [database, redis, storage, opensearch, mail] = await Promise.all([
       this.checkDatabase(),
       this.checkRedis(),
       this.checkStorage(),
       this.checkOpenSearch(),
+      this.checkMail(),
     ]);
-    const checks: Record<string, CheckStatus> = { database, redis, storage, opensearch };
+    const checks: Record<string, CheckStatus> = { database, redis, storage, opensearch, mail };
     const status = Object.values(checks).includes("error") ? "degraded" : "ok";
     return { status, checks };
   }
@@ -63,6 +66,17 @@ export class HealthService {
     } catch {
       return "error";
     }
+  }
+
+  /**
+   * Not optional in practice: without a reachable SMTP server nobody can verify
+   * their email, so nobody can sign up, create a company or accept an
+   * invitation. Better Auth sends verification mail in the background and only
+   * logs a failure, so this probe is where a broken transport becomes visible.
+   */
+  private async checkMail(): Promise<CheckStatus> {
+    if (!this.mail) return "skipped";
+    return (await this.mail.verifyTransport()) ? "ok" : "error";
   }
 
   private async checkStorage(): Promise<CheckStatus> {

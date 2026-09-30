@@ -29,4 +29,5 @@ export interface ApiErrorShape {
 
 export * from "./authz";
 export * from "./evidence";
+export * from "./knowledge-freshness";
 export * from "./tender";

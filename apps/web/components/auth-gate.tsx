@@ -74,6 +74,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function AuthGateInner({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname === "/set-password") return <>{children}</>;
+  return <SignedInGate>{children}</SignedInGate>;
+}
+
+function SignedInGate({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +87,9 @@ function AuthGateInner({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Set after sign-up, or a sign-in blocked on verification: show "check your inbox". */
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
+  const [resendNotice, setResendNotice] = useState<string | null>(null);
   const pathname = usePathname();
 
   const sessionUser = useMemo(() => (profile ? toSessionUser(profile) : null), [profile]);
@@ -143,16 +152,60 @@ function AuthGateInner({ children }: { children: React.ReactNode }) {
     setBusy(true);
     setError(null);
 
+    const trimmedEmail = email.trim();
     try {
-      const endpoint = mode === "register" ? "/sign-up/email" : "/sign-in/email";
-      const payload =
-        mode === "register"
-          ? { email: email.trim(), password, name: email.trim().split("@")[0] || "TENDYY user" }
-          : { email: email.trim(), password, rememberMe: true };
-      await betterAuthRequest(endpoint, payload);
+      if (mode === "register") {
+        // Email first: the password is chosen from the emailed link, so only
+        // the owner of this inbox can ever set it.
+        await startPasswordLink(trimmedEmail);
+        setPendingVerificationEmail(trimmedEmail);
+        setResendNotice(null);
+        return;
+      }
+      await betterAuthRequest("/sign-in/email", { email: trimmedEmail, password, rememberMe: true });
       await refreshProfile();
     } catch (authError) {
+      if (authError instanceof BetterAuthError && authError.code === "EMAIL_NOT_VERIFIED") {
+        // The account was never finished; Better Auth has just emailed a
+        // set-password link (sendOnSignIn).
+        setPendingVerificationEmail(trimmedEmail);
+        setResendNotice("This account was never finished. We emailed you a link to set its password.");
+        return;
+      }
       setError(authError instanceof Error ? authError.message : "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError("Enter your email address first.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await startPasswordLink(trimmedEmail);
+      setPendingVerificationEmail(trimmedEmail);
+      setResendNotice(null);
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Could not send the email.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    if (!pendingVerificationEmail) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await startPasswordLink(pendingVerificationEmail);
+      setResendNotice("A new link is on its way. Earlier links no longer work.");
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Could not resend the email.");
     } finally {
       setBusy(false);
     }
@@ -209,6 +262,28 @@ function AuthGateInner({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (!sessionUser && pendingVerificationEmail) {
+    return (
+      <AuthShell heading="Check your inbox" description="Open the link we emailed you to set your password.">
+        <div className="space-y-4">
+          <p className="text-sm leading-6 text-slate-700">
+            If <strong className="text-slate-950">{pendingVerificationEmail}</strong> can receive email, a link to set your password is on its way. It works once and expires in 24 hours.
+          </p>
+          {resendNotice ? <p className="rounded-[var(--radius-sm)] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">{resendNotice}</p> : null}
+          {error ? <p className="rounded-[var(--radius-sm)] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+          <div className="flex flex-wrap gap-3">
+            <button type="button" disabled={busy} onClick={() => void handleResendVerification()} className="inline-flex items-center justify-center rounded-[var(--radius-sm)] bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-60">
+              {busy ? "Sending..." : "Resend email"}
+            </button>
+            <button type="button" onClick={() => { setPendingVerificationEmail(null); setResendNotice(null); setError(null); setMode("sign-in"); }} className="inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-5 py-3 text-sm font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)]">
+              Use a different account
+            </button>
+          </div>
+        </div>
+      </AuthShell>
+    );
+  }
+
   if (!sessionUser) {
     const isRegister = mode === "register";
     return (
@@ -216,11 +291,11 @@ function AuthGateInner({ children }: { children: React.ReactNode }) {
         heading={heading}
         description={pathname === "/signup" ? "Create the first account for your company. You will set up the organization and its first workspace next." : pathname === "/join" ? "Use the exact email address that received the workspace invitation." : isRegister ? "Create a company account, or create your account with the email from an employee invitation." : "Sign in as a company owner or an invited employee to continue into TENDYY."}
       >
-        <div className="mb-5 grid grid-cols-2 gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-muted)] p-1">
-          <button type="button" onClick={() => setMode("sign-in")} className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${!isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}>
+        <div role="tablist" aria-label="Account" className="mb-5 grid grid-cols-2 gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-muted)] p-1">
+          <button type="button" role="tab" aria-selected={!isRegister} onClick={() => setMode("sign-in")} className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${!isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}>
             Sign in
           </button>
-          <button type="button" onClick={() => setMode("register")} className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}>
+          <button type="button" role="tab" aria-selected={isRegister} onClick={() => setMode("register")} className={`rounded-[var(--radius-sm)] px-3 py-2 text-sm font-semibold transition-colors ${isRegister ? "bg-white text-[var(--text)] shadow-[var(--shadow-subtle)]" : "text-[var(--muted)] hover:text-[var(--text-soft)]"}`}>
             Create account
           </button>
         </div>
@@ -231,18 +306,27 @@ function AuthGateInner({ children }: { children: React.ReactNode }) {
             </label>
             <input id="auth-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-3 text-[var(--text)] outline-none ring-0 transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]" placeholder="name@company.com" required />
           </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="auth-password">
-              Password
-            </label>
-            <input id="auth-password" type="password" autoComplete={mode === "register" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-3 text-[var(--text)] outline-none ring-0 transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]" placeholder="************" required minLength={12} />
-          </div>
+          {isRegister ? (
+            <p className="text-sm leading-6 text-slate-600">We&apos;ll email you a link. You choose your password from that link, which proves the address is yours.</p>
+          ) : (
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-slate-700" htmlFor="auth-password">
+                  Password
+                </label>
+                <button type="button" onClick={() => void handleForgotPassword()} disabled={busy} className="text-xs font-semibold text-[var(--primary)] hover:underline disabled:opacity-60">
+                  Forgot password?
+                </button>
+              </div>
+              <input id="auth-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-4 py-3 text-[var(--text)] outline-none ring-0 transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(21,94,239,0.1)]" placeholder="************" required />
+            </div>
+          )}
 
           {error ? <p className="rounded-[var(--radius-sm)] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
           <div className="flex flex-wrap gap-3">
             <button type="submit" disabled={busy} className="inline-flex items-center justify-center rounded-[var(--radius-sm)] bg-[var(--primary)] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-60">
-              {busy ? "Working..." : isRegister ? "Create account" : "Sign in"}
+              {busy ? "Working..." : isRegister ? "Email me a link" : "Sign in"}
             </button>
             <button type="button" onClick={() => setMode(mode === "register" ? "sign-in" : "register")} className="inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-white px-5 py-3 text-sm font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)]">
               {isRegister ? "Already have an account? Sign in" : "New here? Create account"}
@@ -353,6 +437,33 @@ function AuthShell({
   );
 }
 
+class BetterAuthError extends Error {
+  constructor(
+    message: string,
+    readonly code: string | null,
+  ) {
+    super(message);
+  }
+}
+
+/** Emails a single-use set-password link (sign-up and "forgot password"). */
+async function startPasswordLink(email: string): Promise<void> {
+  const baseUrl = getApiBaseUrl().replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/api/v1/auth/email-link/start`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email }),
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new Error(
+      response.status === 429 ? "Too many requests. Wait a minute and try again." : body?.error?.message ?? "Could not send the email.",
+    );
+  }
+}
+
 async function betterAuthRequest<T = unknown>(path: string, body: Record<string, unknown>): Promise<T> {
   const baseUrl = getApiBaseUrl().replace(/\/$/, "");
   const response = await fetch(`${baseUrl}/api/auth${path}`, {
@@ -370,12 +481,9 @@ async function betterAuthRequest<T = unknown>(path: string, body: Record<string,
 
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    const message =
-      (data as { message?: string; error?: { message?: string } } | null)?.error?.message ??
-      (data as { message?: string } | null)?.message ??
-      response.statusText ??
-      "Authentication failed.";
-    throw new Error(message);
+    const body = data as { code?: string; message?: string; error?: { code?: string; message?: string } } | null;
+    const message = body?.error?.message ?? body?.message ?? response.statusText ?? "Authentication failed.";
+    throw new BetterAuthError(message, body?.error?.code ?? body?.code ?? null);
   }
 
   return (data ?? {}) as T;

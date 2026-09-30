@@ -7,7 +7,7 @@ import type {
   AnswerGenerationStatus,
 } from "@rfp-os/types";
 
-import { AnswerGenerationContext, buildAnswerGenerationRequest, buildGenerationMetadata, classifyAnswerRisk, classifyAnswerStatus, deriveGenerationConfidence, parseAnswerGenerationResponse, validateEvidenceIds } from "./answer-generation.logic";
+import { AnswerGenerationContext, buildAnswerGenerationRequest, buildGenerationMetadata, classifyAnswerRisk, classifyAnswerStatus, deriveGenerationConfidence, parseAnswerGenerationResponse, selectPromptEvidence, validateEvidenceIds } from "./answer-generation.logic";
 
 @Injectable()
 export class AnswerGenerationService {
@@ -193,7 +193,7 @@ function buildDeterministicFallbackAnswer(
           type: context.requirement.requirementType,
           mandatory: context.requirement.mandatory,
         },
-        evidence: context.evidence.slice(0, 3).map((item) => ({
+        evidence: selectPromptEvidence(context.evidence).map((item) => ({
           evidenceId: item.evidenceId,
           sourceId: item.sourceId,
           sourceVersion: item.sourceVersion,

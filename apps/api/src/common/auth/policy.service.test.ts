@@ -4,6 +4,8 @@ import { permissionsForRole, type AuthContext } from "@rfp-os/types";
 import { PolicyService } from "./policy.service";
 
 interface PolicyRow {
+  id: string;
+  workspaceId: string | null;
   role: string | null;
   resource: string;
   action: string;
@@ -46,8 +48,13 @@ const auth: AuthContext = {
   sessionId: "session-1",
 };
 
+let nextPolicyId = 0;
+
 function policy(overrides: Partial<PolicyRow> = {}): PolicyRow {
+  nextPolicyId += 1;
   return {
+    id: `policy-${nextPolicyId}`,
+    workspaceId: null,
     organizationId: "org-1",
     role: null,
     resource: "requirement",
@@ -74,6 +81,29 @@ describe("PolicyService", () => {
     const decision = await service.evaluate(auth, "requirement", "approve");
     expect(decision.allowed).toBe(false);
     expect(decision.reason).toBe("Critical needs a specialist.");
+  });
+
+  it("reports the deny policy that actually matched, not the first deny loaded", async () => {
+    const rows = [
+      policy({ effect: "deny", condition: { risk: "low" }, description: "Low risk is blocked." }),
+      policy({ effect: "deny", condition: { risk: "critical" }, description: "Critical needs a specialist." }),
+    ];
+    const service = new PolicyService(stubDb(rows, auth));
+    const decision = await service.evaluate(auth, "requirement", "approve", { risk: "critical" });
+    expect(decision).toEqual({ allowed: false, reason: "Critical needs a specialist." });
+  });
+
+  it("applies a workspace-pinned policy only to resources in that workspace", async () => {
+    const rows = [policy({ effect: "deny", workspaceId: "workspace-a", description: "Frozen in A." })];
+    const service = new PolicyService(stubDb(rows, auth));
+    const [inA, inB, noWorkspace] = await service.evaluateMany(auth, "requirement", "approve", [
+      { workspaceId: "workspace-a" },
+      { workspaceId: "workspace-b" },
+      {},
+    ]);
+    expect(inA).toEqual({ allowed: false, reason: "Frozen in A." });
+    expect(inB).toEqual({ allowed: true });
+    expect(noWorkspace).toEqual({ allowed: true });
   });
 
   it("lets deny win over an allow at higher priority", async () => {

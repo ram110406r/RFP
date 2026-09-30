@@ -85,6 +85,7 @@ export const PERMISSIONS = [
   "tender:review",
   "tender:approve",
   "tender:submit",
+  "tender:match_profile:update",
   "question:read",
   "question:create",
   "question:update",
@@ -164,10 +165,6 @@ export const WORKSPACE_SCOPED_PERMISSIONS: readonly Permission[] = [
   "ai.answer.improve",
   "ai.answer.analyze",
   "ai.tender.analyze",
-  "ai.knowledge.read",
-  "ai.knowledge.create",
-  "ai.knowledge.update",
-  "ai.knowledge.approve",
 ] as const;
 
 const ALL_RFP: Permission[] = [
@@ -240,6 +237,13 @@ const ALL_AI_ANSWER: Permission[] = [
   "ai.answer.analyze",
 ];
 const ALL_AI_TENDER: Permission[] = ["ai.tender.analyze"];
+/**
+ * Knowledge sources and response templates belong to the organization, not to
+ * a workspace, so these are decided by role alone (they are deliberately not
+ * in WORKSPACE_SCOPED_PERMISSIONS). Curating what feeds every AI answer is a
+ * senior act: only OWNER, ADMIN, RFP_MANAGER and SME may create, edit or
+ * approve it; everyone else may read.
+ */
 const ALL_AI_KNOWLEDGE: Permission[] = [
   "ai.knowledge.read",
   "ai.knowledge.create",
@@ -312,6 +316,7 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     ...ALL_AI_ANSWER,
     ...ALL_AI_TENDER,
     ...ALL_AI_KNOWLEDGE,
+    "tender:match_profile:update",
     "org:read",
     "org:update",
     "member:read",
@@ -337,6 +342,7 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     ...ALL_AI_ANSWER,
     ...ALL_AI_TENDER,
     ...ALL_AI_KNOWLEDGE,
+    "tender:match_profile:update",
     "org:read",
     "org:update",
     "member:read",
@@ -346,7 +352,10 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "activity:read",
     "audit:read",
   ],
-  /** Runs the RFP pipeline. No rfp:delete and no org administration. */
+  /**
+   * Runs the RFP pipeline and the teams inside their own workspaces. No
+   * rfp:delete, no inviting, and no org administration.
+   */
   RFP_MANAGER: [
     "rfp:create",
     "rfp:read",
@@ -366,9 +375,20 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     ...ALL_AI_ANSWER,
     ...ALL_AI_TENDER,
     ...ALL_AI_KNOWLEDGE,
+    "tender:match_profile:update",
     "workspace:read",
     "workspace:member:read",
+    /*
+     * Team and workspace-membership management, but only inside workspaces the
+     * manager belongs to: these are workspace-scoped, so they are granted per
+     * workspace membership rather than organization-wide.
+     */
+    "workspace:member:manage",
     "team:read",
+    "team:create",
+    "team:update",
+    "team:archive",
+    "team:member:manage",
     "assignment:create",
     "assignment:read",
     "assignment:update",
@@ -392,7 +412,7 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     ...ALL_REQUIREMENT,
     ...ALL_AI_ANSWER,
     ...ALL_AI_TENDER,
-    ...ALL_AI_KNOWLEDGE,
+    "ai.knowledge.read",
     "workspace:read",
     "workspace:member:read",
     "team:read",
@@ -416,7 +436,6 @@ export const ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
     "ai.answer.analyze",
     "ai.tender.analyze",
     "ai.knowledge.read",
-    "ai.knowledge.approve",
     "workspace:read",
     "workspace:member:read",
     "team:read",

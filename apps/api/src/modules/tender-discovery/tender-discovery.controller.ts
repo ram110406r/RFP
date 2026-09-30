@@ -46,7 +46,7 @@ export class TenderDiscoveryController {
   @Get("match-profile") @RequirePermissions("tender:read")
   matchProfile(@CurrentAuth() auth: AuthContext) { return this.discovery.matchProfile(auth); }
 
-  @Put("match-profile") @RequirePermissions("tender:update") @ZodBody(tenderMatchProfileSchema)
+  @Put("match-profile") @RequirePermissions("tender:match_profile:update") @ZodBody(tenderMatchProfileSchema)
   updateMatchProfile(@CurrentAuth() auth: AuthContext, @Body() body: TenderMatchProfileInput) { return this.discovery.updateMatchProfile(auth, body); }
 
   @Get("analytics") @RequirePermissions("tender:read") @ZodQuery(analyticsSchema)

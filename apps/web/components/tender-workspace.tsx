@@ -29,7 +29,7 @@ import {
   TendyyStatusBadge,
   toneFromStatus,
 } from "./tendyy-ui";
-import { ApiError } from "../lib/api";
+import { ApiError, type SkippedEvidence } from "../lib/api";
 import type { AnswerAnalysisResult, AnswerImprovementResult } from "@rfp-os/types";
 import type {
   AnswerGenerationPayload,
@@ -633,6 +633,8 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
     grounding?: AnswerGenerationPayload["grounding"] | null;
     reason?: string | null;
     suggestedAction?: string | null;
+    skippedEvidence?: SkippedEvidence | null;
+    template?: { id: string; name: string; version: string } | null;
   }>({ kind: null, answer: null });
   const [transformation, setTransformation] = useState("formal");
   const [reviewComment, setReviewComment] = useState("");
@@ -753,6 +755,8 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
                     grounding: payload.grounding ?? payload.generation?.grounding ?? null,
                     reason: payload.reason ?? null,
                     suggestedAction: payload.suggestedAction ?? null,
+                    skippedEvidence: payload.skippedEvidence ?? null,
+                    template: payload.template ?? null,
                   });
                 },
               }),
@@ -831,10 +835,19 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
                       grounding={draftState.grounding}
                       reason={draftState.reason}
                       suggestedAction={draftState.suggestedAction}
+                      template={draftState.template}
                     />
+                  ) : draftState.kind === "generated" && draftState.reason ? (
+                    <p role="status" className="rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+                      {draftState.reason}
+                      {draftState.suggestedAction ? ` ${draftState.suggestedAction}.` : null}
+                    </p>
                   ) : (
                     <PanelState label="No AI draft yet" />
                   )}
+                  {draftState.skippedEvidence && draftState.skippedEvidence.stale + draftState.skippedEvidence.expired > 0 ? (
+                    <SkippedEvidenceNotice skipped={draftState.skippedEvidence} />
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -868,7 +881,8 @@ export function RequirementWorkspaceClient({ tenderId, requirementId, initialOve
               ) : (
                 <div className="space-y-3">
                   {!currentAnswer ? <p className="rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Save an answer before attaching evidence.</p> : null}
-                  <EvidenceBlock title="Used in this answer" items={availableEvidence.filter((item) => selectedEvidenceIds.has(item.evidenceId))} used onRemove={currentAnswer ? removeCandidateEvidence : undefined} busy={removeEvidence.isPending} />
+                  <OutdatedCitationsNotice evidence={answerEvidence} />
+                  <EvidenceBlock title="Used in this answer" items={availableEvidence.filter((item) => selectedEvidenceIds.has(item.evidenceId))} used attached={answerEvidenceByEvidenceId} onRemove={currentAnswer ? removeCandidateEvidence : undefined} busy={removeEvidence.isPending} />
                   <EvidenceBlock title="Available evidence" items={availableEvidence} used={false} attached={answerEvidenceByEvidenceId} onAttach={currentAnswer ? attachCandidate : undefined} busy={attachEvidence.isPending} />
                 </div>
               )}
@@ -1005,6 +1019,7 @@ function DraftCard({
   grounding,
   reason,
   suggestedAction,
+  template,
 }: {
   title: string;
   answer: string;
@@ -1013,6 +1028,7 @@ function DraftCard({
   grounding?: AnswerGenerationPayload["grounding"] | null;
   reason?: string | null;
   suggestedAction?: string | null;
+  template?: { id: string; name: string; version: string } | null;
 }) {
   return (
     <RfpAnswerCard
@@ -1030,6 +1046,7 @@ function DraftCard({
             {typeof grounding?.coverage === "number" ? <InfoRow label="Coverage" value={`${Math.round(grounding.coverage * 100)}%`} /> : null}
             {reason ? <InfoRow label="Review reason" value={reason} /> : null}
             {suggestedAction ? <InfoRow label="Suggested action" value={suggestedAction} /> : null}
+            {template ? <InfoRow label="Template" value={`${template.name} v${template.version}`} /> : null}
           </div>
         ) : undefined
       }
@@ -1073,6 +1090,7 @@ function EvidenceBlock({
                 verifiedAt={item.verifiedAt ?? null}
                 used={used || attached?.has(item.evidenceId)}
               />
+              {used ? <CitationStatusNote status={attached?.get(item.evidenceId)?.citationStatus} /> : null}
               {onAttach && !attached?.has(item.evidenceId) ? (
                 <ActionButton variant="secondary" onClick={() => onAttach(item)} loading={busy}>Attach evidence</ActionButton>
               ) : null}
@@ -1086,6 +1104,41 @@ function EvidenceBlock({
         )}
       </div>
     </RfpReviewPanel>
+  );
+}
+
+const CITATION_STATUS_TEXT: Record<Exclude<NonNullable<TenderAnswerEvidence["citationStatus"]>, "current">, string> = {
+  source_stale: "This knowledge is now stale or expired. Re-verify it or re-draft the answer.",
+  source_archived: "This knowledge was archived after the answer was drafted. Re-draft without it.",
+  source_changed: "This knowledge was updated after the answer was drafted. Check the answer still matches.",
+};
+
+function CitationStatusNote({ status }: { status: TenderAnswerEvidence["citationStatus"] }) {
+  if (!status || status === "current") return null;
+  return <p className="rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">{CITATION_STATUS_TEXT[status]}</p>;
+}
+
+/** Answers keep their citations after the knowledge behind them changes; say so where it matters. */
+function OutdatedCitationsNotice({ evidence }: { evidence: TenderAnswerEvidence[] }) {
+  const outdated = evidence.filter((item) => item.citationStatus && item.citationStatus !== "current").length;
+  if (outdated === 0) return null;
+  return (
+    <p role="status" className="rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+      {outdated} citation{outdated === 1 ? "" : "s"} in this answer point at knowledge that changed since it was drafted. Review them, then regenerate if needed.
+    </p>
+  );
+}
+
+function SkippedEvidenceNotice({ skipped }: { skipped: SkippedEvidence }) {
+  const parts = [
+    skipped.stale > 0 ? `${skipped.stale} stale` : null,
+    skipped.expired > 0 ? `${skipped.expired} expired` : null,
+  ].filter(Boolean);
+  return (
+    <p role="status" className="mt-3 rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+      {parts.join(" and ")} knowledge source{skipped.stale + skipped.expired === 1 ? "" : "s"} matched this requirement but were left out because they need re-verification.{" "}
+      <Link href="/knowledge/issues?type=STALE" className="font-semibold underline">Review them</Link>
+    </p>
   );
 }
 

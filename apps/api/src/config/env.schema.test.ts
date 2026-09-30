@@ -17,6 +17,9 @@ const productionBase = {
   BETTER_AUTH_GOOGLE_CLIENT_SECRET: "google-client-secret",
   AI_PROVIDER: "groq",
   GROQ_API_KEY: "groq-key",
+  SMTP_HOST: "smtp.example.com",
+  MAIL_FROM: "TENDYY <no-reply@example.com>",
+  WEB_APP_URL: "https://app.example.com",
 };
 
 describe("envBoolean flags", () => {
@@ -65,6 +68,15 @@ describe("envBoolean flags", () => {
 describe("validateEnv production checks", () => {
   it("accepts a complete production configuration", () => {
     expect(() => validateEnv(productionBase)).not.toThrow();
+  });
+
+  it("requires a mail transport and an HTTPS web app URL", () => {
+    expect(() => validateEnv({ ...productionBase, SMTP_HOST: "" })).toThrow(/SMTP_HOST/);
+    expect(() => validateEnv({ ...productionBase, MAIL_FROM: undefined })).toThrow(/MAIL_FROM/);
+    expect(() => validateEnv({ ...productionBase, WEB_APP_URL: undefined })).toThrow(/WEB_APP_URL/);
+    expect(() => validateEnv({ ...productionBase, WEB_APP_URL: "http://app.example.com" })).toThrow(
+      /WEB_APP_URL: must use HTTPS/,
+    );
   });
 
   it("requires GROQ_API_KEY when AI_PROVIDER=groq", () => {

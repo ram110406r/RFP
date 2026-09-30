@@ -1,22 +1,17 @@
-import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import {
   accounts,
   DEMO_LOGIN_EMAIL,
   DEMO_LOGIN_PASSWORD,
-  organizationMemberRoles,
   organizationMembers,
   organizations,
   platformAdministrators,
-  permissions,
-  rolePermissions,
-  roles,
   sessions,
   users,
-  workspaceMemberRoles,
   workspaceMembers,
   workspaces,
   type Database,
@@ -31,7 +26,19 @@ import {
 
 import { DATABASE } from "../../infrastructure/database";
 import type { Env } from "../../config/env.schema";
+import { MailService } from "../../infrastructure/mail";
 import { createAuth, type Auth } from "./auth.config";
+import { PasswordLinks } from "./password-links";
+
+/**
+ * A suspended or archived organization grants nothing: its members resolve to
+ * no tenant at all rather than to a frozen one.
+ */
+const memberOfActiveOrganization = sql`exists (
+  select 1 from ${organizations}
+  where ${organizations.id} = ${organizationMembers.organizationId}
+    and ${organizations.status} = 'active'
+)`;
 
 export interface ResolvedSession {
   userId: string;
@@ -49,12 +56,20 @@ export interface MembershipSummary {
 @Injectable()
 export class AuthService {
   readonly auth: Auth;
+  readonly passwordLinks: PasswordLinks;
   private readonly developmentLoginEnabled: boolean;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     config: ConfigService<Env, true>,
+    /** Optional so tests that build AuthService by hand still get a (test-mode) mailer. */
+    @Optional() mail?: MailService,
   ) {
+    this.passwordLinks = new PasswordLinks(
+      db,
+      mail ?? new MailService(config),
+      config.get("WEB_APP_URL", { infer: true }) || "http://localhost:3000",
+    );
     this.developmentLoginEnabled =
       config.get("APP_ENV", { infer: true }) === "local" && config.get("NODE_ENV", { infer: true }) !== "production";
     this.auth = createAuth(db, {
@@ -70,7 +85,8 @@ export class AuthService {
       BETTER_AUTH_GOOGLE_CLIENT_SECRET: config.get("BETTER_AUTH_GOOGLE_CLIENT_SECRET", { infer: true }),
       SESSION_MAX_AGE_SECONDS: config.get("SESSION_MAX_AGE_SECONDS", { infer: true }),
       INVITATION_TTL_HOURS: config.get("INVITATION_TTL_HOURS", { infer: true }),
-    } as Env);
+      WEB_APP_URL: config.get("WEB_APP_URL", { infer: true }),
+    } as Env, (email) => this.passwordLinks.start(email));
   }
 
   /** Reads the session cookie. Returns null when there is no valid session. */
@@ -86,7 +102,7 @@ export class AuthService {
       userId: result.user.id,
       sessionId: session.id,
       activeOrganizationId: session.activeOrganizationId ?? null,
-      emailVerified: true,
+      emailVerified: result.user.emailVerified === true,
     };
   }
 
@@ -108,10 +124,12 @@ export class AuthService {
 
     const role = membership.role as OrgRole;
     const basePermissions = permissionsForRole(role);
-    const organizationPermissions = uniquePermissions([
-      ...organizationScopedPermissions(role, basePermissions),
-      ...(await this.loadOrganizationRolePermissions(membership.id, membership.organizationId)),
-    ]);
+    /*
+     * Permissions come from the fixed role matrix only. Custom roles were
+     * retired (their write endpoints answer 410) and migration 0035 deleted
+     * their assignments, so nothing else may widen a member's access.
+     */
+    const organizationPermissions = uniquePermissions(organizationScopedPermissions(role, basePermissions));
     const workspaceAccess = await this.loadWorkspaceAccess(
       membership.id,
       membership.organizationId,
@@ -151,6 +169,7 @@ export class AuthService {
             eq(organizationMembers.userId, session.userId),
             eq(organizationMembers.organizationId, session.activeOrganizationId),
             eq(organizationMembers.status, "active"),
+            memberOfActiveOrganization,
           ),
         )
         .limit(1);
@@ -178,6 +197,7 @@ export class AuthService {
             eq(organizationMembers.userId, session.userId),
             eq(organizationMembers.organizationId, user.organizationId),
             eq(organizationMembers.status, "active"),
+            memberOfActiveOrganization,
           ),
         )
         .limit(1);
@@ -191,8 +211,10 @@ export class AuthService {
         and(
           eq(organizationMembers.userId, session.userId),
           eq(organizationMembers.status, "active"),
+            memberOfActiveOrganization,
         ),
       )
+      .orderBy(asc(organizationMembers.joinedAt))
       .limit(1);
 
     return fallback ?? null;
@@ -208,18 +230,16 @@ export class AuthService {
       })
       .from(organizationMembers)
       .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-      .where(and(eq(organizationMembers.userId, userId), eq(organizationMembers.status, "active")));
+      .where(
+        and(
+          eq(organizationMembers.userId, userId),
+          eq(organizationMembers.status, "active"),
+          eq(organizations.status, "active"),
+        ),
+      )
+      .orderBy(asc(organizations.name));
 
     return rows.map((row) => ({ ...row, role: row.role as OrgRole }));
-  }
-
-  async markEmailVerifiedForPasswordSignup(email: string): Promise<void> {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) return;
-    await this.db
-      .update(users)
-      .set({ emailVerified: true, updatedAt: new Date() })
-      .where(eq(users.email, normalizedEmail));
   }
 
   /**
@@ -244,6 +264,7 @@ export class AuthService {
           eq(organizationMembers.userId, session.userId),
           eq(organizationMembers.organizationId, organizationId),
           eq(organizationMembers.status, "active"),
+          eq(organizations.status, "active"),
         ),
       )
       .limit(1);
@@ -292,6 +313,14 @@ export class AuthService {
       });
     }
 
+    /** The seeded demo identity is trusted locally; it has no real inbox. */
+    if (!user.emailVerified) {
+      await this.db
+        .update(users)
+        .set({ emailVerified: true, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+    }
+
     const passwordHash = await hashPassword(DEMO_LOGIN_PASSWORD);
     const [existingAccount] = await this.db
       .select({ id: accounts.id })
@@ -321,26 +350,6 @@ export class AuthService {
       userId: user.id,
       password: passwordHash,
     });
-  }
-
-  private async loadOrganizationRolePermissions(
-    organizationMemberId: string,
-    organizationId: string,
-  ): Promise<readonly Permission[]> {
-    const rows = await this.db
-      .select({ key: permissions.key })
-      .from(organizationMemberRoles)
-      .innerJoin(roles, eq(roles.id, organizationMemberRoles.roleId))
-      .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
-      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
-      .where(
-        and(
-          eq(organizationMemberRoles.organizationMemberId, organizationMemberId),
-          or(eq(roles.organizationId, organizationId), isNull(roles.organizationId)),
-        ),
-      );
-
-    return rows.map((row) => row.key as Permission);
   }
 
   private async loadWorkspaceAccess(
@@ -373,38 +382,6 @@ export class AuthService {
         uniquePermissions(inheritedPermissions),
       ]),
     );
-
-    if (memberships.length === 0) {
-      return { workspaceMemberIds, workspacePermissions };
-    }
-
-    const rows = await this.db
-      .select({
-        workspaceId: workspaceMembers.workspaceId,
-        key: permissions.key,
-      })
-      .from(workspaceMembers)
-      .innerJoin(workspaceMemberRoles, eq(workspaceMemberRoles.workspaceMemberId, workspaceMembers.id))
-      .innerJoin(roles, eq(roles.id, workspaceMemberRoles.roleId))
-      .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
-      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
-      .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
-      .where(
-        and(
-          eq(workspaceMembers.organizationMemberId, organizationMemberId),
-          eq(workspaceMembers.status, "active"),
-          eq(workspaces.organizationId, organizationId),
-          eq(workspaces.status, "active"),
-          or(eq(roles.organizationId, organizationId), isNull(roles.organizationId)),
-        ),
-      );
-
-    for (const row of rows) {
-      workspacePermissions[row.workspaceId] = uniquePermissions([
-        ...(workspacePermissions[row.workspaceId] ?? []),
-        row.key as Permission,
-      ]);
-    }
 
     return { workspaceMemberIds, workspacePermissions };
   }

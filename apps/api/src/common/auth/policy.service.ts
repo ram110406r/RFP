@@ -80,6 +80,8 @@ export class PolicyService {
       permissions: auth.permissions,
     };
     const evaluable = policies.map((policy) => ({
+      id: policy.id,
+      workspaceId: policy.workspaceId,
       effect: policy.effect,
       action: policy.action,
       resource: policy.resource,
@@ -96,18 +98,30 @@ export class PolicyService {
           })),
       ],
     }));
-    const denyReason =
-      policies.find((policy) => policy.effect === "deny")?.description ||
-      `Denied by policy on ${resource}:${action}.`;
+    const descriptionById = new Map(policies.map((policy) => [policy.id, policy.description]));
 
     return attributesList.map((attributes) => {
+      /*
+       * A policy pinned to a workspace governs only resources in that
+       * workspace. Resources with no workspace (org-level ones such as an RFP)
+       * are governed only by organization-wide policies.
+       */
+      const resourceWorkspaceId = typeof attributes.workspaceId === "string" ? attributes.workspaceId : null;
+      const applicable = evaluable.filter(
+        (policy) => !policy.workspaceId || policy.workspaceId === resourceWorkspaceId,
+      );
       const decision = evaluatePolicies(
         actor,
         { type: resource, organizationId: auth.organizationId, attributes },
         action,
-        evaluable,
+        applicable,
       );
-      return decision.allowed ? { allowed: true } : { allowed: false, reason: denyReason };
+      if (decision.allowed) return { allowed: true };
+      // The reason is the description of the deny policy that actually matched.
+      const reason =
+        (decision.policyId && descriptionById.get(decision.policyId)) ||
+        `Denied by policy on ${resource}:${action}.`;
+      return { allowed: false, reason };
     });
   }
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from "bun:test";
 import { permissionsForRole, type AuthContext } from "@rfp-os/types";
 
 import { AuthGuard, toFetchHeaders } from "./auth.guard";
-import { ALLOW_WITHOUT_ORG, IS_PUBLIC } from "./auth.decorators";
+import { ALLOW_UNVERIFIED, ALLOW_WITHOUT_ORG, IS_PUBLIC } from "./auth.decorators";
 import type { ResolvedSession } from "../../modules/auth/auth.service";
 
 interface StubOptions {
@@ -38,7 +38,10 @@ const session: ResolvedSession = {
   userId: "user-1",
   sessionId: "session-1",
   activeOrganizationId: "org-1",
+  emailVerified: true,
 };
+
+const unverifiedSession: ResolvedSession = { ...session, emailVerified: false };
 
 const authContext: AuthContext = {
   userId: "user-1",
@@ -86,6 +89,45 @@ describe("AuthGuard", () => {
     ).resolves.toBe(true);
     expect(request.auth).toBeUndefined();
     expect(request.sessionUserId).toBe("user-1");
+  });
+
+  it("rejects an unverified email on ordinary routes", async () => {
+    const guard = new AuthGuard(new Reflector(), stubAuthService({ session: unverifiedSession, authContext }));
+    await expect(guard.canActivate(contextFor({ headers: {} }))).rejects.toMatchObject({
+      response: { code: "EMAIL_VERIFICATION_REQUIRED" },
+    });
+  });
+
+  it("rejects an unverified email on @AllowWithoutOrg routes too (invitation takeover)", async () => {
+    const guard = new AuthGuard(
+      new Reflector(),
+      stubAuthService({ session: unverifiedSession, authContext: null }),
+    );
+    await expect(
+      guard.canActivate(contextFor({ headers: {} }, { [ALLOW_WITHOUT_ORG]: true })),
+    ).rejects.toMatchObject({ response: { code: "EMAIL_VERIFICATION_REQUIRED" } });
+  });
+
+  it("treats a session with unknown verification status as unverified", async () => {
+    const { emailVerified: _omitted, ...unknown } = session;
+    const guard = new AuthGuard(new Reflector(), stubAuthService({ session: unknown, authContext }));
+    await expect(guard.canActivate(contextFor({ headers: {} }))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it("admits an unverified email only to @AllowUnverified routes", async () => {
+    const guard = new AuthGuard(
+      new Reflector(),
+      stubAuthService({ session: unverifiedSession, authContext: null }),
+    );
+    const request: Record<string, unknown> = { headers: {} };
+    await expect(
+      guard.canActivate(
+        contextFor(request, { [ALLOW_UNVERIFIED]: true, [ALLOW_WITHOUT_ORG]: true }),
+      ),
+    ).resolves.toBe(true);
+    expect(request.emailVerified).toBe(false);
   });
 
   it("never takes the organization from a client-supplied header", async () => {

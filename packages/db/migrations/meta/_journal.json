@@ -246,6 +246,48 @@
       "when": 1788940800000,
       "tag": "0034_backend_owned_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788944400000,
+      "tag": "0035_retire_custom_role_assignments",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788948000000,
+      "tag": "0036_hash_invitation_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1788951600000,
+      "tag": "0037_knowledge_lifecycle_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1788955200000,
+      "tag": "0038_knowledge_documents_chunks",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1788958800000,
+      "tag": "0039_knowledge_revisions_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788962400000,
+      "tag": "0040_knowledge_claim_label_embeddings",
+      "breakpoints": true
     }
   ]
 }

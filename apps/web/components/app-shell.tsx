@@ -18,6 +18,7 @@ import {
   FilePenLine,
   FileText,
   FolderOpen,
+  Library,
   GitBranch,
   LayoutGrid,
   Menu,
@@ -31,6 +32,7 @@ import {
 
 import { useAppShellState } from "./app-shell-state-provider";
 import { useAuthSession } from "./auth-gate";
+import { OrganizationSwitcher } from "./organization-switcher";
 import { useWorkspaces } from "../lib/queries";
 import { resolveSelectedWorkspaceId, selectWorkspace, useSelectedWorkspaceId } from "../lib/workspace-selection";
 
@@ -132,6 +134,7 @@ const navigation: NavigationGroup[] = [
         icon: Brain,
         children: [
           { href: "/knowledge", label: "Knowledge", icon: Brain, exact: true },
+          { href: "/knowledge/library", label: "Library", icon: Library },
           { href: "/knowledge/sources", label: "Sources", icon: FolderOpen },
           { href: "/templates", label: "Templates", icon: ClipboardList },
           { href: "/knowledge/issues", label: "Knowledge Issues", icon: CircleAlert },
@@ -846,6 +849,7 @@ function MobileDrawer({
         <div className="mt-3">
           <SidebarSearch />
         </div>
+        <OrganizationSwitcher className="mt-3" />
 
         <div className="scrollbar-hide mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
           {navigation.map((group) => (
@@ -987,6 +991,7 @@ export function AppShell({
             <div className="mt-2.5">
               <SidebarSearch collapsed={collapsed} />
             </div>
+            {!collapsed ? <OrganizationSwitcher className="mt-2.5" /> : null}
 
             <div className="mt-3.5 flex min-h-0 flex-1 flex-col overflow-visible">
               <div

@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 
 import { acceptOnboardingInvitationToken } from "../../lib/api";
 
+/**
+ * localStorage, not sessionStorage: the verification email may open in a new
+ * tab, and that tab has to find the token to finish joining.
+ */
 const INVITATION_TOKEN_KEY = "tendyy.invitation-token";
 
 export default function JoinPage() {
@@ -15,9 +19,9 @@ export default function JoinPage() {
 
   useEffect(() => {
     const fromHash = new URLSearchParams(window.location.hash.slice(1)).get("token");
-    const nextToken = fromHash || window.sessionStorage.getItem(INVITATION_TOKEN_KEY);
+    const nextToken = fromHash || window.localStorage.getItem(INVITATION_TOKEN_KEY);
     if (fromHash) {
-      window.sessionStorage.setItem(INVITATION_TOKEN_KEY, fromHash);
+      window.localStorage.setItem(INVITATION_TOKEN_KEY, fromHash);
       window.history.replaceState(null, "", "/join");
     }
     setToken(nextToken);
@@ -26,7 +30,7 @@ export default function JoinPage() {
   const accept = useMutation({
     mutationFn: (invitationToken: string) => acceptOnboardingInvitationToken(invitationToken),
     onSuccess: async () => {
-      window.sessionStorage.removeItem(INVITATION_TOKEN_KEY);
+      window.localStorage.removeItem(INVITATION_TOKEN_KEY);
       await queryClient.invalidateQueries({ queryKey: ["onboarding", "status"] });
       router.replace("/onboarding");
     },
