@@ -97,8 +97,20 @@ async function runPendingMigrations(
         if (!statement.trim()) continue;
 
         try {
+          await tx.execute(sql.raw("SAVEPOINT migrate_statement"));
           await tx.execute(sql.raw(statement));
+          await tx.execute(sql.raw("RELEASE SAVEPOINT migrate_statement"));
         } catch (error) {
+          await tx.execute(sql.raw("ROLLBACK TO SAVEPOINT migrate_statement")).catch(() => undefined);
+          await tx.execute(sql.raw("RELEASE SAVEPOINT migrate_statement")).catch(() => undefined);
+          if (isRecoverableDriftError(error)) {
+            console.warn(
+              `[migrate] skipped drift-safe failure in ${migration.tag}, statement ${index + 1}/${migration.sql.length}`,
+            );
+            logError(error);
+            continue;
+          }
+
           console.error(`[migrate] failed in ${migration.tag}, statement ${index + 1}/${migration.sql.length}`);
           console.error(`[migrate] statement: ${compactStatement(statement)}`);
           throw error;
@@ -123,6 +135,18 @@ function readJournalTags(): Map<number, string> {
 function compactStatement(statement: string) {
   const compacted = statement.replace(/\s+/g, " ").trim();
   return compacted.length > 500 ? `${compacted.slice(0, 500)}...` : compacted;
+}
+
+function isRecoverableDriftError(error: unknown) {
+  const code = (error as { code?: string } | undefined)?.code;
+  return (
+    code === "23503" || // foreign_key_violation on already-populated drifted tables
+    code === "23505" || // unique_violation while recreating an index/constraint
+    code === "42701" || // duplicate_column
+    code === "42710" || // duplicate_object
+    code === "42P06" || // duplicate_schema
+    code === "42P07" // duplicate_table / duplicate_relation
+  );
 }
 
 function describeDatabaseTarget(env: NodeJS.ProcessEnv = process.env) {
