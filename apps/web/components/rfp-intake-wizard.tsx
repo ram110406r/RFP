@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -21,6 +21,7 @@ import {
 import type { TenderAnalysisPayload, TenderQuestion, TenderRequirement, TenderSource } from "../lib/models";
 import { useWorkspaces } from "../lib/queries";
 import { useAuthSession } from "./auth-gate";
+import { FileDropzone, formatBytes } from "./file-dropzone";
 
 type Step = 1 | 2 | 3 | 4;
 type Mode = "create" | "import";
@@ -29,10 +30,6 @@ type Upload = { id: string; name: string; size: number; status: UploadStatus; so
 
 const STEPS = ["Details", "Documents", "Configure", "Analyze"];
 const CATEGORIES = ["Technical", "Security", "Commercial", "Legal", "Compliance", "Product", "Implementation"];
-const MIME_BY_EXTENSION: Record<string, string> = {
-  pdf: "application/pdf",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-};
 const UPLOAD_FINALIZE_TIMEOUT_MS = 60_000;
 const UPLOAD_PARSE_TIMEOUT_MS = 120_000;
 
@@ -40,11 +37,9 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
   const router = useRouter();
   const session = useAuthSession();
   const workspacesQuery = useWorkspaces();
-  const fileInput = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>(1);
   const [tenderId, setTenderId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [analysis, setAnalysis] = useState<TenderAnalysisPayload | null>(null);
@@ -136,15 +131,9 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
     await run(async () => router.push(`/tenders/${await persistDetails(step)}`));
   }
 
-  async function uploadFile(file: File) {
+  async function uploadFile(file: File, mimeType: string) {
     if (!tenderId) return;
     const id = crypto.randomUUID();
-    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-    const mimeType = file.type || MIME_BY_EXTENSION[extension];
-    if (!mimeType || !MIME_BY_EXTENSION[extension]) {
-      setUploads((current) => [...current, { id, name: file.name, size: file.size, status: "failed", error: "Unsupported file type." }]);
-      return;
-    }
     setUploads((current) => [...current, { id, name: file.name, size: file.size, status: "registering" }]);
     try {
       const intent = await createTenderSourceUploadIntent(tenderId, { sourceType: "DOCUMENT", name: file.name, filename: file.name, mimeType, sizeBytes: file.size, metadata: { intakeMode: mode } });
@@ -160,8 +149,11 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
     }
   }
 
-  function addFiles(files: FileList | File[]) {
-    for (const file of Array.from(files)) void uploadFile(file);
+  function rejectFiles(files: File[]) {
+    setUploads((current) => [
+      ...current,
+      ...files.map((file) => ({ id: crypto.randomUUID(), name: file.name, size: file.size, status: "failed" as const, error: "Unsupported file type." })),
+    ]);
   }
 
   async function startAnalysis(id: string) {
@@ -233,10 +225,12 @@ export function RfpIntakeWizard({ mode }: { mode: Mode }) {
       </div> : null}
 
       {step === 2 ? <Panel title="Upload documents" description="Files use the real object-storage upload, completion, and parse pipeline.">
-        <div onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files); }} className={`flex min-h-64 flex-col items-center justify-center rounded-[var(--radius-lg)] border border-dashed px-6 text-center ${dragging ? "border-[var(--primary)] bg-[var(--primary-soft)]" : "border-[var(--border-strong)] bg-[var(--surface-muted)]"}`}>
-          <UploadIcon /><p className="mt-4 text-base font-semibold text-[var(--text)]">Upload tender documents</p><p className="mt-2 text-sm text-[var(--muted)]">Supported now: PDF and DOCX</p>
-          <button type="button" onClick={() => fileInput.current?.click()} className={`${secondary} mt-5`}>Browse files</button><input ref={fileInput} type="file" multiple accept=".pdf,.docx" className="sr-only" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.target.value = ""; }} />
-        </div>
+        <FileDropzone
+          title="Upload tender documents"
+          hint="Supported now: PDF and DOCX"
+          onFiles={(files) => { for (const { file, mimeType } of files) void uploadFile(file, mimeType); }}
+          onReject={rejectFiles}
+        />
         {uploads.length ? <div className="mt-5 space-y-3">{uploads.map((upload) => <UploadRow key={upload.id} upload={upload} />)}</div> : null}
         {mode === "create" && !uploads.length ? <p className="mt-4 text-sm text-slate-500">A manual RFP can continue without a file; real extraction counts will remain zero.</p> : null}
       </Panel> : null}
@@ -274,8 +268,6 @@ function UploadRow({ upload }: { upload: Upload }) { return <div className="flex
 function Preference({ label, text, value, toggle }: { label: string; text: string; value: boolean; toggle: () => void }) { return <div className="flex items-center justify-between gap-5 border-b border-slate-200 py-4 last:border-0"><div><p className="text-sm font-semibold text-slate-950">{label}</p><p className="mt-1 text-sm text-slate-500">{text}</p></div><button type="button" role="switch" aria-checked={value} onClick={toggle} className={`relative h-7 w-12 shrink-0 rounded-[999px] ${value ? "bg-[var(--primary)]" : "bg-slate-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-[999px] bg-white shadow transition-[left] ${value ? "left-6" : "left-1"}`} /></button></div>; }
 function Stage({ label, state, count }: { label: string; state: "done" | "active" | "pending" | "empty" | "error"; count?: number }) { return <div className="flex items-center gap-3 text-sm"><span className={`flex h-5 min-w-5 items-center justify-center rounded-[5px] border px-1 text-[10px] ${state === "done" ? "border-emerald-600 text-emerald-700" : state === "active" ? "animate-pulse border-[var(--primary)] bg-[var(--primary)] text-white" : state === "error" ? "border-rose-500 text-rose-600" : "border-slate-300 text-slate-300"}`}>{state === "done" ? "OK" : state === "active" ? "..." : state === "error" ? "!" : ""}</span><span className={state === "pending" || state === "empty" ? "text-slate-400" : "font-medium text-slate-800"}>{label}</span>{count !== undefined ? <span className="ml-auto font-bold">{count}</span> : null}</div>; }
 function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded-[10px] border border-slate-200 bg-white p-4"><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{label}</p><p className="mt-2 text-[24px] font-semibold text-slate-950">{value}</p></div>; }
-function UploadIcon() { return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-8 w-8 fill-none stroke-slate-500" strokeWidth="1.7"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>; }
-function formatBytes(bytes: number) { return bytes < 1_000_000 ? `${Math.max(1, Math.round(bytes / 1_000))} KB` : `${(bytes / 1_000_000).toFixed(1)} MB`; }
 function isUploadInProgress(status: UploadStatus) { return status !== "parsed" && status !== "failed"; }
 function uploadStatusLabel(status: UploadStatus) {
   if (status === "registering") return "Preparing";

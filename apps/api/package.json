@@ -9,7 +9,7 @@
     "start": "bun ../../scripts/run-with-env.ts bun src/main.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src --path-ignore-patterns \"**/*.db.test.ts\" --path-ignore-patterns \"**/activity-audit-events.test.ts\" --path-ignore-patterns \"**/activity-audit-isolation.test.ts\" --path-ignore-patterns \"**/assignments.service.test.ts\" --path-ignore-patterns \"**/auth.service.test.ts\" --path-ignore-patterns \"**/documents.service.test.ts\" --path-ignore-patterns \"**/onboarding.employee.test.ts\" --path-ignore-patterns \"**/onboarding.service.test.ts\" --path-ignore-patterns \"**/rfp.service.test.ts\" --path-ignore-patterns \"**/roles.service.test.ts\" --path-ignore-patterns \"**/tenders.integration.test.ts\" --path-ignore-patterns \"**/tier0-api-authorization.test.ts\" --path-ignore-patterns \"**/workspaces.service.test.ts\"",
+    "test": "bun test src --path-ignore-patterns \"**/*.db.test.ts\" --path-ignore-patterns \"**/activity-audit-events.test.ts\" --path-ignore-patterns \"**/activity-audit-isolation.test.ts\" --path-ignore-patterns \"**/assignments.service.test.ts\" --path-ignore-patterns \"**/auth.service.test.ts\" --path-ignore-patterns \"**/documents.service.test.ts\" --path-ignore-patterns \"**/onboarding.employee.test.ts\" --path-ignore-patterns \"**/onboarding.service.test.ts\" --path-ignore-patterns \"**/organizations.service.test.ts\" --path-ignore-patterns \"**/teams.service.test.ts\" --path-ignore-patterns \"**/rfp.service.test.ts\" --path-ignore-patterns \"**/roles.service.test.ts\" --path-ignore-patterns \"**/tenders.integration.test.ts\" --path-ignore-patterns \"**/tier0-api-authorization.test.ts\" --path-ignore-patterns \"**/workspaces.service.test.ts\"",
     "test:db": "bun test src --path-ignore-patterns \"**/e2e/**\" --path-ignore-patterns \"**/*.logic.test.ts\" --path-ignore-patterns \"**/*.dto.test.ts\" --path-ignore-patterns \"**/*.domain.test.ts\""
   },
   "dependencies": {
@@ -33,6 +33,7 @@
     "fflate": "^0.8.2",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.1",
+    "nodemailer": "^7",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "zod": "^3.24.2"
@@ -44,6 +45,7 @@
     "@types/bun": "latest",
     "@types/express": "^5.0.0",
     "@types/node": "^22.16.5",
+    "@types/nodemailer": "^8.0.2",
     "eslint": "^9.32.0",
     "globals": "^15.15.0",
     "typescript": "^5.9.3",

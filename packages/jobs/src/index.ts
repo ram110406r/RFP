@@ -19,3 +19,14 @@ export type { QueueJobMap, QueueName, QueueWithJobs } from "./queues";
 export { TENDER_INGESTION_JOBS, tenderCatalogReconcileJobId, tenderDiscoveryMaintenanceJobId, tenderIngestionJobId, tenderNoticeDocumentImportJobId } from "./tender-ingestion-jobs";
 export { RFP_AUTOMATION_JOBS, rfpAutomationJobId, type RfpAutomationJobName, type RfpAutomationJobPayload } from "./rfp-automation-jobs";
 export type { TenderDiscoveryMaintenanceJobPayload, TenderIngestionJobName, TenderIngestionJobPayload, TenderPortalSyncJobPayload, TenderNoticeDocumentImportJobPayload } from "./tender-ingestion-jobs";
+export {
+  KNOWLEDGE_JOBS,
+  knowledgeConflictJobId,
+  knowledgeDocumentJobId,
+  knowledgeLifecycleSweepJobId,
+  type KnowledgeConflictJobPayload,
+  type KnowledgeDocumentJobPayload,
+  type KnowledgeJobName,
+  type KnowledgeJobPayload,
+  type KnowledgeLifecycleSweepPayload,
+} from "./knowledge-jobs";

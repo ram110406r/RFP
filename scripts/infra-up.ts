@@ -19,6 +19,7 @@ async function main() {
       "redis",
       "minio",
       "opensearch",
+      "mailpit",
     ],
     { env: composeEnv },
   );

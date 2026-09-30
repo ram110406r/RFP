@@ -31,6 +31,8 @@ export interface AuthorizationPolicyCondition {
 }
 
 export interface AuthorizationPolicy {
+  /** Optional; echoed back as `policyId` when this policy is the one that denies. */
+  id?: string;
   effect: PolicyEffect;
   action: string;
   resource: string;
@@ -55,6 +57,8 @@ export interface AuthorizationInput {
 export interface AuthorizationDecision {
   allowed: boolean;
   reason?: string;
+  /** The deny policy that decided, when there was one and it carried an id. */
+  policyId?: string;
 }
 
 export function can(input: AuthorizationInput): AuthorizationDecision {
@@ -93,7 +97,7 @@ export function evaluatePolicies(
 
   const denied = matching.find((policy) => policy.effect === "deny");
   if (denied) {
-    return { allowed: false, reason: "Denied by policy." };
+    return { allowed: false, reason: "Denied by policy.", ...(denied.id ? { policyId: denied.id } : {}) };
   }
 
   return { allowed: true };

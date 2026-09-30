@@ -16,6 +16,7 @@ import { DocumentProcessor, isOcrRequired, isPermanent } from "./document-proces
 import { ExtractionRepository } from "./extraction.repository";
 import { RequirementExtractionProcessor } from "./requirement-extraction.processor";
 import { RequirementExtractionRepository } from "./requirement-extraction.repository";
+import { addOrRetryJob } from "../shared/queue";
 
 const logger = createLogger("worker:documents");
 
@@ -84,10 +85,9 @@ export function createDocumentsWorker(connection: IORedis): Worker {
       } catch (error) {
         if (name === DOCUMENT_JOBS.PARSE && isOcrRequired(error)) {
           const jobId = documentJobId(DOCUMENT_JOBS.OCR, job.data.documentId, job.data.version);
-          const existingJob = await queue.getJob(jobId);
-          if (!existingJob) {
-            await queue.add(DOCUMENT_JOBS.OCR, job.data, { ...jobDefaults(), jobId });
-          }
+          // A failed OCR job under this id is retried, not treated as queued —
+          // otherwise the document would sit in `processing` with nothing running.
+          await addOrRetryJob(queue, DOCUMENT_JOBS.OCR, job.data, jobId);
           logger.info(
             {
               jobId: job.id,
@@ -177,24 +177,14 @@ async function enqueueRequirementExtractionIfReady(
   if (existing?.status === "succeeded") return;
 
   const jobId = documentJobId(DOCUMENT_JOBS.REQUIREMENT_EXTRACT, payload.documentId, payload.version);
-  const existingJob = await queue.getJob(jobId);
-  if (existingJob) return;
-
-  await queue.add(
+  await addOrRetryJob(
+    queue,
     DOCUMENT_JOBS.REQUIREMENT_EXTRACT,
     {
       ...payload,
       documentExtractionId: extraction.id,
     } satisfies RequirementExtractionJobPayload,
-    { ...jobDefaults(), jobId },
+    jobId,
   );
 }
 
-/**
- * Options for the follow-up jobs this worker enqueues itself (OCR, requirement
- * extraction). They take the full shared defaults, attempts and backoff
- * included, so a transient failure there is retried like a producer-added job.
- */
-function jobDefaults() {
-  return { ...DEFAULT_JOB_OPTIONS };
-}

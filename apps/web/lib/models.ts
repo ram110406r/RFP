@@ -379,6 +379,8 @@ export interface WorkspaceSummary {
   status: string;
   createdAt: string;
   updatedAt: string;
+  /** Active members; returned by the list endpoint. */
+  memberCount?: number;
 }
 
 export interface OrganizationSummary {
@@ -452,6 +454,22 @@ export interface TeamSummary {
   status: string;
   createdAt: string;
   updatedAt: string;
+  /** Returned by the list endpoint. */
+  memberCount?: number;
+}
+
+/** GET /auth/me: who the caller is in the active organization, and what they may do. */
+export interface AuthMe {
+  userId: string | null;
+  organizationId: string | null;
+  role: string | null;
+  /** Union across workspaces. Use organizationPermissions/workspacePermissions to decide per scope. */
+  permissions: string[];
+  organizationPermissions: string[];
+  workspacePermissions: Record<string, string[]>;
+  workspaceIds: string[];
+  emailVerified: boolean;
+  memberships: Array<{ organizationId: string; organizationName: string; role: string }>;
 }
 
 export interface WorkspaceMemberSummary {
@@ -626,6 +644,9 @@ export interface TenderAnswerEvidence {
   freshness: string;
   verifiedAt: string | null;
   metadata: Record<string, unknown>;
+  /** Maintained by the knowledge sweep: has the cited knowledge changed since drafting? */
+  citationStatus?: "current" | "source_stale" | "source_archived" | "source_changed";
+  citationCheckedAt?: string | null;
   createdAt: string;
 }
 
@@ -786,11 +807,18 @@ export interface AnswerWorkspacePayload {
   availableEvidence: TenderAnswerEvidence[];
 }
 
+export type KnowledgeReviewState = "fresh" | "stale" | "expiring" | "expired" | "unverified";
+
 export interface KnowledgeClaim {
   id?: string;
   label: string;
   value: string;
   confidence: number;
+  status?: "ACTIVE" | "SUGGESTED" | "REJECTED";
+  origin?: "manual" | "extracted";
+  documentId?: string | null;
+  chunkId?: string | null;
+  updatedAt?: string;
 }
 
 export interface KnowledgeVersion {
@@ -798,6 +826,14 @@ export interface KnowledgeVersion {
   version: string;
   date: string;
   note: string;
+  snapshot?: {
+    name?: string;
+    summary?: string;
+    authority?: string;
+    claims?: Array<{ id: string; label: string; value: string; confidence: number }>;
+  } | null;
+  createdBy?: string | null;
+  createdAt?: string;
 }
 
 export interface KnowledgeConflict {
@@ -807,10 +843,54 @@ export interface KnowledgeConflict {
   recommended: string;
   action: string;
   status: "OPEN" | "RESOLVED";
+  detectedBy?: "manual" | "engine";
   resolvedAt: string | null;
   resolvedBy: string | null;
   resolutionNote: string | null;
+  createdAt?: string;
   variants: Array<{ id: string; label: string; value: string }>;
+}
+
+export interface KnowledgeRevision {
+  id: string;
+  status: "PENDING" | "APPLIED" | "REJECTED";
+  baseVersion: string;
+  changes: {
+    name?: string;
+    type?: string;
+    summary?: string;
+    authority?: "high" | "medium" | "low";
+    claims?: Array<{ id?: string; label: string; value: string; confidence?: number }>;
+  };
+  note: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type KnowledgeDocumentStatus = "uploaded" | "queued" | "processing" | "parsed" | "embedded" | "failed";
+
+export interface KnowledgeDocument {
+  id: string;
+  sourceId: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  version: number;
+  status: KnowledgeDocumentStatus;
+  failureReason: string | null;
+  pageCount: number | null;
+  chunkCount: number;
+  processedAt: string | null;
+  uploadedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeUsage {
+  tenders: Array<{ tenderId: string; tenderName: string; citations: number; flaggedCitations: number; lastCitedAt: string }>;
+  totalCitations: number;
 }
 
 export interface KnowledgeItem {
@@ -822,17 +902,25 @@ export interface KnowledgeItem {
   version: string;
   authority: string;
   status: "DRAFT" | "ACTIVE" | "ARCHIVED";
+  reviewState?: KnowledgeReviewState | null;
+  daysUntilExpiry?: number | null;
   ownerId: string;
   lastVerified: string | null;
   lastUpdated: string;
   expiresAt: string | null;
   summary: string;
   metadata: Record<string, unknown>;
+  usageCount?: number;
+  lastUsedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   claims?: KnowledgeClaim[];
+  suggestedClaims?: KnowledgeClaim[];
   versions?: KnowledgeVersion[];
   conflicts?: KnowledgeConflict[];
+  pendingRevision?: KnowledgeRevision | null;
+  documents?: KnowledgeDocument[];
+  usage?: KnowledgeUsage;
 }
 
 export interface KnowledgeListPayload {
@@ -842,9 +930,36 @@ export interface KnowledgeListPayload {
   pageSize: number;
 }
 
+export interface KnowledgeSummaryCounts {
+  total: number;
+  draft: number;
+  active: number;
+  archived: number;
+  stale: number;
+  unverified: number;
+  expired: number;
+  expiring: number;
+  documentBacked: number;
+  templates: number;
+  conflicts: number;
+  pendingRevisions: number;
+  suggestedClaims: number;
+  processingDocuments: number;
+  openIssues: number;
+}
+
+export interface KnowledgeSummaryPayload {
+  counts: KnowledgeSummaryCounts;
+  items: KnowledgeItem[];
+  attention: KnowledgeItem[];
+  generatedAt: string;
+}
+
+export type KnowledgeIssueType = "DRAFT" | "REVISION" | "UNVERIFIED" | "STALE" | "EXPIRED" | "EXPIRING_SOON" | "CONFLICT";
+
 export interface KnowledgeIssue {
   id: string;
-  type: "DRAFT" | "STALE" | "EXPIRED" | "EXPIRING_SOON" | "CONFLICT";
+  type: KnowledgeIssueType;
   status: "OPEN" | "RESOLVED";
   title: string;
   detail: string;
@@ -862,6 +977,8 @@ export interface KnowledgeIssuesPayload {
   counts: {
     total: number;
     draft: number;
+    revision: number;
+    unverified: number;
     stale: number;
     expired: number;
     expiring_soon: number;

@@ -5,10 +5,13 @@ import type {
 
 import type {
   AnswerGenerationPayload,
+  AuthMe,
   AuditLogSummary,
+  KnowledgeDocument,
   KnowledgeIssuesPayload,
   KnowledgeItem,
   KnowledgeListPayload,
+  KnowledgeSummaryPayload,
   ResponseTemplate,
   ResponseTemplatesPayload,
   DashboardOverview,
@@ -78,6 +81,15 @@ export interface TenderDiscoveryParams {
   cursor?: string;
 }
 
+/** Knowledge that matched a requirement but was left out of a draft because it is stale or expired. */
+export interface SkippedEvidence {
+  stale: number;
+  expired: number;
+  sourceIds: string[];
+}
+
+export type KnowledgeIssueAction = "approve" | "verify" | "archive" | "resolve_conflict" | "apply_revision" | "reject_revision";
+
 export interface KnowledgeListParams {
   status?: string | null;
   category?: string;
@@ -86,8 +98,9 @@ export interface KnowledgeListParams {
   ownerId?: string;
   sourceKind?: string;
   expires?: "expired" | "expiring" | "active" | "all";
-  reviewState?: "draft" | "stale" | "expired" | "expiring" | "healthy" | "all";
+  reviewState?: "draft" | "stale" | "expired" | "expiring" | "unverified" | "healthy" | "all";
   search?: string;
+  sort?: "updatedAt:desc" | "updatedAt:asc" | "name:asc" | "lastVerified:asc" | "lastUsed:desc" | "usage:desc";
   page?: number;
   pageSize?: number;
 }
@@ -104,7 +117,7 @@ export type KnowledgeSourceInput = {
   expiresAt?: string | null;
   sourceKind?: string;
   metadata?: Record<string, unknown>;
-  claims?: Array<{ label: string; value: string; confidence?: number }>;
+  claims?: Array<{ id?: string; label: string; value: string; confidence?: number }>;
 };
 
 export type ResponseTemplateInput = {
@@ -173,6 +186,7 @@ export type OnboardingStatus = {
   workspaceId: string | null;
   workspace: { id: string; name: string; slug: string } | null;
   membership: { id: string; organizationId: string; organizationName: string; role: string } | null;
+  memberships?: Array<{ organizationId: string; organizationName: string; role: string }>;
   invitations: Array<{ id: string; organizationId: string; organizationName: string; workspaceId: string | null; workspaceName: string | null; proposedTeamId: string | null; proposedTeamName: string | null; proposedDepartment: string | null; role: string; status: string; expiresAt: string }>;
   controlledValues: { departments: string[]; jobTitles: string[] };
 };
@@ -307,6 +321,24 @@ export async function removeOrganizationMember(userId: string, init?: ApiInit) {
   });
 }
 
+export async function resendOrganizationInvitation(invitationId: string, init?: ApiInit) {
+  return requestJson<OrganizationInvitationCreated>(`/organizations/current/invitations/${invitationId}/resend`, {
+    ...init,
+    method: "POST",
+  });
+}
+
+export async function fetchAuthMe(init?: ApiInit) {
+  return requestJson<AuthMe>("/auth/me", init);
+}
+
+export async function activateOrganization(organizationId: string, init?: ApiInit) {
+  return requestJson<{ activated: unknown }>(`/auth/organizations/${organizationId}/activate`, {
+    ...init,
+    method: "POST",
+  });
+}
+
 export async function revokeOrganizationInvitation(invitationId: string, init?: ApiInit) {
   return requestJson<OrganizationInvitationSummary>(`/organizations/current/invitations/${invitationId}`, {
     ...init,
@@ -369,6 +401,10 @@ export async function updateWorkspace(
 
 export async function archiveWorkspace(workspaceId: string, init?: ApiInit) {
   return requestJson<WorkspaceSummary>(`/workspaces/${workspaceId}/archive`, { ...init, method: "POST" });
+}
+
+export async function unarchiveWorkspace(workspaceId: string, init?: ApiInit) {
+  return requestJson<WorkspaceSummary>(`/workspaces/${workspaceId}/unarchive`, { ...init, method: "POST" });
 }
 
 export async function addWorkspaceMember(workspaceId: string, organizationMemberId: string, init?: ApiInit) {
@@ -864,6 +900,15 @@ export async function createTenderSourceUploadIntent(
   });
 }
 
+/**
+ * PUTs bytes to a presigned object-storage URL. Shared by tender sources and
+ * knowledge documents; the error messages name the likely misconfiguration
+ * (storage endpoint, CORS) because that is almost always the cause.
+ */
+export async function uploadBytesToStorage(uploadUrl: string, file: File, mimeType: string, timeoutMs = 60_000) {
+  return uploadTenderSourceBytes(uploadUrl, file, mimeType, timeoutMs);
+}
+
 export async function uploadTenderSourceBytes(uploadUrl: string, file: File, mimeType: string, timeoutMs = 60_000) {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
@@ -1015,6 +1060,8 @@ export async function generateRequirementAnswer(tenderId: string, requirementId:
     grounding?: AnswerGenerationPayload["grounding"] | null;
     reason?: string | null;
     suggestedAction?: string | null;
+    skippedEvidence?: SkippedEvidence | null;
+    template?: { id: string; name: string; version: string } | null;
   }>(`/tenders/${tenderId}/requirements/${requirementId}/answer/generate`, {
     ...init,
     method: "POST",
@@ -1131,15 +1178,7 @@ export async function fetchKnowledgeList(
 }
 
 export async function fetchKnowledgeSummary(init?: ApiInit) {
-  return requestJson<{
-    counts: { total: number; draft: number; active: number; archived: number; stale: number; expired?: number; expiring?: number; templates?: number; conflicts?: number };
-    items: KnowledgeListPayload["items"];
-    attention: KnowledgeListPayload["items"];
-  }>(`/knowledge/summary`, init);
-}
-
-export async function fetchKnowledgeItem(id: string, init?: ApiInit) {
-  return requestJson<KnowledgeItem>(`/knowledge/${id}`, init);
+  return requestJson<KnowledgeSummaryPayload>(`/knowledge/summary`, init);
 }
 
 export async function createKnowledge(
@@ -1150,32 +1189,6 @@ export async function createKnowledge(
     ...init,
     method: "POST",
     body: JSON.stringify(body),
-  });
-}
-
-export async function updateKnowledge(
-  id: string,
-  body: Partial<KnowledgeSourceInput>,
-  init?: ApiInit,
-) {
-  return requestJson<KnowledgeItem>(`/knowledge/${id}`, {
-    ...init,
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
-}
-
-export async function approveKnowledge(id: string, init?: ApiInit) {
-  return requestJson<KnowledgeItem>(`/knowledge/${id}/approve`, {
-    ...init,
-    method: "POST",
-  });
-}
-
-export async function archiveKnowledge(id: string, init?: ApiInit) {
-  return requestJson<KnowledgeItem>(`/knowledge/${id}/archive`, {
-    ...init,
-    method: "POST",
   });
 }
 
@@ -1213,6 +1226,49 @@ export async function verifyKnowledgeSource(id: string, body: { note?: string; e
   return requestJson<KnowledgeItem>(`/knowledge/sources/${id}/verify`, { ...init, method: "POST", body: JSON.stringify(body) });
 }
 
+export async function applyKnowledgeRevision(sourceId: string, revisionId: string, body: { note?: string } = {}, init?: ApiInit) {
+  return requestJson<KnowledgeItem>(`/knowledge/sources/${sourceId}/revisions/${revisionId}/apply`, { ...init, method: "POST", body: JSON.stringify(body) });
+}
+
+export async function rejectKnowledgeRevision(sourceId: string, revisionId: string, body: { note?: string } = {}, init?: ApiInit) {
+  return requestJson<KnowledgeItem>(`/knowledge/sources/${sourceId}/revisions/${revisionId}/reject`, { ...init, method: "POST", body: JSON.stringify(body) });
+}
+
+export async function decideKnowledgeClaims(
+  sourceId: string,
+  body: { claimIds: string[]; decision: "accept" | "reject" },
+  init?: ApiInit,
+) {
+  return requestJson<KnowledgeItem>(`/knowledge/sources/${sourceId}/claims/decisions`, { ...init, method: "POST", body: JSON.stringify(body) });
+}
+
+export async function fetchKnowledgeDocuments(sourceId: string, init?: ApiInit) {
+  return requestJson<{ items: KnowledgeDocument[] }>(`/knowledge/sources/${sourceId}/documents`, init);
+}
+
+export async function createKnowledgeDocumentUpload(
+  sourceId: string,
+  body: { filename: string; mimeType: string; sizeBytes: number },
+  init?: ApiInit,
+) {
+  return requestJson<{ documentId: string; uploadUrl: string; expiresAt: string; document: KnowledgeDocument }>(
+    `/knowledge/sources/${sourceId}/documents`,
+    { ...init, method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function completeKnowledgeDocumentUpload(sourceId: string, documentId: string, init?: ApiInit) {
+  return requestJson<KnowledgeDocument>(`/knowledge/sources/${sourceId}/documents/${documentId}/complete`, { ...init, method: "POST" });
+}
+
+export async function reprocessKnowledgeDocument(sourceId: string, documentId: string, init?: ApiInit) {
+  return requestJson<KnowledgeDocument>(`/knowledge/sources/${sourceId}/documents/${documentId}/reprocess`, { ...init, method: "POST" });
+}
+
+export async function deleteKnowledgeDocument(sourceId: string, documentId: string, init?: ApiInit) {
+  return requestJson<{ deleted: boolean }>(`/knowledge/sources/${sourceId}/documents/${documentId}`, { ...init, method: "DELETE" });
+}
+
 export async function fetchKnowledgeIssues(
   params: { type?: string; status?: "OPEN" | "RESOLVED" | "ALL"; search?: string; page?: number; pageSize?: number } = {},
   init?: ApiInit,
@@ -1228,7 +1284,7 @@ export async function fetchKnowledgeIssues(
 
 export async function resolveKnowledgeIssue(
   id: string,
-  body: { action: "approve" | "verify" | "archive" | "resolve_conflict"; note?: string },
+  body: { action: KnowledgeIssueAction; note?: string },
   init?: ApiInit,
 ) {
   return requestJson<unknown>(`/knowledge/issues/${encodeURIComponent(id)}/resolve`, { ...init, method: "POST", body: JSON.stringify(body) });
@@ -1245,10 +1301,6 @@ export async function fetchResponseTemplates(
   query.set("page", String(params.page ?? 1));
   query.set("pageSize", String(params.pageSize ?? 25));
   return requestJson<ResponseTemplatesPayload>(`/knowledge/templates?${query.toString()}`, init);
-}
-
-export async function fetchResponseTemplate(id: string, init?: ApiInit) {
-  return requestJson<ResponseTemplate>(`/knowledge/templates/${id}`, init);
 }
 
 export async function createResponseTemplate(body: ResponseTemplateInput, init?: ApiInit) {

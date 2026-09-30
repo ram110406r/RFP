@@ -53,6 +53,12 @@ export class WorkspacesController {
     return this.workspaces.archive(auth, workspaceId);
   }
 
+  @Post(":workspaceId/unarchive")
+  @RequirePermissions("workspace:archive")
+  async unarchive(@CurrentAuth() auth: AuthContext, @Param("workspaceId") workspaceId: string) {
+    return this.workspaces.unarchive(auth, workspaceId);
+  }
+
   @Get(":workspaceId/members")
   @RequirePermissions("workspace:member:read")
   async listMembers(@CurrentAuth() auth: AuthContext, @Param("workspaceId") workspaceId: string) {

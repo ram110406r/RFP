@@ -8,7 +8,12 @@ import {
 import { Reflector } from "@nestjs/core";
 
 import { AuthService } from "../../modules/auth/auth.service";
-import { ALLOW_WITHOUT_ORG, IS_PUBLIC, type RequestWithAuth } from "./auth.decorators";
+import {
+  ALLOW_UNVERIFIED,
+  ALLOW_WITHOUT_ORG,
+  IS_PUBLIC,
+  type RequestWithAuth,
+} from "./auth.decorators";
 
 /**
  * Establishes who is calling and which tenant they are acting in, for every
@@ -50,7 +55,12 @@ export class AuthGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    if (session.emailVerified === false && !allowWithoutOrg) {
+    const allowUnverified = this.reflector.getAllAndOverride<boolean>(ALLOW_UNVERIFIED, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (session.emailVerified !== true && !allowUnverified) {
       throw new ForbiddenException({
         code: "EMAIL_VERIFICATION_REQUIRED",
         message: "Verify your email address before accessing company data.",

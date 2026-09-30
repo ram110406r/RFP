@@ -5,7 +5,9 @@ import {
   type EvidenceRetrievalResult,
   type EvidenceType,
   clampEvidenceScore,
+  EVIDENCE_TYPES,
   evidenceConfidenceFromScores,
+  KNOWLEDGE_STALE_AFTER_DAYS,
 } from "@rfp-os/types";
 
 const AUTHORITY_SCORE: Record<EvidenceAuthority, number> = {
@@ -41,9 +43,7 @@ export function normalizeEvidenceType(value: string): EvidenceType {
   if (normalized === "TENDER_DOCUMENT") return "DOCUMENT";
   if (normalized === "KNOWLEDGE_SOURCE") return "KNOWLEDGE";
   if (normalized === "MANUAL_NOTE") return "RECORD";
-  if (normalized === "URL" || normalized === "DOCUMENT" || normalized === "KNOWLEDGE" || normalized === "SOURCE" || normalized === "RECORD") {
-    return normalized;
-  }
+  if ((EVIDENCE_TYPES as readonly string[]).includes(normalized)) return normalized as EvidenceType;
   return "RECORD";
 }
 
@@ -84,9 +84,10 @@ export function classifyEvidenceFreshness(input: FreshnessInput): EvidenceFreshn
   if (!referenceDate) return "UNKNOWN";
 
   const ageDays = (now.getTime() - referenceDate.getTime()) / 86_400_000;
+  // Scoring bands; the STALE cut-off is the shared knowledge rule so drafting
+  // skips exactly the sources the Knowledge Brain reports as stale.
   if (ageDays <= 90) return "FRESH";
-  if (ageDays <= 180) return "AGING";
-  if (ageDays <= 365) return "STALE";
+  if (ageDays <= KNOWLEDGE_STALE_AFTER_DAYS) return "AGING";
   return "STALE";
 }
 
@@ -164,6 +165,41 @@ export function selectEvidenceCandidates(
   }
 
   return selected;
+}
+
+export interface EvidenceSkipReport {
+  stale: number;
+  expired: number;
+  /** Sources (not candidates) behind the skipped evidence, for "verify these" links. */
+  sourceIds: string[];
+}
+
+/**
+ * Evidence that scored well enough to be used but was dropped for freshness.
+ * Drafting reports this so a thin answer says why ("3 matching sources are
+ * stale") instead of silently returning INSUFFICIENT_EVIDENCE.
+ */
+export function reportSkippedEvidence(
+  candidates: EvidenceRetrievalResult[],
+  options: { minFinalScore?: number; includeStale?: boolean } = {},
+): EvidenceSkipReport {
+  const minFinalScore = options.minFinalScore ?? 0.55;
+  const bySource = new Map<string, "STALE" | "EXPIRED">();
+  for (const candidate of candidates) {
+    if (candidate.freshness !== "EXPIRED" && (options.includeStale || candidate.freshness !== "STALE")) continue;
+    // Score as if fresh: the question is whether freshness was the only reason it lost.
+    const asFresh = scoreCandidate({ ...candidate, freshnessScore: 1 });
+    if (asFresh < minFinalScore) continue;
+    const previous = bySource.get(candidate.sourceId);
+    if (previous !== "EXPIRED") bySource.set(candidate.sourceId, candidate.freshness as "STALE" | "EXPIRED");
+  }
+  let stale = 0;
+  let expired = 0;
+  for (const freshness of bySource.values()) {
+    if (freshness === "EXPIRED") expired += 1;
+    else stale += 1;
+  }
+  return { stale, expired, sourceIds: [...bySource.keys()] };
 }
 
 export function toEvidenceReference(answerId: string, candidate: EvidenceRetrievalResult): EvidenceReference {

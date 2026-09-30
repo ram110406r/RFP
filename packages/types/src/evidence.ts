@@ -1,4 +1,8 @@
-export const EVIDENCE_TYPES = ["DOCUMENT", "KNOWLEDGE", "SOURCE", "URL", "RECORD"] as const;
+/**
+ * CHUNK is a passage of an uploaded knowledge document; DOCUMENT_PAGE is a
+ * page of the tender's own parsed documents (context, not proof).
+ */
+export const EVIDENCE_TYPES = ["DOCUMENT", "KNOWLEDGE", "SOURCE", "URL", "RECORD", "CHUNK", "DOCUMENT_PAGE"] as const;
 export type EvidenceType = (typeof EVIDENCE_TYPES)[number];
 
 export const EVIDENCE_AUTHORITIES = [

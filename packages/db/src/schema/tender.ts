@@ -442,10 +442,20 @@ export const tenderAnswerEvidence = pgTable(
     freshness: evidenceFreshnessEnum("freshness").notNull().default("UNKNOWN"),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    /**
+     * Whether the cited knowledge still says what it said when the answer was
+     * drafted. Maintained by the worker's knowledge lifecycle sweep.
+     */
+    citationStatus: text("citation_status")
+      .$type<"current" | "source_stale" | "source_archived" | "source_changed">()
+      .notNull()
+      .default("current"),
+    citationCheckedAt: timestamp("citation_checked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("tender_answer_evidence_org_idx").on(t.organizationId),
+    index("tender_answer_evidence_citation_status_idx").on(t.citationStatus),
     index("tender_answer_evidence_answer_idx").on(t.answerId),
     index("tender_answer_evidence_source_idx").on(t.sourceId),
     uniqueIndex("tender_answer_evidence_answer_evidence_uq").on(

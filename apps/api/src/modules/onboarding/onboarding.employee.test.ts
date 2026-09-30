@@ -14,6 +14,7 @@ import {
 
 import { OrganizationsService } from "../organizations/organizations.service";
 import { OnboardingService } from "./onboarding.service";
+import { hashInvitationToken } from "../organizations/invitation-token";
 
 const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
 const dbTest = shouldRunDbTests ? test : test.skip;
@@ -28,8 +29,15 @@ let employeeId = "";
 let attackerId = "";
 
 const recorder = { record: async () => undefined };
-const organizationsService = new OrganizationsService(db, { get: () => 168 } as never, recorder as never, recorder as never);
-const service = new OnboardingService(db, organizationsService);
+const mailer = { sendInvitation: async () => undefined };
+const organizationsService = new OrganizationsService(
+  db,
+  { get: (key: string) => (key === "WEB_APP_URL" ? "http://localhost:3000" : 168) } as never,
+  recorder as never,
+  recorder as never,
+  mailer as never,
+);
+const service = new OnboardingService(db, organizationsService, recorder as never);
 
 describe("OnboardingService employee journey", () => {
   dbTest("joins an invited employee without creating tenancy and rejects another identity", async () => {
@@ -48,29 +56,31 @@ describe("OnboardingService employee journey", () => {
     const [workspace] = await db.insert(workspaces).values({ organizationId, name: "Existing Workspace", slug: `existing-${suffix}` }).returning();
     await db.insert(workspaceMembers).values({ workspaceId: workspace!.id, organizationMemberId: ownerMembership!.id });
 
-    const [invitation] = await db.insert(invitations).values({
+    const invitationToken = randomBytes(32).toString("base64url");
+    const mismatchToken = randomBytes(32).toString("base64url");
+    await db.insert(invitations).values({
       organizationId,
       workspaceId: workspace!.id,
       email: employeeEmail,
       role: "REVIEWER",
       proposedDepartment: "security",
-      token: randomBytes(32).toString("base64url"),
+      tokenHash: hashInvitationToken(invitationToken),
       invitedBy: owner!.id,
       expiresAt: new Date(Date.now() + 86_400_000),
-    }).returning();
-    const [mismatchInvitation] = await db.insert(invitations).values({
+    });
+    await db.insert(invitations).values({
       organizationId,
       workspaceId: workspace!.id,
       email: employeeEmail,
       role: "VIEWER",
-      token: randomBytes(32).toString("base64url"),
+      tokenHash: hashInvitationToken(mismatchToken),
       invitedBy: owner!.id,
       expiresAt: new Date(Date.now() + 86_400_000),
-    }).returning();
+    });
 
     let mismatchCode = "";
     try {
-      await organizationsService.acceptInvitation(attackerId, mismatchInvitation!.token);
+      await organizationsService.acceptInvitation(attackerId, mismatchToken);
     } catch (error) {
       mismatchCode = (error as { response?: { code?: string } }).response?.code ?? "";
     }
@@ -90,9 +100,9 @@ describe("OnboardingService employee journey", () => {
     }
     expect(companyStartBlocked).toBe(true);
 
-    const accepted = await service.acceptInvitationToken(employeeId, invitation!.token);
+    const accepted = await service.acceptInvitationToken(employeeId, invitationToken);
     expect(accepted?.organizationId).toBe(organizationId);
-    await service.acceptInvitationToken(employeeId, invitation!.token);
+    await service.acceptInvitationToken(employeeId, invitationToken);
 
     let companyWriteBlocked = false;
     try {
@@ -120,7 +130,7 @@ describe("OnboardingService employee journey", () => {
     const completed = await service.status(employeeId);
     expect(completed.needsOnboarding).toBe(false);
 
-    const retryAfterCompletion = await service.acceptInvitationToken(employeeId, invitation!.token);
+    const retryAfterCompletion = await service.acceptInvitationToken(employeeId, invitationToken);
     expect(retryAfterCompletion?.completed).toBe(true);
     expect((await service.status(employeeId)).needsOnboarding).toBe(false);
 

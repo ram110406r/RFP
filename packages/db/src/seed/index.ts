@@ -221,6 +221,8 @@ export async function seedDevelopmentData() {
           jobTitle: p.role,
           memberRole: p.role,
           status: "active",
+          /** Seeded demo identities have no real inbox; treat them as verified. */
+          emailVerified: true,
           lastActiveAt: new Date(),
         })
         .returning();

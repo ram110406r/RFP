@@ -28,6 +28,7 @@ import {
   assignments,
   files,
   knowledgeSources,
+  responseTemplates,
   organizationMembers,
   tenderAnswerEvidence,
   tenderAnswerReviews,
@@ -61,6 +62,7 @@ import { answerContentDigest, hasCurrentApproval } from "./domain/answer-review"
 import {
   hasOrganizationPermission,
   hasWorkspacePermission,
+  knowledgeStaleCutoffIso,
 } from "@rfp-os/types";
 import { PolicyService } from "../../common/auth";
 import { PinoLoggerService } from "../../common/logger/pino-logger.service";
@@ -94,7 +96,8 @@ import { EvidenceRankingService } from "./evidence/evidence-ranking.service";
 import { EvidenceRetrievalService } from "./evidence/evidence-retrieval.service";
 import { EvidenceSelectionService } from "./evidence/evidence-selection.service";
 import { TenderAiService } from "./ai";
-import { normalizeEvidenceType, selectEvidenceCandidates } from "./evidence/evidence.logic";
+import { normalizeEvidenceType, reportSkippedEvidence, selectEvidenceCandidates } from "./evidence/evidence.logic";
+import { requirementCategoryHint } from "./evidence/evidence-retrieval.service";
 import type { AnswerGenerationContext } from "./answer-generation/answer-generation.logic";
 import {
   TenderAnswerFinalizationNotAllowedError,
@@ -875,21 +878,57 @@ export class TendersService {
     // them, so they never reach the cards, the counts or the AI/evidence stats.
     const tenderRows = await this.filterReadableTenders(auth, scopedTenderRows);
 
-    const knowledgeRows = await this.db
-      .select()
+    // Counts come from one aggregate using the shared freshness rule (the same
+    // one the Knowledge Brain and drafting use) instead of loading the library.
+    const staleCutoff = knowledgeStaleCutoffIso();
+    const todayDate = new Date().toISOString().slice(0, 10);
+    const [knowledgeCountRow] = await this.db
+      .select({
+        total: sql<number>`count(*)`,
+        draft: sql<number>`count(*) filter (where ${knowledgeSources.lifecycleStatus} = 'DRAFT')`,
+        active: sql<number>`count(*) filter (where ${knowledgeSources.lifecycleStatus} = 'ACTIVE')`,
+        archived: sql<number>`count(*) filter (where ${knowledgeSources.lifecycleStatus} = 'ARCHIVED')`,
+        stale: sql<number>`count(*) filter (where ${knowledgeSources.lifecycleStatus} = 'ACTIVE' and (${knowledgeSources.lastVerified} < ${staleCutoff} or ${knowledgeSources.lastVerified} is null or ${knowledgeSources.expiresAt} < ${todayDate}))`,
+      })
       .from(knowledgeSources)
-      .where(eq(knowledgeSources.organizationId, auth.organizationId))
-      .orderBy(desc(knowledgeSources.updatedAt));
-
-    const knowledgeItems: DashboardKnowledgeHealth["items"] = knowledgeRows.map((row) => ({
+      .where(eq(knowledgeSources.organizationId, auth.organizationId));
+    const [recentKnowledgeRows, attentionKnowledgeRows] = await Promise.all([
+      this.db
+        .select()
+        .from(knowledgeSources)
+        .where(eq(knowledgeSources.organizationId, auth.organizationId))
+        .orderBy(desc(knowledgeSources.updatedAt))
+        .limit(3),
+      this.db
+        .select()
+        .from(knowledgeSources)
+        .where(
+          and(
+            eq(knowledgeSources.organizationId, auth.organizationId),
+            or(
+              eq(knowledgeSources.lifecycleStatus, "DRAFT"),
+              and(
+                eq(knowledgeSources.lifecycleStatus, "ACTIVE"),
+                or(
+                  sql`${knowledgeSources.lastVerified} < ${staleCutoff}`,
+                  sql`${knowledgeSources.lastVerified} is null`,
+                  sql`${knowledgeSources.expiresAt} < ${todayDate}`,
+                ),
+              ),
+            ),
+          ),
+        )
+        .orderBy(desc(knowledgeSources.updatedAt))
+        .limit(3),
+    ]);
+    const toKnowledgeItem = (row: typeof knowledgeSources.$inferSelect): DashboardKnowledgeHealth["items"][number] => ({
       id: row.id,
-      organizationId: row.organizationId,
       name: row.name,
       type: row.type,
       category: row.category,
       version: row.version,
       authority: row.authority,
-      status: metadataStatus(row) as "DRAFT" | "ACTIVE" | "ARCHIVED",
+      status: row.lifecycleStatus,
       ownerId: row.ownerId,
       lastVerified: row.lastVerified,
       lastUpdated: row.lastUpdated,
@@ -898,24 +937,18 @@ export class TendersService {
       metadata: row.metadata,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    }));
+    });
 
     const knowledge: DashboardKnowledgeHealth = {
-      counts: knowledgeItems.reduce(
-        (acc, item) => {
-          acc.total += 1;
-          acc[item.status.toLowerCase() as "draft" | "active" | "archived"] += 1;
-          if (item.lastVerified && isOlderThanDays(item.lastVerified, 180)) {
-            acc.stale += 1;
-          }
-          return acc;
-        },
-        { total: 0, draft: 0, active: 0, archived: 0, stale: 0 },
-      ),
-      items: knowledgeItems.slice(0, 3),
-      attention: knowledgeItems
-        .filter((item) => item.status === "DRAFT" || (item.lastVerified && isOlderThanDays(item.lastVerified, 180)))
-        .slice(0, 3),
+      counts: {
+        total: Number(knowledgeCountRow?.total ?? 0),
+        draft: Number(knowledgeCountRow?.draft ?? 0),
+        active: Number(knowledgeCountRow?.active ?? 0),
+        archived: Number(knowledgeCountRow?.archived ?? 0),
+        stale: Number(knowledgeCountRow?.stale ?? 0),
+      },
+      items: recentKnowledgeRows.map(toKnowledgeItem),
+      attention: attentionKnowledgeRows.map(toKnowledgeItem),
     };
 
     const tenderIds = tenderRows.map((tender) => tender.id);
@@ -1342,6 +1375,11 @@ export class TendersService {
 
   async update(auth: AuthContext, tenderId: string, input: UpdateTenderInput) {
     const existing = await this.requireTender(auth.organizationId, tenderId);
+    /*
+     * PermissionsGuard only proves the caller holds tender:update in *some*
+     * workspace; this is what stops a workspace-A member editing a B tender.
+     */
+    this.assertTenderWorkspacePermission(auth, existing.workspaceId, "tender:update");
     this.assertEditable(existing);
     await this.assertPolicyAllows(auth, "update", existing);
 
@@ -1983,6 +2021,39 @@ export class TendersService {
     return { items: rows.map(serializeAnswerEvidence) };
   }
 
+  /**
+   * The approved response template for a requirement's category, if any.
+   * Most recently updated wins when several exist; templates shape structure
+   * and tone only — every fact still has to come from evidence.
+   */
+  private async findAnswerTemplate(organizationId: string, requirementType: string) {
+    const [template] = await this.db
+      .select()
+      .from(responseTemplates)
+      .where(
+        and(
+          eq(responseTemplates.organizationId, organizationId),
+          eq(responseTemplates.status, "ACTIVE"),
+          eq(responseTemplates.category, requirementCategoryHint(requirementType) as never),
+        ),
+      )
+      .orderBy(desc(responseTemplates.updatedAt))
+      .limit(1);
+    return template ?? null;
+  }
+
+  private async recordTemplateUse(templateId: string) {
+    await this.db
+      .update(responseTemplates)
+      .set({
+        usageMetadata: sql`${responseTemplates.usageMetadata} || jsonb_build_object(
+          'count', coalesce((${responseTemplates.usageMetadata} ->> 'count')::int, 0) + 1,
+          'lastUsedAt', ${new Date().toISOString()}::text
+        )`,
+      })
+      .where(eq(responseTemplates.id, templateId));
+  }
+
   async getRequirementEvidence(auth: AuthContext, tenderId: string, requirementId: string) {
     return this.searchRequirementEvidence(auth, tenderId, requirementId, { limit: 10 });
   }
@@ -2001,6 +2072,10 @@ export class TendersService {
       minFinalScore: ANSWER_EVIDENCE_MIN_FINAL_SCORE,
       includeStale: false,
     });
+    // What freshness alone kept out of this draft, so a thin or missing
+    // answer can say "3 matching sources are stale" instead of failing silently.
+    const skippedEvidence = reportSkippedEvidence(candidates, { minFinalScore: ANSWER_EVIDENCE_MIN_FINAL_SCORE, includeStale: false });
+    const template = await this.findAnswerTemplate(auth.organizationId, requirement.requirementType);
     const generationContext: AnswerGenerationContext = {
       tender: {
         id: tender.id,
@@ -2026,6 +2101,9 @@ export class TendersService {
         sortOrder: question.sortOrder,
       },
       evidence: selectedCandidates.map(serializeEvidenceSummary),
+      template: template
+        ? { id: template.id, name: template.name, version: template.version, sections: template.sections }
+        : null,
     };
 
     const generated = await this.answerGeneration.generate(generationContext, {
@@ -2041,8 +2119,13 @@ export class TendersService {
         answer: null,
         generation: generated,
         evidenceState,
-        reason: "No sufficient evidence found.",
-        suggestedAction: "Assign to SME / Knowledge Owner",
+        reason: skippedEvidence.stale + skippedEvidence.expired > 0
+          ? `No usable evidence: ${describeSkippedEvidence(skippedEvidence)} matched but need re-verification.`
+          : "No sufficient evidence found.",
+        suggestedAction: skippedEvidence.stale + skippedEvidence.expired > 0
+          ? "Verify the stale knowledge sources, then regenerate"
+          : "Assign to SME / Knowledge Owner",
+        skippedEvidence,
         grounding: null,
       };
     }
@@ -2105,15 +2188,17 @@ export class TendersService {
       groundingUnsupportedClaims: groundingResult.unsupportedClaims,
     });
     await assertActive?.();
+    const templateMetadata = template ? { responseTemplate: { id: template.id, name: template.name, version: template.version } } : {};
     const answer = await this.createAnswer(auth, tenderId, question.id, {
       answerText: generated.answer,
       source: "AI_GENERATED",
       confidence: generated.confidence,
       status: answerStatus,
       metadata: existing
-        ? { ...existing.metadata, ...generated.metadata, ...generationMetadata, grounding: groundingResult, evidenceState }
-        : { ...generated.metadata, ...generationMetadata, grounding: groundingResult, evidenceState },
+        ? { ...existing.metadata, ...generated.metadata, ...generationMetadata, ...templateMetadata, grounding: groundingResult, evidenceState, skippedEvidence }
+        : { ...generated.metadata, ...generationMetadata, ...templateMetadata, grounding: groundingResult, evidenceState, skippedEvidence },
     }, assertActive, expectedAnswer ?? (assertActive ? null : undefined));
+    if (template) await this.recordTemplateUse(template.id);
 
     for (const evidence of selectedCandidates) {
       await this.addAnswerEvidence(auth, tenderId, answer.id, {
@@ -2153,6 +2238,8 @@ export class TendersService {
         },
       },
       evidenceState,
+      skippedEvidence,
+      template: template ? { id: template.id, name: template.name, version: template.version } : null,
       grounding: groundingResult,
       reason:
         groundingStatus === "SUPPORTED"
@@ -2725,6 +2812,14 @@ export class TendersService {
         .values(evidenceRow)
         .returning();
       if (!row) throw new TenderAnswerNotFoundError();
+      // Usage drives "used in N answers" and which sources are worth
+      // re-verifying first. Tender-owned evidence ids simply match no row.
+      if (row.sourceId) {
+        await tx
+          .update(knowledgeSources)
+          .set({ usageCount: sql`${knowledgeSources.usageCount} + 1`, lastUsedAt: new Date() })
+          .where(and(eq(knowledgeSources.organizationId, auth.organizationId), sql`${knowledgeSources.id}::text = ${row.sourceId}`));
+      }
 
       await this.audit.record(
         {
@@ -5916,6 +6011,8 @@ function serializeAnswerEvidence(row: typeof tenderAnswerEvidence.$inferSelect) 
     freshness: row.freshness,
     verifiedAt: row.verifiedAt ? row.verifiedAt.toISOString() : null,
     metadata: row.metadata,
+    citationStatus: row.citationStatus,
+    citationCheckedAt: row.citationCheckedAt ? row.citationCheckedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -6242,24 +6339,19 @@ type EvidenceCandidateLike = {
   metadata: Record<string, unknown>;
 };
 
+function describeSkippedEvidence(report: { stale: number; expired: number }): string {
+  const parts = [];
+  if (report.stale > 0) parts.push(`${report.stale} stale source${report.stale === 1 ? "" : "s"}`);
+  if (report.expired > 0) parts.push(`${report.expired} expired source${report.expired === 1 ? "" : "s"}`);
+  return parts.join(" and ");
+}
+
 function stringifyJson(value: unknown): string {
   try {
     return typeof value === "string" ? value : JSON.stringify(value ?? {});
   } catch {
     return "";
   }
-}
-
-function metadataStatus(row: { metadata: unknown }) {
-  const status = (row.metadata as Record<string, unknown> | null | undefined)?.lifecycleStatus;
-  if (status === "DRAFT" || status === "ACTIVE" || status === "ARCHIVED") return status;
-  return "ACTIVE";
-}
-
-function isOlderThanDays(value: string | Date | null, days: number) {
-  if (!value) return false;
-  const diffDays = Math.round((Date.now() - (value instanceof Date ? value.getTime() : new Date(value).getTime())) / (1000 * 60 * 60 * 24));
-  return diffDays > days;
 }
 
 function rankSeverity(severity: string | null | undefined) {

@@ -5,6 +5,7 @@ import { Worker } from "bullmq";
 import { createDocumentsWorker } from "./documents/documents.worker";
 import { createTenderDiscoveryWorker, startTenderDiscoveryScheduler } from "./tender-discovery/tender-ingestion.worker";
 import { createRfpAutomationWorker, startRfpAutomationScheduler } from "./rfp-automation/rfp-automation.worker";
+import { createKnowledgeWorker, startKnowledgeScheduler } from "./knowledge/knowledge.worker";
 import { createRedisConnection } from "./redis";
 
 const logger = createLogger("worker");
@@ -39,8 +40,10 @@ const tenderDiscoveryWorker = createTenderDiscoveryWorker(connection);
 const tenderDiscoveryScheduler = startTenderDiscoveryScheduler(connection);
 const rfpAutomationWorker = createRfpAutomationWorker(connection);
 const rfpAutomationScheduler = startRfpAutomationScheduler(connection);
+const { worker: knowledgeWorker, queue: knowledgeQueue } = createKnowledgeWorker(connection);
+const knowledgeScheduler = startKnowledgeScheduler(knowledgeQueue);
 
-const workers = [platformWorker, documentsWorker, tenderDiscoveryWorker, rfpAutomationWorker];
+const workers = [platformWorker, documentsWorker, tenderDiscoveryWorker, rfpAutomationWorker, knowledgeWorker];
 
 /**
  * Graceful shutdown.
@@ -59,6 +62,8 @@ async function shutdown(signal: string): Promise<void> {
   await Promise.allSettled(workers.map((w) => w.close()));
   await tenderDiscoveryScheduler.stop();
   await rfpAutomationScheduler.stop();
+  await knowledgeScheduler.stop();
+  await knowledgeQueue.close();
   await connection.quit();
   process.exit(0);
 }

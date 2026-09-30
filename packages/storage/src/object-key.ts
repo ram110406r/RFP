@@ -35,6 +35,19 @@ export function tenderSourceObjectKey(input: TenderSourceObjectKeyInput): string
   return `org/${input.organizationId}/workspace/${input.workspaceId}/tender/${input.tenderId}/sources/${input.sourceId}/${name}`;
 }
 
+export interface KnowledgeDocumentObjectKeyInput {
+  organizationId: string;
+  sourceId: string;
+  fileId: string;
+  filename: string;
+}
+
+/** Knowledge uploads belong to the org's library, not to any RFP or tender. */
+export function knowledgeDocumentObjectKey(input: KnowledgeDocumentObjectKeyInput): string {
+  const name = sanitizeFilename(input.filename);
+  return `org/${input.organizationId}/knowledge/${input.sourceId}/${input.fileId}/${name}`;
+}
+
 /**
  * Reduces a filename to something safe to place in a key.
  *

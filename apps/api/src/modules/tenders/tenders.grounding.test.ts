@@ -97,6 +97,8 @@ function buildServiceHarness(overrides: {
     } as const);
 
   Object.assign(service, {
+    findAnswerTemplate: async () => null,
+    recordTemplateUse: async () => undefined,
     requireTender: async () => ({
       id: "tender-1",
       organizationId: "org-1",

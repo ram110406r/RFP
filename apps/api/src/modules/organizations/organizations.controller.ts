@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from "@nestjs/common";
 import type { AuthContext } from "@rfp-os/types";
 
 import {
@@ -7,7 +7,9 @@ import {
   CurrentUserId,
   OrgId,
   RequirePermissions,
+  type RequestWithAuth,
 } from "../../common/auth";
+import { AuthService } from "../auth/auth.service";
 import { ZodBody } from "../../common/decorators/zod-schema.decorator";
 import {
   acceptInvitationSchema,
@@ -34,7 +36,10 @@ import { OrganizationsService } from "./organizations.service";
  */
 @Controller({ path: "organizations", version: "1" })
 export class OrganizationsController {
-  constructor(private readonly organizations: OrganizationsService) {}
+  constructor(
+    private readonly organizations: OrganizationsService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Get("current")
   @RequirePermissions("org:read")
@@ -45,8 +50,12 @@ export class OrganizationsController {
   @Patch("current")
   @RequirePermissions("org:update")
   @ZodBody(updateOrganizationSchema)
-  async update(@OrgId() organizationId: string, @Body() body: UpdateOrganizationInput) {
-    return this.organizations.update(organizationId, body);
+  async update(
+    @OrgId() organizationId: string,
+    @CurrentUserId() userId: string,
+    @Body() body: UpdateOrganizationInput,
+  ) {
+    return this.organizations.update(organizationId, userId, body);
   }
 
   /**
@@ -57,8 +66,14 @@ export class OrganizationsController {
   @Post()
   @AllowWithoutOrg()
   @ZodBody(createOrganizationSchema)
-  async create(@CurrentUserId() userId: string, @Body() body: CreateOrganizationInput) {
-    return this.organizations.create(userId, body);
+  async create(
+    @CurrentUserId() userId: string,
+    @Req() request: RequestWithAuth,
+    @Body() body: CreateOrganizationInput,
+  ) {
+    const organization = await this.organizations.create(userId, body);
+    await switchSessionTo(this.authService, request, userId, organization.id);
+    return organization;
   }
 
   @Get("current/members")
@@ -97,6 +112,13 @@ export class OrganizationsController {
     return this.organizations.invite(auth, body);
   }
 
+  /** Rotates the token, extends the expiry and emails the invitation again. */
+  @Post("current/invitations/:invitationId/resend")
+  @RequirePermissions("member:invite")
+  async resendInvitation(@CurrentAuth() auth: AuthContext, @Param("invitationId") invitationId: string) {
+    return this.organizations.resendInvitation(auth, invitationId);
+  }
+
   @Delete("current/invitations/:invitationId")
   @RequirePermissions("member:invite")
   async revokeInvitation(
@@ -113,12 +135,39 @@ export class OrganizationsController {
  */
 @Controller({ path: "invitations", version: "1" })
 export class InvitationsController {
-  constructor(private readonly organizations: OrganizationsService) {}
+  constructor(
+    private readonly organizations: OrganizationsService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Post("accept")
   @AllowWithoutOrg()
   @ZodBody(acceptInvitationSchema)
-  async accept(@CurrentUserId() userId: string, @Body() body: AcceptInvitationInput) {
-    return this.organizations.acceptInvitation(userId, body.token);
+  async accept(
+    @CurrentUserId() userId: string,
+    @Req() request: RequestWithAuth,
+    @Body() body: AcceptInvitationInput,
+  ) {
+    const accepted = await this.organizations.acceptInvitation(userId, body.token);
+    await switchSessionTo(this.authService, request, userId, accepted.organizationId);
+    return accepted;
   }
+}
+
+/**
+ * After joining or creating an organization the user expects to be *in* it,
+ * even if they already belonged to another one. Membership is re-verified by
+ * activateOrganization, so this cannot point a session anywhere it should not.
+ */
+export async function switchSessionTo(
+  authService: AuthService,
+  request: RequestWithAuth,
+  userId: string,
+  organizationId: string,
+) {
+  if (!request.sessionId) return;
+  await authService.activateOrganization(
+    { userId, sessionId: request.sessionId, activeOrganizationId: null },
+    organizationId,
+  );
 }

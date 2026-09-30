@@ -1,11 +1,19 @@
-import { All, Controller, Get, NotFoundException, Post, Req, Res, VERSION_NEUTRAL } from "@nestjs/common";
+import { All, Body, Controller, Get, HttpCode, NotFoundException, Post, Req, Res, VERSION_NEUTRAL } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { DEMO_LOGIN_EMAIL, DEMO_LOGIN_PASSWORD } from "@rfp-os/db";
 
-import { AllowWithoutOrg, CurrentAuth, Public, toFetchHeaders } from "../../common/auth";
+import { AllowUnverified, AllowWithoutOrg, CurrentAuth, Public, toFetchHeaders } from "../../common/auth";
 import type { RequestWithAuth } from "../../common/auth";
 import type { AuthContext } from "@rfp-os/types";
+import { ZodBody } from "../../common/decorators/zod-schema.decorator";
 import { AuthService } from "./auth.service";
+import {
+  completePasswordLinkSchema,
+  startPasswordLinkSchema,
+  type CompletePasswordLinkInput,
+  type StartPasswordLinkInput,
+} from "./password-links.dto";
 
 /**
  * Mounts Better Auth's own routes at /api/auth/*.
@@ -29,10 +37,6 @@ export class AuthController {
   async handle(@Req() request: Request, @Res() response: Response): Promise<void> {
     const webRequest = toWebRequest(request);
     const webResponse = await this.authService.auth.handler(webRequest);
-    if (isSuccessfulPasswordSignup(request, webResponse)) {
-      const email = typeof request.body?.email === "string" ? request.body.email : "";
-      await this.authService.markEmailVerifiedForPasswordSignup(email);
-    }
     await writeWebResponse(webResponse, response);
   }
 }
@@ -45,7 +49,13 @@ export class AuthController {
 export class AuthSessionController {
   constructor(private readonly authService: AuthService) {}
 
-  /** The caller's identity, tenant, role and effective permissions. */
+  /**
+   * The caller's identity, tenant, role and effective permissions. Reachable
+   * without a tenant: a signed-in user with no organization yet gets their
+   * identity with organizationId null rather than a 403.
+   */
+  @AllowWithoutOrg()
+  @AllowUnverified()
   @Get("me")
   async me(@CurrentAuth() auth: AuthContext, @Req() request: RequestWithAuth) {
     const userId = auth?.userId ?? request.sessionUserId;
@@ -55,12 +65,22 @@ export class AuthSessionController {
       organizationId: auth?.organizationId ?? null,
       role: auth?.role ?? null,
       permissions: auth?.permissions ?? [],
+      /*
+       * `permissions` is the union across workspaces. A client deciding whether
+       * to show a control for one workspace needs the split below — the same
+       * one the API enforces with hasWorkspacePermission.
+       */
+      organizationPermissions: auth?.organizationPermissions ?? [],
+      workspacePermissions: auth?.workspacePermissions ?? {},
+      workspaceIds: auth?.workspaceIds ?? [],
+      emailVerified: request.emailVerified === true,
       memberships,
     };
   }
 
   /** Reachable without a tenant, so a user with no membership can see they have none. */
   @AllowWithoutOrg()
+  @AllowUnverified()
   @Get("memberships")
   async memberships(@Req() request: RequestWithAuth) {
     const userId = request.auth?.userId ?? request.sessionUserId;
@@ -85,6 +105,53 @@ export class AuthSessionController {
       organizationId,
     );
     return { activated: membership };
+  }
+
+  /**
+   * Starts sign-up or a password reset: emails a single-use set-password link.
+   * Always answers the same way, so it cannot be used to discover which
+   * addresses have accounts. Tightly rate limited because it sends email.
+   */
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(202)
+  @Post("email-link/start")
+  @ZodBody(startPasswordLinkSchema)
+  async startPasswordLink(@Body() body: StartPasswordLinkInput) {
+    await this.authService.passwordLinks.start(body.email);
+    return { sent: true };
+  }
+
+  /**
+   * Completes the emailed link: sets the password (creating the account if
+   * needed), signs out every other session, then signs in with the new
+   * password so the browser receives a normal Better Auth session cookie.
+   */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post("email-link/complete")
+  @ZodBody(completePasswordLinkSchema)
+  async completePasswordLink(
+    @Req() request: Request,
+    @Res() response: Response,
+    @Body() body: CompletePasswordLinkInput,
+  ): Promise<void> {
+    const { email } = await this.authService.passwordLinks.complete(body.token, body.password, body.name);
+
+    const origin = `${request.protocol}://${request.get("host")}`;
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    for (const name of ["origin", "user-agent", "x-forwarded-for"]) {
+      const value = request.get(name);
+      if (value) headers[name] = value;
+    }
+    const signInResponse = await this.authService.auth.handler(
+      new globalThis.Request(new URL("/api/auth/sign-in/email", origin).toString(), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ email, password: body.password, rememberMe: true }),
+      }),
+    );
+    await writeWebResponse(signInResponse, response);
   }
 
   /**
@@ -146,12 +213,6 @@ function toWebRequest(request: Request): Request2 {
       : undefined;
 
   return new globalThis.Request(url.toString(), { method: request.method, headers, body });
-}
-
-function isSuccessfulPasswordSignup(request: Request, response: Response2): boolean {
-  const method = request.method.toUpperCase();
-  const path = request.path.replace(/\/$/, "");
-  return method === "POST" && path.endsWith("/sign-up/email") && response.status >= 200 && response.status < 300;
 }
 
 type Request2 = globalThis.Request;

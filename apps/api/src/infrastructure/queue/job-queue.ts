@@ -4,6 +4,11 @@ import {
   type DocumentJobName,
   type DocumentJobPayload,
   documentJobId,
+  KNOWLEDGE_JOBS,
+  type KnowledgeConflictJobPayload,
+  type KnowledgeDocumentJobPayload,
+  knowledgeConflictJobId,
+  knowledgeDocumentJobId,
   QUEUES,
   tenderNoticeDocumentImportJobId,
   tenderIngestionJobId,
@@ -43,6 +48,16 @@ export abstract class JobQueue {
     throw new Error("Tender discovery ingestion is not configured.");
   }
 
+  /** Starts the knowledge document pipeline (parse → chunk → embed → extract). */
+  async enqueueKnowledgeIngest(_payload: KnowledgeDocumentJobPayload): Promise<EnqueueResult> {
+    throw new Error("Knowledge ingestion is not configured.");
+  }
+
+  /** Re-checks a source's claims against the rest of the library for contradictions. */
+  async enqueueKnowledgeConflictCheck(_payload: KnowledgeConflictJobPayload): Promise<EnqueueResult> {
+    throw new Error("Knowledge conflict detection is not configured.");
+  }
+
   /** Releases transport resources. No-op for implementations that hold none. */
   abstract close(): Promise<void>;
 }
@@ -64,6 +79,7 @@ export interface EnqueueResult {
 export class BullMqJobQueue extends JobQueue {
   private readonly documents: Queue;
   private readonly tenderIngestion: Queue;
+  private readonly knowledge: Queue;
 
   constructor(
     connection: IORedis,
@@ -72,6 +88,43 @@ export class BullMqJobQueue extends JobQueue {
     super();
     this.documents = new Queue(QUEUES.DOCUMENTS, { connection });
     this.tenderIngestion = new Queue(QUEUES.TENDER_INGESTION, { connection });
+    this.knowledge = new Queue(QUEUES.KNOWLEDGE, { connection });
+  }
+
+  override async enqueueKnowledgeIngest(payload: KnowledgeDocumentJobPayload): Promise<EnqueueResult> {
+    const jobId = knowledgeDocumentJobId(KNOWLEDGE_JOBS.INGEST, payload.documentId, payload.version);
+    return this.addKnowledgeJob(KNOWLEDGE_JOBS.INGEST, payload, jobId);
+  }
+
+  override async enqueueKnowledgeConflictCheck(payload: KnowledgeConflictJobPayload): Promise<EnqueueResult> {
+    const jobId = knowledgeConflictJobId(payload.sourceId, payload.claimIds);
+    return this.addKnowledgeJob(KNOWLEDGE_JOBS.DETECT_CONFLICTS, payload, jobId);
+  }
+
+  /**
+   * Like enqueueDocumentJob, but a job id held by a FAILED job is retried
+   * rather than treated as "already queued" — otherwise a reprocess request
+   * after a failure would silently do nothing while the job sat in the
+   * failed set.
+   */
+  private async addKnowledgeJob(name: string, payload: object, jobId: string): Promise<EnqueueResult> {
+    const existing = await this.knowledge.getJob(jobId);
+    if (existing) {
+      const state = await existing.getState();
+      if (state === "failed") {
+        await existing.retry("failed");
+        this.logger.log(`knowledge job ${name} retried jobId=${jobId}`, "JobQueue");
+        return { enqueued: true, jobId };
+      }
+      if (state === "completed") {
+        await existing.remove();
+      } else {
+        return { enqueued: false, jobId };
+      }
+    }
+    await this.knowledge.add(name, payload, { ...DEFAULT_JOB_OPTIONS, jobId });
+    this.logger.log(`knowledge job ${name} enqueued jobId=${jobId}`, "JobQueue");
+    return { enqueued: true, jobId };
   }
 
   override async enqueueTenderNoticeDocument(payload: TenderNoticeDocumentImportJobPayload): Promise<EnqueueResult> {
@@ -120,6 +173,7 @@ export class BullMqJobQueue extends JobQueue {
   async close(): Promise<void> {
     await this.documents.close();
     await this.tenderIngestion.close();
+    await this.knowledge.close();
   }
 }
 
@@ -159,6 +213,18 @@ export class NoopJobQueue extends JobQueue {
   override async enqueueTenderPortalSync(payload: TenderPortalSyncJobPayload): Promise<EnqueueResult> {
     const jobId = tenderIngestionJobId(payload.portalKey, payload.windowStartedAt, payload.mode ?? "HEAD");
     this.logger.warn(`REDIS_URL is not configured; dropping tender portal sync job jobId=${jobId}.`, "JobQueue");
+    return { enqueued: false, jobId };
+  }
+
+  override async enqueueKnowledgeIngest(payload: KnowledgeDocumentJobPayload): Promise<EnqueueResult> {
+    const jobId = knowledgeDocumentJobId(KNOWLEDGE_JOBS.INGEST, payload.documentId, payload.version);
+    this.logger.warn(`REDIS_URL is not configured; dropping knowledge ingest job jobId=${jobId}.`, "JobQueue");
+    return { enqueued: false, jobId };
+  }
+
+  override async enqueueKnowledgeConflictCheck(payload: KnowledgeConflictJobPayload): Promise<EnqueueResult> {
+    const jobId = knowledgeConflictJobId(payload.sourceId, payload.claimIds);
+    this.logger.warn(`REDIS_URL is not configured; dropping knowledge conflict job jobId=${jobId}.`, "JobQueue");
     return { enqueued: false, jobId };
   }
 

@@ -61,6 +61,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
+    const uniqueViolation = findUniqueViolation(exception);
+    if (uniqueViolation) {
+      return {
+        status: HttpStatus.CONFLICT,
+        body: {
+          error: {
+            code: "CONFLICT",
+            message: UNIQUE_CONSTRAINT_MESSAGES[uniqueViolation] ?? "That record already exists.",
+            requestId,
+          },
+        },
+      };
+    }
+
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       body: {
@@ -95,4 +109,34 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private statusToCode(status: number): string {
     return HttpStatus[status] ?? "ERROR";
   }
+}
+
+/**
+ * Friendly messages for unique constraints a user can plausibly trip. The
+ * constraint name is never sent to the client; unknown ones get a generic
+ * message.
+ */
+const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
+  workspaces_org_slug_uq: "A workspace with that URL slug already exists in this organization.",
+  organization_members_org_user_uq: "That person is already a member of this organization.",
+  team_members_team_member_uq: "That person is already on this team.",
+  workspace_members_workspace_member_uq: "That person is already a member of this workspace.",
+};
+
+/**
+ * A Postgres unique violation (SQLSTATE 23505) anywhere in the cause chain —
+ * Drizzle wraps the driver error, so it is usually one level down. Returns the
+ * constraint name ("" when unknown), or null when this is not one.
+ */
+function findUniqueViolation(exception: unknown): string | null {
+  let current: unknown = exception;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth += 1) {
+    const candidate = current as { code?: unknown; constraint_name?: unknown; constraint?: unknown; cause?: unknown };
+    if (candidate.code === "23505") {
+      const constraint = candidate.constraint_name ?? candidate.constraint;
+      return typeof constraint === "string" ? constraint : "";
+    }
+    current = candidate.cause;
+  }
+  return null;
 }

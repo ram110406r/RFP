@@ -11,6 +11,10 @@ import {
   addWorkspaceMember,
   archiveTeam,
   archiveWorkspace,
+  activateOrganization,
+  fetchAuthMe,
+  resendOrganizationInvitation,
+  unarchiveWorkspace,
   analyzeTender,
   approveTender,
   fetchAudits,
@@ -27,10 +31,8 @@ import {
   fetchResponsesQueue,
   fetchReviewQueue,
   fetchSubmissionsQueue,
-  approveKnowledge,
   approveKnowledgeSource,
   approveResponseTemplate,
-  archiveKnowledge,
   archiveKnowledgeSource,
   archiveResponseTemplate,
   createAnswer,
@@ -41,7 +43,7 @@ import {
   createReview,
   fetchAnswerEvidence,
   fetchAnswerVersions,
-  fetchKnowledgeItem,
+  fetchKnowledgeSource,
   fetchKnowledgeIssues,
   fetchKnowledgeList,
   fetchKnowledgeSources,
@@ -75,7 +77,6 @@ import {
   improveRequirementAnswer,
   removeAnswerEvidence,
   updateAnswer,
-  updateKnowledge,
   updateKnowledgeSource,
   updateResponseTemplate,
   updateReview,
@@ -120,8 +121,17 @@ import {
   duplicateResponseTemplate,
   resolveKnowledgeIssue,
   verifyKnowledgeSource,
+  applyKnowledgeRevision,
+  rejectKnowledgeRevision,
+  decideKnowledgeClaims,
+  createKnowledgeDocumentUpload,
+  completeKnowledgeDocumentUpload,
+  reprocessKnowledgeDocument,
+  deleteKnowledgeDocument,
+  uploadBytesToStorage,
 } from "./api";
-import type { KnowledgeListParams, KnowledgeSourceInput, ResponseTemplateInput, TenderDiscoveryParams } from "./api";
+import type { KnowledgeIssueAction, KnowledgeListParams, KnowledgeSourceInput, ResponseTemplateInput, TenderDiscoveryParams } from "./api";
+import { errorText, toast } from "./toast";
 import type {
   DashboardOverview,
   KnowledgeItem,
@@ -206,6 +216,26 @@ export const knowledgeKeys = {
   item: (id: string) => ["knowledge", id] as const,
   template: (id: string) => ["knowledge", "templates", id] as const,
 };
+
+/**
+ * Knowledge changes underneath the page: the worker parses documents,
+ * extracts claims, detects conflicts and moves sources to stale. These
+ * queries refetch on focus and poll, instead of the app-wide "warm for a
+ * minute, never refetch on focus" default that made the Knowledge Brain look
+ * frozen.
+ */
+const KNOWLEDGE_LIVE = {
+  staleTime: 15_000,
+  refetchOnWindowFocus: true,
+  refetchInterval: 60_000,
+} as const;
+
+/** Poll fast only while something is actually processing. */
+const KNOWLEDGE_PROCESSING_POLL_MS = 3_000;
+
+function hasProcessingDocuments(item: KnowledgeItem | undefined | null): boolean {
+  return Boolean(item?.documents?.some((document) => document.status === "queued" || document.status === "processing"));
+}
 
 export const tenderListKeys = {
   list: (params?: {
@@ -522,6 +552,7 @@ export function useKnowledgeList(
     queryFn: () => fetchKnowledgeList({ ...params, status: params.status ?? undefined }),
     initialData: initialData ?? undefined,
     placeholderData: keepPreviousData,
+    ...KNOWLEDGE_LIVE,
   });
 }
 
@@ -531,6 +562,7 @@ export function useKnowledgeSources(params: KnowledgeListParams = {}, initialDat
     queryFn: () => fetchKnowledgeSources({ ...params, status: params.status ?? undefined }),
     initialData: initialData ?? undefined,
     placeholderData: keepPreviousData,
+    ...KNOWLEDGE_LIVE,
   });
 }
 
@@ -543,6 +575,7 @@ export function useKnowledgeIssues(
     queryFn: () => fetchKnowledgeIssues(params),
     initialData: initialData ?? undefined,
     placeholderData: keepPreviousData,
+    ...KNOWLEDGE_LIVE,
   });
 }
 
@@ -840,6 +873,12 @@ function useOrganizationAccessMutation<TInput, TResult>(mutationFn: (input: TInp
         queryClient.invalidateQueries({ queryKey: organizationKeys.invitations() }),
         queryClient.invalidateQueries({ queryKey: organizationKeys.teams() }),
         queryClient.invalidateQueries({ queryKey: workspaceKeys.list() }),
+        // Per-workspace and per-team member lists shown in the people dialogs.
+        queryClient.invalidateQueries({ queryKey: ["organization", "workspace-members"] }),
+        queryClient.invalidateQueries({ queryKey: ["organization", "team-members"] }),
+        queryClient.invalidateQueries({ queryKey: organizationKeys.current() }),
+        // Membership changes can change the caller's own effective permissions.
+        queryClient.invalidateQueries({ queryKey: ["auth", "me"] }),
       ]);
     },
   });
@@ -853,6 +892,35 @@ export function useUpdateOrganizationMember() {
 
 export function useRemoveOrganizationMember() {
   return useOrganizationAccessMutation((userId: string) => removeOrganizationMember(userId));
+}
+
+export function useResendOrganizationInvitation() {
+  return useOrganizationAccessMutation((invitationId: string) => resendOrganizationInvitation(invitationId));
+}
+
+export function useUnarchiveWorkspace() {
+  return useOrganizationAccessMutation((workspaceId: string) => unarchiveWorkspace(workspaceId));
+}
+
+export const authMeKey = ["auth", "me"] as const;
+
+/** The caller's role and effective permissions in the active organization. */
+export function useAuthMe() {
+  return useQuery({ queryKey: authMeKey, queryFn: () => fetchAuthMe(), staleTime: 60_000, retry: false });
+}
+
+/**
+ * Repoints the session at another organization. Everything cached belongs to
+ * the previous tenant, so the whole query cache is dropped afterwards.
+ */
+export function useActivateOrganization() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (organizationId: string) => activateOrganization(organizationId),
+    onSuccess: async () => {
+      queryClient.clear();
+    },
+  });
 }
 
 export function useRevokeOrganizationInvitation() {
@@ -954,9 +1022,11 @@ export function useAudits(
 export function useKnowledgeItem(id: string | null | undefined, initialData?: KnowledgeItem | null) {
   return useQuery({
     queryKey: knowledgeKeys.item(id ?? "none"),
-    queryFn: () => fetchKnowledgeItem(id ?? ""),
+    queryFn: () => fetchKnowledgeSource(id ?? ""),
     enabled: Boolean(id),
     initialData: initialData ?? undefined,
+    ...KNOWLEDGE_LIVE,
+    refetchInterval: (query) => (hasProcessingDocuments(query.state.data) ? KNOWLEDGE_PROCESSING_POLL_MS : KNOWLEDGE_LIVE.refetchInterval),
   });
 }
 
@@ -964,6 +1034,9 @@ export function useKnowledgeSummary() {
   return useQuery({
     queryKey: ["knowledge", "summary"] as const,
     queryFn: () => fetchKnowledgeSummary(),
+    ...KNOWLEDGE_LIVE,
+    refetchInterval: (query) =>
+      (query.state.data?.counts.processingDocuments ?? 0) > 0 ? KNOWLEDGE_PROCESSING_POLL_MS : KNOWLEDGE_LIVE.refetchInterval,
   });
 }
 
@@ -1327,108 +1400,167 @@ export function useCreateKnowledge() {
   });
 }
 
-function useKnowledgeMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) {
+/**
+ * Every knowledge write refreshes knowledge, the dashboard and the activity
+ * feed, and reports the outcome as a toast. Failures used to vanish
+ * silently, leaving the button looking like it did nothing.
+ */
+function useKnowledgeMutation<TInput, TResult>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+  messages: { success?: string | ((result: TResult, input: TInput) => string); error: string },
+) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: async () => {
+    onSuccess: async (result, input) => {
+      if (messages.success) toast.success(typeof messages.success === "function" ? messages.success(result, input) : messages.success);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["knowledge"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["activities"] }),
       ]);
+    },
+    onError: (error) => {
+      toast.error(messages.error, errorText(error));
     },
   });
 }
 
 export function useCreateKnowledgeSource() {
-  return useKnowledgeMutation<KnowledgeSourceInput, KnowledgeItem>((body) => createKnowledgeSource(body));
+  return useKnowledgeMutation<KnowledgeSourceInput, KnowledgeItem>((body) => createKnowledgeSource(body), {
+    success: (item) => `Created ${item.name} as a draft`,
+    error: "Could not create the source",
+  });
 }
 
 export function useUpdateKnowledgeSource() {
-  return useKnowledgeMutation<{ id: string; body: Partial<KnowledgeSourceInput> }, KnowledgeItem>(({ id, body }) =>
-    updateKnowledgeSource(id, body),
+  return useKnowledgeMutation<{ id: string; body: Partial<KnowledgeSourceInput> }, KnowledgeItem>(
+    ({ id, body }) => updateKnowledgeSource(id, body),
+    {
+      success: (item) =>
+        item.pendingRevision ? "Saved as a revision for review. The approved version stays live." : `Saved ${item.name}`,
+      error: "Could not save the source",
+    },
   );
 }
 
 export function useApproveKnowledgeSource() {
-  return useKnowledgeMutation<string, KnowledgeItem>((id) => approveKnowledgeSource(id));
+  return useKnowledgeMutation<string, KnowledgeItem>((id) => approveKnowledgeSource(id), {
+    success: (item) => `${item.name} is approved and available to tenders`,
+    error: "Could not approve the source",
+  });
 }
 
 export function useArchiveKnowledgeSource() {
-  return useKnowledgeMutation<string, KnowledgeItem>((id) => archiveKnowledgeSource(id));
+  return useKnowledgeMutation<string, KnowledgeItem>((id) => archiveKnowledgeSource(id), {
+    success: (item) => `Archived ${item.name}`,
+    error: "Could not archive the source",
+  });
 }
 
 export function useVerifyKnowledgeSource() {
-  return useKnowledgeMutation<{ id: string; note?: string; expiresAt?: string | null }, KnowledgeItem>(({ id, note, expiresAt }) =>
-    verifyKnowledgeSource(id, { note, expiresAt }),
+  return useKnowledgeMutation<{ id: string; note?: string; expiresAt?: string | null }, KnowledgeItem>(
+    ({ id, note, expiresAt }) => verifyKnowledgeSource(id, { note, expiresAt }),
+    { success: (item) => `Verified ${item.name}`, error: "Could not verify the source" },
   );
 }
 
 export function useResolveKnowledgeIssue() {
-  return useKnowledgeMutation<{ id: string; action: "approve" | "verify" | "archive" | "resolve_conflict"; note?: string }, unknown>(
+  return useKnowledgeMutation<{ id: string; action: KnowledgeIssueAction; note?: string }, unknown>(
     ({ id, action, note }) => resolveKnowledgeIssue(id, { action, note }),
+    { success: "Issue resolved", error: "Could not resolve the issue" },
   );
 }
 
 export function useCreateResponseTemplate() {
-  return useKnowledgeMutation<ResponseTemplateInput, ResponseTemplate>((body) => createResponseTemplate(body));
+  return useKnowledgeMutation<ResponseTemplateInput, ResponseTemplate>((body) => createResponseTemplate(body), {
+    success: (template) => `Created template ${template.name}`,
+    error: "Could not create the template",
+  });
 }
 
 export function useUpdateResponseTemplate() {
-  return useKnowledgeMutation<{ id: string; body: Partial<ResponseTemplateInput> }, ResponseTemplate>(({ id, body }) =>
-    updateResponseTemplate(id, body),
+  return useKnowledgeMutation<{ id: string; body: Partial<ResponseTemplateInput> }, ResponseTemplate>(
+    ({ id, body }) => updateResponseTemplate(id, body),
+    { success: (template) => `Saved template ${template.name}`, error: "Could not save the template" },
   );
 }
 
 export function useApproveResponseTemplate() {
-  return useKnowledgeMutation<string, ResponseTemplate>((id) => approveResponseTemplate(id));
+  return useKnowledgeMutation<string, ResponseTemplate>((id) => approveResponseTemplate(id), {
+    success: (template) => `${template.name} is active and used when drafting`,
+    error: "Could not approve the template",
+  });
 }
 
 export function useArchiveResponseTemplate() {
-  return useKnowledgeMutation<string, ResponseTemplate>((id) => archiveResponseTemplate(id));
+  return useKnowledgeMutation<string, ResponseTemplate>((id) => archiveResponseTemplate(id), {
+    success: (template) => `Archived template ${template.name}`,
+    error: "Could not archive the template",
+  });
 }
 
 export function useDuplicateResponseTemplate() {
-  return useKnowledgeMutation<string, ResponseTemplate>((id) => duplicateResponseTemplate(id));
-}
-
-export function useUpdateKnowledge() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Parameters<typeof updateKnowledge>[1] }) => updateKnowledge(id, body),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["knowledge"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
-      ]);
-    },
+  return useKnowledgeMutation<string, ResponseTemplate>((id) => duplicateResponseTemplate(id), {
+    success: (template) => `Created ${template.name}`,
+    error: "Could not duplicate the template",
   });
 }
 
-export function useApproveKnowledge() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => approveKnowledge(id),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["knowledge"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
-      ]);
-    },
-  });
+export function useApplyKnowledgeRevision() {
+  return useKnowledgeMutation<{ sourceId: string; revisionId: string; note?: string }, KnowledgeItem>(
+    ({ sourceId, revisionId, note }) => applyKnowledgeRevision(sourceId, revisionId, { note }),
+    { success: (item) => `Revision applied. ${item.name} is now v${item.version}.`, error: "Could not apply the revision" },
+  );
 }
 
-export function useArchiveKnowledge() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => archiveKnowledge(id),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["knowledge"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] }),
-      ]);
+export function useRejectKnowledgeRevision() {
+  return useKnowledgeMutation<{ sourceId: string; revisionId: string; note?: string }, KnowledgeItem>(
+    ({ sourceId, revisionId, note }) => rejectKnowledgeRevision(sourceId, revisionId, { note }),
+    { success: "Revision rejected", error: "Could not reject the revision" },
+  );
+}
+
+export function useDecideKnowledgeClaims() {
+  return useKnowledgeMutation<{ sourceId: string; claimIds: string[]; decision: "accept" | "reject" }, KnowledgeItem>(
+    ({ sourceId, claimIds, decision }) => decideKnowledgeClaims(sourceId, { claimIds, decision }),
+    {
+      success: (_item, input) =>
+        `${input.decision === "accept" ? "Accepted" : "Rejected"} ${input.claimIds.length} claim${input.claimIds.length === 1 ? "" : "s"}`,
+      error: "Could not update the suggested claims",
     },
-  });
+  );
+}
+
+/**
+ * Registers the upload, PUTs the bytes straight to object storage, then
+ * confirms it: the same three steps as tender sources. The worker takes it
+ * from there, and the source detail query polls while the document processes.
+ */
+export function useUploadKnowledgeDocument() {
+  return useKnowledgeMutation<{ sourceId: string; file: File; mimeType: string }, { fileName: string }>(
+    async ({ sourceId, file, mimeType }) => {
+      const intent = await createKnowledgeDocumentUpload(sourceId, { filename: file.name, mimeType, sizeBytes: file.size });
+      await uploadBytesToStorage(intent.uploadUrl, file, mimeType);
+      await completeKnowledgeDocumentUpload(sourceId, intent.documentId);
+      return { fileName: file.name };
+    },
+    { success: (result) => `Uploaded ${result.fileName}. Processing has started.`, error: "Upload failed" },
+  );
+}
+
+export function useReprocessKnowledgeDocument() {
+  return useKnowledgeMutation<{ sourceId: string; documentId: string }, unknown>(
+    ({ sourceId, documentId }) => reprocessKnowledgeDocument(sourceId, documentId),
+    { success: "Reprocessing started", error: "Could not reprocess the document" },
+  );
+}
+
+export function useDeleteKnowledgeDocument() {
+  return useKnowledgeMutation<{ sourceId: string; documentId: string }, unknown>(
+    ({ sourceId, documentId }) => deleteKnowledgeDocument(sourceId, documentId),
+    { success: "Document removed", error: "Could not remove the document" },
+  );
 }
 
 export type {

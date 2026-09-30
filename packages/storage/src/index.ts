@@ -5,5 +5,5 @@ export type {
   PresignGetInput,
   PresignPutInput,
 } from "./object-storage";
-export { documentObjectKey, sanitizeFilename, tenderSourceObjectKey } from "./object-key";
-export type { DocumentObjectKeyInput, TenderSourceObjectKeyInput } from "./object-key";
+export { documentObjectKey, knowledgeDocumentObjectKey, sanitizeFilename, tenderSourceObjectKey } from "./object-key";
+export type { DocumentObjectKeyInput, KnowledgeDocumentObjectKeyInput, TenderSourceObjectKeyInput } from "./object-key";

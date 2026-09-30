@@ -1,9 +1,11 @@
-import { getDb, notifications, tenderMilestones, tenders } from "@rfp-os/db";
+import { getDb, tenderMilestones, tenders } from "@rfp-os/db";
 import { DEFAULT_JOB_OPTIONS, QUEUES, RFP_AUTOMATION_JOBS, rfpAutomationJobId, type RfpAutomationJobPayload } from "@rfp-os/jobs";
 import { createLogger } from "@rfp-os/observability";
 import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { Queue, Worker, type Job } from "bullmq";
 import type IORedis from "ioredis";
+
+import { insertNotificationOnce } from "../shared/notifications";
 
 /**
  * Legacy queue name, canonical tender data.
@@ -27,8 +29,7 @@ export function createRfpAutomationWorker(connection: IORedis) {
     if (overdue) await db.update(tenderMilestones).set({ status: "OVERDUE", updatedAt: new Date() }).where(eq(tenderMilestones.id, row.milestone.id));
     const title = `${format(row.milestone.kind)} milestone ${overdue ? "overdue" : "due soon"}`;
     const detail = `${row.tender.title} is due ${row.milestone.dueAt.toISOString()}.`;
-    const [existing] = await db.select({ id: notifications.id }).from(notifications).where(and(eq(notifications.organizationId, row.tender.organizationId), eq(notifications.userId, row.tender.ownerId), eq(notifications.relatedEntityType, "tender_milestone"), eq(notifications.relatedEntityId, row.milestone.id), eq(notifications.title, title), eq(notifications.detail, detail))).limit(1);
-    if (!existing) await db.insert(notifications).values({ organizationId: row.tender.organizationId, userId: row.tender.ownerId, category: "Deadlines", title, detail, severity: overdue ? "danger" : "warning", relatedEntityType: "tender_milestone", relatedEntityId: row.milestone.id });
+    await insertNotificationOnce(db, { organizationId: row.tender.organizationId, userId: row.tender.ownerId, category: "Deadlines", title, detail, severity: overdue ? "danger" : "warning", relatedEntityType: "tender_milestone", relatedEntityId: row.milestone.id });
     return { processed: true, overdue };
   }, { connection, concurrency: 2 });
 }

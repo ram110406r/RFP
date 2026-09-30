@@ -19,6 +19,11 @@ export interface CompletionResponse {
 export interface EmbeddingRequest {
   model: string;
   input: string[];
+  /**
+   * Retrieval models embed stored passages and search queries slightly
+   * differently; providers that do not distinguish ignore it.
+   */
+  inputType?: "document" | "query";
 }
 
 export interface EmbeddingResponse {

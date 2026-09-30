@@ -22,7 +22,6 @@ import { AuditService } from "../../infrastructure/audit";
 import { AssignmentsService } from "../assignments/assignments.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { PoliciesService } from "../policies/policies.service";
-import { RolesService } from "../roles/roles.service";
 import { TeamsService } from "../teams/teams.service";
 import { WorkspacesService } from "../workspaces/workspaces.service";
 import { testEnv } from "../../config/test-env";
@@ -41,10 +40,9 @@ describeDb("Tier 0 activity and audit events", () => {
   const db = shouldRunDbTests ? getDb() : (undefined as never);
   const activity = new ActivityService(db);
   const audit = new AuditService(db);
-  const organizationsService = new OrganizationsService(db, config, activity, audit);
+  const organizationsService = new OrganizationsService(db, config, activity, audit, { sendInvitation: async () => undefined } as never);
   const workspacesService = new WorkspacesService(db, activity, audit);
   const teamsService = new TeamsService(db, activity, audit);
-  const rolesService = new RolesService(db, activity, audit);
   const policiesService = new PoliciesService(db, activity, audit);
   const assignmentsService = new AssignmentsService(db, activity, audit);
 
@@ -58,7 +56,6 @@ describeDb("Tier 0 activity and audit events", () => {
   let workspaceId = "";
   let inviteeWorkspaceMemberId = "";
   let teamId = "";
-  let customRoleId = "";
   let policyId = "";
   let completedAssignmentId = "";
   let cancelledAssignmentId = "";
@@ -168,24 +165,6 @@ describeDb("Tier 0 activity and audit events", () => {
     });
     await teamsService.removeMember(ownerAuth(), teamId, inviteeMembershipId);
 
-    const role = await rolesService.create(ownerAuth(), {
-      name: `Workspace Reviewer ${suffix}`,
-      description: "Workspace-scoped review role",
-      permissionKeys: ["team:update"],
-    });
-    customRoleId = role.id;
-
-    await rolesService.assign(ownerAuth(), {
-      scopeType: "workspace_member",
-      workspaceMemberId: inviteeWorkspaceMemberId,
-      roleId: customRoleId,
-    });
-    await rolesService.revoke(ownerAuth(), {
-      scopeType: "workspace_member",
-      workspaceMemberId: inviteeWorkspaceMemberId,
-      roleId: customRoleId,
-    });
-
     const policy = await policiesService.create(ownerAuth(), {
       workspaceId,
       name: `Mutable Draft Only ${suffix}`,
@@ -259,9 +238,6 @@ describeDb("Tier 0 activity and audit events", () => {
       "TEAM_UPDATED",
       "TEAM_MEMBER_ADDED",
       "TEAM_MEMBER_REMOVED",
-      "ROLE_CREATED",
-      "ROLE_ASSIGNED",
-      "ROLE_REVOKED",
       "POLICY_CREATED",
       "POLICY_UPDATED",
       "POLICY_TOGGLED",

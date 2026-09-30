@@ -263,29 +263,20 @@ describeDb("AuthService tenant resolution", () => {
     ).rejects.toThrow();
   });
 
-  dbTest("merges organization-scoped custom role permissions into the auth context", async () => {
+  dbTest("ignores leftover custom-role assignments entirely", async () => {
+    // beforeAll still assigns legacy org- and workspace-scoped custom roles
+    // granting audit:read and team:update; the fixed role matrix does not.
     const auth = await service.resolveAuthContext({
       userId: userInA,
       sessionId: "s1",
       activeOrganizationId: orgA,
+      emailVerified: true,
     });
 
-    expect(auth?.organizationPermissions).toContain("audit:read");
-    expect(auth?.permissions).toContain("audit:read");
-  });
-
-  dbTest("limits workspace-scoped custom role permissions to the assigned workspace", async () => {
-    const auth = await service.resolveAuthContext({
-      userId: userInA,
-      sessionId: "s1",
-      activeOrganizationId: orgA,
-    });
-
-    expect(auth?.permissions).toContain("team:update");
-    expect(auth?.workspaceIds).toContain(workspaceA);
-    expect(hasWorkspacePermission(auth!, workspaceA, "team:update")).toBe(true);
-    expect(hasWorkspacePermission(auth!, workspaceA2, "team:update")).toBe(false);
-    expect(hasWorkspacePermission(auth!, workspaceB, "team:update")).toBe(false);
+    expect(auth?.organizationPermissions).not.toContain("audit:read");
+    expect(auth?.permissions).not.toContain("audit:read");
+    expect(auth?.permissions).not.toContain("team:update");
+    expect(hasWorkspacePermission(auth!, workspaceA, "team:update")).toBe(false);
   });
 
   dbTest("grants built-in workspace permissions only through active workspace membership", async () => {
@@ -300,64 +291,5 @@ describeDb("AuthService tenant resolution", () => {
     expect(hasWorkspacePermission(auth!, workspaceA, "team:read")).toBe(true);
     expect(hasWorkspacePermission(auth!, workspaceA2, "workspace:read")).toBe(false);
     expect(hasWorkspacePermission(auth!, workspaceA2, "team:read")).toBe(false);
-  });
-
-  dbTest("refreshes organization and workspace custom role permissions on the next resolution", async () => {
-    await db
-      .delete(organizationMemberRoles)
-      .where(eq(organizationMemberRoles.organizationMemberId, memberInAId));
-    await db
-      .delete(workspaceMemberRoles)
-      .where(eq(workspaceMemberRoles.workspaceMemberId, workspaceMemberInA));
-
-    const before = await service.resolveAuthContext({
-      userId: userInA,
-      sessionId: "s1",
-      activeOrganizationId: orgA,
-    });
-    expect(before?.permissions).not.toContain("audit:read");
-    expect(hasWorkspacePermission(before!, workspaceA, "team:update")).toBe(false);
-
-    await db.insert(organizationMemberRoles).values({
-      organizationMemberId: memberInAId,
-      roleId: orgCustomRole,
-    });
-    await db.insert(workspaceMemberRoles).values({
-      workspaceMemberId: workspaceMemberInA,
-      roleId: workspaceCustomRole,
-    });
-
-    const afterAssign = await service.resolveAuthContext({
-      userId: userInA,
-      sessionId: "s1",
-      activeOrganizationId: orgA,
-    });
-    expect(afterAssign?.permissions).toContain("audit:read");
-    expect(hasWorkspacePermission(afterAssign!, workspaceA, "team:update")).toBe(true);
-    expect(hasWorkspacePermission(afterAssign!, workspaceA2, "team:update")).toBe(false);
-
-    await db
-      .delete(organizationMemberRoles)
-      .where(eq(organizationMemberRoles.organizationMemberId, memberInAId));
-    await db
-      .delete(workspaceMemberRoles)
-      .where(eq(workspaceMemberRoles.workspaceMemberId, workspaceMemberInA));
-
-    const afterRevoke = await service.resolveAuthContext({
-      userId: userInA,
-      sessionId: "s1",
-      activeOrganizationId: orgA,
-    });
-    expect(afterRevoke?.permissions).not.toContain("audit:read");
-    expect(hasWorkspacePermission(afterRevoke!, workspaceA, "team:update")).toBe(false);
-
-    await db.insert(organizationMemberRoles).values({
-      organizationMemberId: memberInAId,
-      roleId: orgCustomRole,
-    });
-    await db.insert(workspaceMemberRoles).values({
-      workspaceMemberId: workspaceMemberInA,
-      roleId: workspaceCustomRole,
-    });
   });
 });

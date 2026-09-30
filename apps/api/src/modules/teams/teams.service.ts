@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, isNull, sql } from "drizzle-orm";
 import {
   organizationMembers,
   teamMembers,
@@ -27,6 +27,17 @@ import { DATABASE } from "../../infrastructure/database";
 import { AuditService } from "../../infrastructure/audit";
 import type { AddTeamMemberInput, CreateTeamInput, UpdateTeamInput } from "./teams.dto";
 
+/** Each listed team carries its member count (see workspaceWithMemberCount). */
+const teamWithMemberCount = {
+  ...getTableColumns(teams),
+  memberCount: sql<number>`(
+    select count(*) from "team_members" tm
+    inner join "organization_members" om on om."id" = tm."organization_member_id"
+    where tm."team_id" = "teams"."id"
+      and om."status" = 'active'
+  )`.mapWith(Number),
+};
+
 @Injectable()
 export class TeamsService {
   constructor(
@@ -38,7 +49,7 @@ export class TeamsService {
   async list(auth: AuthContext) {
     if (hasOrganizationPermission(auth, "team:read")) {
       return this.db
-        .select()
+        .select(teamWithMemberCount)
         .from(teams)
         .where(eq(teams.organizationId, auth.organizationId))
         .orderBy(desc(teams.createdAt));
@@ -49,7 +60,7 @@ export class TeamsService {
     }
 
     return this.db
-      .select()
+      .select(teamWithMemberCount)
       .from(teams)
       .where(
         and(
@@ -62,7 +73,7 @@ export class TeamsService {
 
   async create(auth: AuthContext, input: CreateTeamInput) {
     this.assertWorkspacePermission(auth, input.workspaceId, "team:create");
-    await this.requireWorkspace(auth.organizationId, input.workspaceId);
+    await this.requireActiveWorkspace(auth.organizationId, input.workspaceId);
 
     const [team] = await withTransaction(async (tx) => {
       const [created] = await tx
@@ -111,9 +122,11 @@ export class TeamsService {
   async update(auth: AuthContext, teamId: string, input: UpdateTeamInput) {
     const existing = await this.requireTeam(auth.organizationId, teamId);
     this.assertWorkspacePermission(auth, existing.workspaceId, "team:update");
-    if (input.workspaceId) {
+    this.assertTeamActive(existing);
+    if (input.workspaceId && input.workspaceId !== existing.workspaceId) {
       this.assertWorkspacePermission(auth, input.workspaceId, "team:update");
-      await this.requireWorkspace(auth.organizationId, input.workspaceId);
+      await this.requireActiveWorkspace(auth.organizationId, input.workspaceId);
+      await this.assertMembersBelongToWorkspace(teamId, input.workspaceId);
     }
 
     const [updated] = await withTransaction(async (tx) => {
@@ -236,6 +249,7 @@ export class TeamsService {
   async addMember(auth: AuthContext, teamId: string, input: AddTeamMemberInput) {
     const team = await this.requireTeam(auth.organizationId, teamId);
     this.assertWorkspacePermission(auth, team.workspaceId, "team:member:manage");
+    this.assertTeamActive(team);
     const member = await this.requireActiveOrganizationMember(
       auth.organizationId,
       input.organizationMemberId,
@@ -363,7 +377,7 @@ export class TeamsService {
     return removed;
   }
 
-  private async requireWorkspace(organizationId: string, workspaceId: string) {
+  private async requireActiveWorkspace(organizationId: string, workspaceId: string) {
     const [workspace] = await this.db
       .select()
       .from(workspaces)
@@ -373,7 +387,52 @@ export class TeamsService {
     if (!workspace) {
       throw new NotFoundException({ code: "NOT_FOUND", message: "Workspace not found." });
     }
+    if (workspace.status !== "active") {
+      throw new ConflictException({
+        code: "WORKSPACE_ARCHIVED",
+        message: "That workspace is archived. Restore it before adding teams to it.",
+      });
+    }
     return workspace;
+  }
+
+  private assertTeamActive(team: { status: string }) {
+    if (team.status !== "active") {
+      throw new ConflictException({
+        code: "TEAM_ARCHIVED",
+        message: "This team is archived and cannot be changed.",
+      });
+    }
+  }
+
+  /**
+   * A workspace team may only contain members of that workspace (addMember
+   * enforces it). Moving a team must not smuggle its members into a workspace
+   * they were never given, so the move is refused until they are added there.
+   */
+  private async assertMembersBelongToWorkspace(teamId: string, workspaceId: string) {
+    const outsiders = await this.db
+      .select({ organizationMemberId: teamMembers.organizationMemberId, email: users.email })
+      .from(teamMembers)
+      .innerJoin(organizationMembers, eq(organizationMembers.id, teamMembers.organizationMemberId))
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .leftJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.organizationMemberId, teamMembers.organizationMemberId),
+          eq(workspaceMembers.workspaceId, workspaceId),
+          eq(workspaceMembers.status, "active"),
+        ),
+      )
+      .where(and(eq(teamMembers.teamId, teamId), isNull(workspaceMembers.id)));
+
+    if (outsiders.length > 0) {
+      throw new ConflictException({
+        code: "TEAM_MEMBERS_NOT_IN_WORKSPACE",
+        message: "Some team members are not in the destination workspace. Add them to it first, or remove them from the team.",
+        members: outsiders.map((outsider) => outsider.email),
+      });
+    }
   }
 
   private async requireTeam(organizationId: string, teamId: string) {
@@ -409,15 +468,6 @@ export class TeamsService {
       });
     }
     return member;
-  }
-
-  private assertOrganizationPermission(auth: AuthContext, permission: "team:create") {
-    if (hasOrganizationPermission(auth, permission)) return;
-
-    throw new ForbiddenException({
-      code: "FORBIDDEN",
-      message: `You do not have permission to perform this action (${permission}).`,
-    });
   }
 
   private assertWorkspacePermission(

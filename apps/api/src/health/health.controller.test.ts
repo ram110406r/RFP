@@ -70,12 +70,13 @@ apiPackageTest("Health endpoints", () => {
       } as never,
       { execute: async () => undefined } as never,
       { bucketReachable: async () => true } as never,
+      { verifyTransport: async () => true } as never,
     );
     const controller = new ReadyController(service);
 
     await expect(controller.check()).resolves.toEqual({
       status: "ok",
-      checks: { database: "ok", redis: "skipped", storage: "ok", opensearch: "skipped" },
+      checks: { database: "ok", redis: "skipped", storage: "ok", opensearch: "skipped", mail: "ok" },
     });
   });
 });

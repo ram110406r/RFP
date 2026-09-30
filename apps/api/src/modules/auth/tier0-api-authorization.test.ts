@@ -12,6 +12,7 @@ import {
   getDb,
   organizationMembers,
   organizations,
+  roles,
   teams,
   users,
   workspaceMembers,
@@ -23,7 +24,6 @@ import { ActivityService } from "../../infrastructure/activity";
 import { AuditService } from "../../infrastructure/audit";
 import { AssignmentsService } from "../assignments/assignments.service";
 import { AuthService, type ResolvedSession } from "./auth.service";
-import { RolesService } from "../roles/roles.service";
 import { PoliciesService } from "../policies/policies.service";
 
 const shouldRunDbTests = Boolean(process.env.DATABASE_URL && !process.env.TENDYY_ROOT_BUN_TEST);
@@ -57,7 +57,6 @@ describeDb("Tier 0 HTTP authorization path", () => {
   const db = shouldRunDbTests ? getDb() : (undefined as never);
   const activity = new ActivityService(db);
   const audit = new AuditService(db);
-  const rolesService = new RolesService(db, activity, audit);
   const policiesService = new PoliciesService(db, activity, audit);
   const assignmentsService = new AssignmentsService(db, activity, audit);
   const realAuthService = new AuthService(db, config);
@@ -194,18 +193,16 @@ describeDb("Tier 0 HTTP authorization path", () => {
     teamA2 = teamA2Row!.id;
     teamB1 = teamB1Row!.id;
 
-    const roleA = await rolesService.create(ownerAuth(ownerA, orgA), {
-      name: `Role A ${suffix}`,
-      description: "Org A custom role",
-      permissionKeys: ["audit:read"],
-    });
-    const roleB = await rolesService.create(ownerAuth(ownerB, orgB), {
-      name: `Role B ${suffix}`,
-      description: "Org B custom role",
-      permissionKeys: ["audit:read"],
-    });
-    roleAId = roleA.id;
-    roleBId = roleB.id;
+    // Historical custom-role rows: they can no longer be created through the API.
+    const [roleA, roleB] = await db
+      .insert(roles)
+      .values([
+        { organizationId: orgA, name: `Role A ${suffix}`, description: "Org A custom role" },
+        { organizationId: orgB, name: `Role B ${suffix}`, description: "Org B custom role" },
+      ])
+      .returning({ id: roles.id });
+    roleAId = roleA!.id;
+    roleBId = roleB!.id;
 
     const policyA = await policiesService.create(ownerAuth(ownerA, orgA), {
       workspaceId: workspaceA1,
@@ -263,6 +260,7 @@ describeDb("Tier 0 HTTP authorization path", () => {
           userId,
           sessionId: headers.get("x-test-session-id") ?? `session-${userId}`,
           activeOrganizationId: headers.get("x-test-org-id"),
+          emailVerified: headers.get("x-test-unverified") !== "1",
         };
       },
       resolveAuthContext: (session: ResolvedSession) => realAuthService.resolveAuthContext(session),
