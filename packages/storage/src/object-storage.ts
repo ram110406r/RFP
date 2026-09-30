@@ -71,10 +71,16 @@ export class ObjectStorage {
 
   constructor(private readonly config: ObjectStorageConfig) {
     this.bucket = config.bucket;
-    this.client = new S3Client({
+    const shared = {
       region: config.region,
-      ...(config.endpoint ? { endpoint: config.endpoint } : {}),
       forcePathStyle: config.forcePathStyle ?? true,
+      // SDK >=3.729 defaults to WHEN_SUPPORTED, which bakes a CRC32 of the
+      // (absent) body into presigned PUT URLs — `AAAAAA==`, the empty-payload
+      // checksum. The browser then uploads real bytes, the checksum no longer
+      // matches, and MinIO rejects the PUT. Only send checksums when an
+      // operation requires one.
+      requestChecksumCalculation: "WHEN_REQUIRED" as const,
+      responseChecksumValidation: "WHEN_REQUIRED" as const,
       ...(config.accessKeyId && config.secretAccessKey
         ? {
             credentials: {
@@ -83,16 +89,13 @@ export class ObjectStorage {
             },
           }
         : {}),
+    };
+    this.client = new S3Client({
+      ...shared,
+      ...(config.endpoint ? { endpoint: config.endpoint } : {}),
     });
     this.presignClient = config.publicEndpoint
-      ? new S3Client({
-          region: config.region,
-          endpoint: config.publicEndpoint,
-          forcePathStyle: config.forcePathStyle ?? true,
-          ...(config.accessKeyId && config.secretAccessKey
-            ? { credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey } }
-            : {}),
-        })
+      ? new S3Client({ ...shared, endpoint: config.publicEndpoint })
       : this.client;
   }
 

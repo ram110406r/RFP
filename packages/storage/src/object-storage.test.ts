@@ -23,6 +23,25 @@ describe("ObjectStorage", () => {
     expect(url).toStartWith("https://app.example.com/test-bucket/docs/test.pdf?");
   });
 
+  test("presigned PUT URLs do not pin a checksum of the empty presign body", async () => {
+    const storage = new ObjectStorage({
+      region: "us-east-1",
+      bucket: "test-bucket",
+      endpoint: "http://minio:9000",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+    });
+
+    const url = await storage.presignPut({
+      objectKey: "docs/test.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      expiresInSeconds: 60,
+    });
+
+    expect(url).not.toContain("x-amz-checksum-crc32");
+    expect(url).not.toContain("x-amz-sdk-checksum-algorithm");
+  });
+
   test("readObject returns the full payload bytes", async () => {
     const storage = makeStorage(async () => ({
       Body: {
