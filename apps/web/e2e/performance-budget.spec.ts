@@ -4,8 +4,8 @@ const queueRoutes = ["/apply", "/requirements", "/responses", "/reviews", "/subm
 const apiRequestBudget = 8;
 
 if (typeof Bun === "undefined") test.describe("queue performance budgets", () => {
-  const authenticated = Boolean(process.env.PLAYWRIGHT_E2E && process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST && process.env.PLAYWRIGHT_E2E_EMAIL && process.env.PLAYWRIGHT_E2E_PASSWORD);
-  test.skip(!authenticated && process.env.PLAYWRIGHT_GUEST_AUDIT !== "1", "Set the Firebase emulator test environment, or use PLAYWRIGHT_GUEST_AUDIT=1 against a development-only guest server.");
+  const authenticated = Boolean(process.env.PLAYWRIGHT_E2E && process.env.PLAYWRIGHT_E2E_EMAIL && process.env.PLAYWRIGHT_E2E_PASSWORD);
+  test.skip(!authenticated && process.env.PLAYWRIGHT_GUEST_AUDIT !== "1", "Set PLAYWRIGHT_E2E with a seeded test user, or use PLAYWRIGHT_GUEST_AUDIT=1 against a development-only guest server.");
 
   for (const route of queueRoutes) {
     test(`${route} stays within initial API request budget`, async ({ page }) => {

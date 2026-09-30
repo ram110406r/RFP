@@ -3,11 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import { useAuthSession } from "../../components/auth-gate";
 
 export default function VerifyEmailPage() {
   const router = useRouter();
-  const session = useFirebaseSession();
+  const session = useAuthSession();
   const [busy, setBusy] = useState(false);
 
   async function continueAfterVerification() {

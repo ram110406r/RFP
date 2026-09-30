@@ -7,7 +7,7 @@ import { ArrowRight, Building2, ChevronRight, FileText, LayoutGrid, ShieldCheck,
 
 import { AppShell } from "../../components/app-shell";
 import { TendyyResponsiveNav } from "../../components/tendyy-ui";
-import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import { useAuthSession } from "../../components/auth-gate";
 import { RfpEmptyState, RfpStatusBadge } from "../../components/rfp-foundation";
 import { Button } from "@rfp-os/ui";
 import { can } from "../../lib/permissions";
@@ -53,7 +53,7 @@ const tabs = [
 ] as const;
 
 export default function OrganizationPage() {
-  const session = useFirebaseSession();
+  const session = useAuthSession();
   const currentQuery = useOrganizationCurrent();
   const onboardingStatusQuery = useQuery({ queryKey: ["onboarding", "status"], queryFn: fetchOnboardingStatus });
   const role = onboardingStatusQuery.data?.membership?.role ?? session?.profile?.role;

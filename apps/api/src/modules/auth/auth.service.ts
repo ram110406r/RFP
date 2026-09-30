@@ -49,16 +49,12 @@ export interface MembershipSummary {
 @Injectable()
 export class AuthService {
   readonly auth: Auth;
-  private readonly firebaseProjectId: string;
-  private readonly firebaseCompatEnabled: boolean;
   private readonly developmentLoginEnabled: boolean;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     config: ConfigService<Env, true>,
   ) {
-    this.firebaseProjectId = config.get("FIREBASE_PROJECT_ID", { infer: true }) ?? "tendyy";
-    this.firebaseCompatEnabled = config.get("ENABLE_FIREBASE_AUTH_COMPAT", { infer: true });
     this.developmentLoginEnabled =
       config.get("APP_ENV", { infer: true }) === "local" && config.get("NODE_ENV", { infer: true }) !== "production";
     this.auth = createAuth(db, {
@@ -72,7 +68,6 @@ export class AuthService {
       BETTER_AUTH_URL: config.get("BETTER_AUTH_URL", { infer: true }),
       BETTER_AUTH_GOOGLE_CLIENT_ID: config.get("BETTER_AUTH_GOOGLE_CLIENT_ID", { infer: true }),
       BETTER_AUTH_GOOGLE_CLIENT_SECRET: config.get("BETTER_AUTH_GOOGLE_CLIENT_SECRET", { infer: true }),
-      ENABLE_FIREBASE_AUTH_COMPAT: config.get("ENABLE_FIREBASE_AUTH_COMPAT", { infer: true }),
       SESSION_MAX_AGE_SECONDS: config.get("SESSION_MAX_AGE_SECONDS", { infer: true }),
       INVITATION_TTL_HOURS: config.get("INVITATION_TTL_HOURS", { infer: true }),
     } as Env);
@@ -81,9 +76,7 @@ export class AuthService {
   /** Reads the session cookie. Returns null when there is no valid session. */
   async resolveSession(headers: Headers): Promise<ResolvedSession | null> {
     const result = await this.auth.api.getSession({ headers });
-    if (!result?.session || !result.user) {
-      return this.firebaseCompatEnabled ? this.resolveFirebaseSession(headers) : null;
-    }
+    if (!result?.session || !result.user) return null;
 
     const session = result.session as typeof result.session & {
       activeOrganizationId?: string | null;
@@ -95,87 +88,6 @@ export class AuthService {
       activeOrganizationId: session.activeOrganizationId ?? null,
       emailVerified: true,
     };
-  }
-
-  /** Verify Firebase identity tokens and reuse the existing DB membership model. */
-  private async resolveFirebaseSession(headers: Headers): Promise<ResolvedSession | null> {
-    const authorization = headers.get("authorization");
-    if (!authorization?.startsWith("Bearer ")) return null;
-
-    try {
-      // Load Firebase Admin lazily: Bun cannot initialize its CommonJS jose
-      // dependency during application bootstrap, but can load it on demand.
-      const [{ getApps, initializeApp }, { getAuth: getFirebaseAdminAuth }] = await Promise.all([
-        import("firebase-admin/app"),
-        import("firebase-admin/auth"),
-      ]);
-      const app = getApps()[0] ?? initializeApp({ projectId: this.firebaseProjectId });
-      const decoded = await getFirebaseAdminAuth(app).verifyIdToken(authorization.slice("Bearer ".length));
-      const email = decoded.email?.toLowerCase();
-      if (!email) return null;
-
-      let [user] = await this.db
-        .select({ id: users.id, emailVerified: users.emailVerified })
-        .from(users)
-        .where(eq(users.email, email))
-        .limit(1);
-      if (!user) {
-        user = await this.provisionFirebaseUser({
-          email,
-          name: decoded.name?.trim() || email.split("@")[0] || "Firebase user",
-          emailVerified: decoded.email_verified === true,
-          uid: decoded.uid,
-        });
-      }
-      if (user.emailVerified !== (decoded.email_verified === true)) {
-        await this.db
-          .update(users)
-          .set({ emailVerified: decoded.email_verified === true, updatedAt: new Date() })
-          .where(eq(users.id, user.id));
-      }
-
-      return {
-        userId: user.id,
-        sessionId: `firebase:${decoded.uid}`,
-        activeOrganizationId: null,
-        emailVerified: decoded.email_verified === true,
-      };
-    } catch (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn(
-          `[firebase-auth] ID token verification failed: ${
-            error instanceof Error ? error.message : "unknown verification error"
-          }`,
-        );
-      }
-      return null;
-    }
-  }
-
-  /** Creates only the application identity; onboarding creates its tenant later. */
-  private async provisionFirebaseUser(input: {
-    email: string;
-    name: string;
-    emailVerified: boolean;
-    uid: string;
-  }) {
-    const [user] = await this.db.transaction(async (tx) => {
-      const [createdUser] = await tx
-        .insert(users)
-        .values({
-          name: input.name,
-          email: input.email,
-          memberRole: "Admin",
-          status: "active",
-          emailVerified: input.emailVerified,
-          lastActiveAt: new Date(),
-        })
-        .returning({ id: users.id });
-      if (!createdUser) throw new Error("Failed to provision Firebase user.");
-      return [createdUser];
-    });
-    if (!user) throw new Error("Firebase user provisioning returned no user.");
-    return { ...user, emailVerified: input.emailVerified };
   }
 
   /**

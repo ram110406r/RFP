@@ -28,7 +28,7 @@ import { AppShell } from "./app-shell";
 import { ApiError } from "../lib/api";
 import { useActivities, useDashboardSummary, useKnowledgeItem, useKnowledgeList, useKnowledgeSummary, useApproveKnowledge, useArchiveKnowledge } from "../lib/queries";
 import type { ActivityItem, DashboardOverview, KnowledgeItem } from "../lib/models";
-import { useFirebaseSession } from "./firebase-auth-gate";
+import { useAuthSession } from "./auth-gate";
 import { RfpEmptyState, RfpErrorState } from "./rfp-foundation";
 import { TendyyResponsiveDataView } from "./tendyy-ui";
 
@@ -126,7 +126,7 @@ function KnowledgeBrowser() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const session = useFirebaseSession();
+  const session = useAuthSession();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const askInputRef = useRef<HTMLInputElement>(null);
   const [searchText, setSearchText] = useState(searchParams.get("q") ?? "");

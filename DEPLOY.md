@@ -37,8 +37,8 @@ Dokploy should point at `docker-compose.yml`. Set
 
 - Docker Engine and Docker Compose plugin v2.20 or newer.
 - A Dokploy application domain targeting the `web` service on port `3000`.
-- A database password, a Better Auth secret, storage credentials, Firebase
-  public config, and a non-mock AI provider.
+- A database password, a Better Auth secret, storage credentials, and a
+  non-mock AI provider.
 
 ## Configure environment
 
@@ -57,7 +57,6 @@ BETTER_AUTH_URL=https://app.example.com
 BETTER_AUTH_SECRET=<strong secret>
 BETTER_AUTH_GOOGLE_CLIENT_ID=<google oauth client id>
 BETTER_AUTH_GOOGLE_CLIENT_SECRET=<google oauth client secret>
-ENABLE_FIREBASE_AUTH_COMPAT=false
 
 AI_PROVIDER=groq
 GROQ_API_KEY=<groq api key>
@@ -71,14 +70,6 @@ STORAGE_ACCESS_KEY_ID=<strong storage key>
 STORAGE_SECRET_ACCESS_KEY=<strong storage secret>
 STORAGE_PUBLIC_ENDPOINT=https://app.example.com
 
-NEXT_PUBLIC_FIREBASE_API_KEY=
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=tendyy.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=tendyy
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=tendyy.firebasestorage.app
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=980605439539
-NEXT_PUBLIC_FIREBASE_APP_ID=
-NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
-NEXT_PUBLIC_FIREBASE_USE_EMULATORS=false
 ```
 
 The API validates this configuration at boot and refuses to start in

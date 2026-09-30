@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { z } from "zod";
 
-import { envSchema, validateEnv } from "./env.schema";
+import { envBoolean, envSchema, validateEnv } from "./env.schema";
+
+// A strict flag (no fallback), the way auth-sensitive booleans are declared.
+const strictFlagSchema = z.object({ FLAG: envBoolean(false) });
 
 const productionBase = {
   APP_ENV: "production",
@@ -36,26 +40,25 @@ describe("envBoolean flags", () => {
     ["`false`", false],
     [0, false],
   ])("parses %p as %p", (raw, expected) => {
-    const env = envSchema.parse({ ENABLE_FIREBASE_AUTH_COMPAT: raw, STORAGE_FORCE_PATH_STYLE: raw });
-    expect(env.ENABLE_FIREBASE_AUTH_COMPAT).toBe(expected);
-    expect(env.STORAGE_FORCE_PATH_STYLE).toBe(expected);
+    expect(strictFlagSchema.parse({ FLAG: raw }).FLAG).toBe(expected);
+    expect(envSchema.parse({ STORAGE_FORCE_PATH_STYLE: raw }).STORAGE_FORCE_PATH_STYLE).toBe(expected);
   });
 
   it("falls back to the default when unset or blank", () => {
-    expect(envSchema.parse({}).ENABLE_FIREBASE_AUTH_COMPAT).toBe(false);
+    expect(strictFlagSchema.parse({}).FLAG).toBe(false);
     expect(envSchema.parse({}).STORAGE_FORCE_PATH_STYLE).toBe(true);
-    expect(envSchema.parse({ ENABLE_FIREBASE_AUTH_COMPAT: "  " }).ENABLE_FIREBASE_AUTH_COMPAT).toBe(false);
+    expect(strictFlagSchema.parse({ FLAG: "  " }).FLAG).toBe(false);
   });
 
   it("rejects values that are not a recognisable boolean", () => {
-    expect(envSchema.safeParse({ ENABLE_FIREBASE_AUTH_COMPAT: "maybe" }).success).toBe(false);
+    expect(strictFlagSchema.safeParse({ FLAG: "maybe" }).success).toBe(false);
   });
 
   it("falls back for malformed storage path-style values without weakening auth flags", () => {
     const env = envSchema.parse({ STORAGE_FORCE_PATH_STYLE: "path-style" });
 
     expect(env.STORAGE_FORCE_PATH_STYLE).toBe(true);
-    expect(envSchema.safeParse({ ENABLE_FIREBASE_AUTH_COMPAT: "path-style" }).success).toBe(false);
+    expect(strictFlagSchema.safeParse({ FLAG: "path-style" }).success).toBe(false);
   });
 });
 

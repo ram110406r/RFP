@@ -20,7 +20,7 @@ import {
 } from "../lib/api";
 import type { TenderAnalysisPayload, TenderQuestion, TenderRequirement, TenderSource } from "../lib/models";
 import { useWorkspaces } from "../lib/queries";
-import { useFirebaseSession } from "./firebase-auth-gate";
+import { useAuthSession } from "./auth-gate";
 
 type Step = 1 | 2 | 3 | 4;
 type Mode = "create" | "import";
@@ -38,7 +38,7 @@ const UPLOAD_PARSE_TIMEOUT_MS = 120_000;
 
 export function RfpIntakeWizard({ mode }: { mode: Mode }) {
   const router = useRouter();
-  const session = useFirebaseSession();
+  const session = useAuthSession();
   const workspacesQuery = useWorkspaces();
   const fileInput = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>(1);

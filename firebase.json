@@ -1,8 +1,0 @@
-{
-  "auth": {
-    "authorizedDomains": ["localhost", "127.0.0.1"]
-  },
-  "firestore": {
-    "rules": "firestore.rules"
-  }
-}

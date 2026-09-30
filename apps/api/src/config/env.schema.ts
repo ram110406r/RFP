@@ -92,8 +92,6 @@ export const envSchema = z.object({
   BETTER_AUTH_URL: z.string().url().default("http://localhost:4100"),
   BETTER_AUTH_GOOGLE_CLIENT_ID: blankToUndefined(z.string().min(1)),
   BETTER_AUTH_GOOGLE_CLIENT_SECRET: blankToUndefined(z.string().min(1)),
-  ENABLE_FIREBASE_AUTH_COMPAT: envBoolean(false),
-  FIREBASE_PROJECT_ID: z.string().min(1).optional(),
   APP_COMMIT_SHA: z.string().min(1).optional(),
   APP_BUILD_TIME: blankToUndefined(z.string().datetime()),
   AI_PROVIDER: z.enum(["mock", "groq", "openai", "anthropic", "gemini"]).default("mock"),
@@ -175,9 +173,6 @@ export function validateEnv(config: Record<string, unknown>): Env {
     }
     if (!result.data.BETTER_AUTH_GOOGLE_CLIENT_ID || !result.data.BETTER_AUTH_GOOGLE_CLIENT_SECRET) {
       missing.push("BETTER_AUTH_GOOGLE_CLIENT_ID / BETTER_AUTH_GOOGLE_CLIENT_SECRET: both required in production");
-    }
-    if (result.data.ENABLE_FIREBASE_AUTH_COMPAT && !result.data.FIREBASE_PROJECT_ID) {
-      missing.push("FIREBASE_PROJECT_ID: required only when ENABLE_FIREBASE_AUTH_COMPAT=true");
     }
     if (!hasDatabaseUrl && !hasPostgresEnv) {
       missing.push(

@@ -27,8 +27,8 @@ const staticRoutes = [
 ] as const;
 
 if (typeof Bun === "undefined") test.describe("authenticated responsive route matrix", () => {
-  const authenticated = Boolean(process.env.PLAYWRIGHT_E2E && process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST && process.env.PLAYWRIGHT_E2E_EMAIL && process.env.PLAYWRIGHT_E2E_PASSWORD);
-  test.skip(!authenticated && process.env.PLAYWRIGHT_GUEST_AUDIT !== "1", "Set the Firebase emulator test environment, or use PLAYWRIGHT_GUEST_AUDIT=1 against a development-only guest server for geometry checks.");
+  const authenticated = Boolean(process.env.PLAYWRIGHT_E2E && process.env.PLAYWRIGHT_E2E_EMAIL && process.env.PLAYWRIGHT_E2E_PASSWORD);
+  test.skip(!authenticated && process.env.PLAYWRIGHT_GUEST_AUDIT !== "1", "Set PLAYWRIGHT_E2E with a seeded test user, or use PLAYWRIGHT_GUEST_AUDIT=1 against a development-only guest server for geometry checks.");
 
   for (const width of widths) {
     for (const route of staticRoutes) {

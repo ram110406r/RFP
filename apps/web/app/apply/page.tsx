@@ -24,7 +24,7 @@ import {
 
 import { AppShell } from "../../components/app-shell";
 import { RfpEmptyState, RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
-import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import { useAuthSession } from "../../components/auth-gate";
 import { TendyyResponsiveDataView, TendyyResponsiveNav } from "../../components/tendyy-ui";
 import type { DashboardTenderCard } from "../../lib/models";
 import { useDashboardSummary } from "../../lib/queries";
@@ -49,7 +49,7 @@ export default function ApplyPage() {
 }
 
 function ApplyInbox() {
-  const session = useFirebaseSession();
+  const session = useAuthSession();
   const summaryQuery = useDashboardSummary(25);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");

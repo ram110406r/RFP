@@ -16,7 +16,7 @@ configuration determines which infrastructure it uses.
 - BullMQ worker in `apps/worker`
 - PostgreSQL + pgvector with Drizzle in `packages/db`
 - Redis, MinIO/S3, OpenSearch
-- Better Auth browser sessions backed by Postgres, with temporary Firebase token compatibility behind an opt-in flag
+- Better Auth browser sessions backed by Postgres
 
 ## Local Setup
 
@@ -98,7 +98,6 @@ Important variables:
 - `BETTER_AUTH_URL`
 - `BETTER_AUTH_GOOGLE_CLIENT_ID`
 - `BETTER_AUTH_GOOGLE_CLIENT_SECRET`
-- `ENABLE_FIREBASE_AUTH_COMPAT` and `FIREBASE_PROJECT_ID` only during Firebase token migration compatibility
 
 `.env.local`, `.env`, `.env.production`, and other real env files are ignored.
 Only example files are committed.
@@ -162,10 +161,6 @@ separate Dokploy Postgres service.
 Better Auth is the browser-facing auth system for local and production. It uses
 the existing Postgres/Drizzle identity tables, and the API resolves tenants
 from Postgres memberships server-side.
-
-Firebase token verification is retained only as temporary migration
-compatibility behind `ENABLE_FIREBASE_AUTH_COMPAT=true`. It is disabled by
-default and should not be used for new browser session or profile behavior.
 
 ## Product Domain Direction
 

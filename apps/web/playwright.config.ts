@@ -2,7 +2,6 @@ import { defineConfig, devices } from "@playwright/test";
 
 const hasAuthenticatedEnvironment = Boolean(
   process.env.PLAYWRIGHT_E2E &&
-  process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST &&
   process.env.PLAYWRIGHT_E2E_EMAIL &&
   process.env.PLAYWRIGHT_E2E_PASSWORD,
 );

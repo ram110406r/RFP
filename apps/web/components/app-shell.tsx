@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 
 import { useAppShellState } from "./app-shell-state-provider";
-import { useFirebaseSession } from "./firebase-auth-gate";
+import { useAuthSession } from "./auth-gate";
 import { useWorkspaces } from "../lib/queries";
 import { resolveSelectedWorkspaceId, selectWorkspace, useSelectedWorkspaceId } from "../lib/workspace-selection";
 
@@ -882,7 +882,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const session = useFirebaseSession();
+  const session = useAuthSession();
   const { mobileNavOpen, setMobileNavOpen, sidebarCollapsed, sidebarReady, setSidebarCollapsed } = useAppShellState();
   const [viewport, setViewport] = useState<Viewport>("desktop");
   const [activeFlyout, setActiveFlyout] = useState<string | null>(null);

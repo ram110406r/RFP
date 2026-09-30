@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 if (typeof Bun === "undefined") test.describe("lifecycle routing", () => {
-  test.skip(!process.env.PLAYWRIGHT_E2E, "Set PLAYWRIGHT_E2E=1 with Firebase Emulator and a disposable API/database.");
+  test.skip(!process.env.PLAYWRIGHT_E2E, "Set PLAYWRIGHT_E2E=1 with a seeded test user and a disposable API/database.");
 
   for (const width of [390, 414, 768, 1024, 1280, 1440]) {
     test(`public auth and onboarding routes fit ${width}px`, async ({ page }) => {

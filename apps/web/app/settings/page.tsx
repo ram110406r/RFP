@@ -17,7 +17,7 @@ import {
 import { AppShell } from "../../components/app-shell";
 import { TendyyResponsiveNav } from "../../components/tendyy-ui";
 import { RfpStatusBadge } from "../../components/rfp-foundation";
-import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import { useAuthSession } from "../../components/auth-gate";
 import { Button } from "@rfp-os/ui";
 import { useDashboardSummary, useOrganizationCurrent, useOrganizationInvitations, useOrganizationMembers, useRoles, useTeams, useUpdateOrganization, useWorkspaces } from "../../lib/queries";
 
@@ -34,7 +34,7 @@ const tabs = [
 ] as const;
 
 export default function SettingsPage() {
-  const session = useFirebaseSession();
+  const session = useAuthSession();
   const organizationQuery = useOrganizationCurrent();
   const membersQuery = useOrganizationMembers();
   const invitationsQuery = useOrganizationInvitations();

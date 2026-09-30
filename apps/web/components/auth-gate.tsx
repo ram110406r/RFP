@@ -19,7 +19,7 @@ function maskEmail(email: string | null) {
   return `${local.slice(0, 2)}***@${domain}`;
 }
 
-export type FirebaseUserProfile = {
+export type AuthUserProfile = {
   uid: string;
   email: string | null;
   displayName: string | null;
@@ -51,9 +51,9 @@ type BetterAuthUser = {
   providerData: Array<{ providerId: string; displayName?: string | null; email?: string | null }>;
 };
 
-type FirebaseSessionState = {
+type AuthSessionState = {
   user: BetterAuthUser | null;
-  profile: FirebaseUserProfile | null;
+  profile: AuthUserProfile | null;
   loading: boolean;
   busy: boolean;
   error: string | null;
@@ -61,19 +61,19 @@ type FirebaseSessionState = {
   refresh: () => Promise<void>;
 };
 
-const FirebaseSessionContext = createContext<FirebaseSessionState | null>(null);
+const AuthSessionContext = createContext<AuthSessionState | null>(null);
 
-export function useFirebaseSession() {
-  return useContext(FirebaseSessionContext);
+export function useAuthSession() {
+  return useContext(AuthSessionContext);
 }
 
-export function FirebaseAuthGate({ children }: { children: React.ReactNode }) {
+export function AuthGate({ children }: { children: React.ReactNode }) {
   const allowGuestUi = process.env.NEXT_PUBLIC_ALLOW_GUEST_UI === "true";
   if (allowGuestUi) return <>{children}</>;
-  return <FirebaseAuthGateInner>{children}</FirebaseAuthGateInner>;
+  return <AuthGateInner>{children}</AuthGateInner>;
 }
 
-function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
+function AuthGateInner({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -276,10 +276,10 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
     error,
     signOut: handleSignOut,
     refresh: refreshProfile,
-  } satisfies FirebaseSessionState;
+  } satisfies AuthSessionState;
 
   return (
-    <FirebaseSessionContext.Provider value={session}>
+    <AuthSessionContext.Provider value={session}>
       <div className="min-h-screen min-w-0 max-w-full bg-[var(--bg-deep)] text-slate-900">
         {error ? (
           <div className="tendyy-wrap-anywhere relative z-[60] mx-3 mt-3 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:mx-4">
@@ -288,7 +288,7 @@ function FirebaseAuthGateInner({ children }: { children: React.ReactNode }) {
         ) : null}
         <OnboardingRedirect>{children}</OnboardingRedirect>
       </div>
-    </FirebaseSessionContext.Provider>
+    </AuthSessionContext.Provider>
   );
 }
 
@@ -397,7 +397,7 @@ function toSessionUser(profile: CurrentProfile): BetterAuthUser {
   };
 }
 
-function toSessionProfile(profile: CurrentProfile): FirebaseUserProfile {
+function toSessionProfile(profile: CurrentProfile): AuthUserProfile {
   return {
     uid: profile.uid,
     email: profile.email,

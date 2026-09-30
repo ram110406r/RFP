@@ -23,7 +23,7 @@ import {
 
 import { AppShell } from "../../components/app-shell";
 import { TendyyResponsiveNav } from "../../components/tendyy-ui";
-import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import { useAuthSession } from "../../components/auth-gate";
 import { fetchOnboardingStatus, updateCurrentProfile } from "../../lib/api";
 import { useActivities, useOrganizationCurrent, useOrganizationMembers } from "../../lib/queries";
 import { Button } from "@rfp-os/ui";
@@ -104,7 +104,7 @@ export default function ProfilePage() {
 }
 
 function ProfileWorkspace() {
-  const session = useFirebaseSession();
+  const session = useAuthSession();
   const user = session?.user ?? null;
   const profile = session?.profile ?? null;
   const onboardingQuery = useQuery({
@@ -114,7 +114,7 @@ function ProfileWorkspace() {
   });
   const organizationQuery = useOrganizationCurrent();
   const membersQuery = useOrganizationMembers();
-  // Firebase UIDs are not the API's canonical database user UUIDs.
+  // "me" lets the API resolve the signed-in user to their database id.
   const activitiesQuery = useActivities({ actorId: user ? "me" : undefined });
   const organization = organizationQuery.data ?? null;
   const members = useMemo(() => membersQuery.data?.members ?? [], [membersQuery.data?.members]);
@@ -691,7 +691,7 @@ function ProfileWorkspace() {
               />
               <SessionRow
                 title="Authentication"
-                description="Firebase browser session"
+                description="Browser session"
                 value={emailVerified ? "Email verified" : "Email not verified"}
                 icon={<ShieldCheck className="h-4 w-4 text-[#155EEF]" />}
               />
@@ -727,8 +727,8 @@ function buildProfileSource({
   organization,
   member,
 }: {
-  user: ReturnType<typeof useFirebaseSession> extends infer T ? T extends { user: infer U } ? U | null : never : never;
-  profile: ReturnType<typeof useFirebaseSession> extends infer T ? T extends { profile: infer P } ? P | null : never : never;
+  user: ReturnType<typeof useAuthSession> extends infer T ? T extends { user: infer U } ? U | null : never : never;
+  profile: ReturnType<typeof useAuthSession> extends infer T ? T extends { profile: infer P } ? P | null : never : never;
   onboardingUser: {
     id: string;
     name: string;

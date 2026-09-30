@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "../../components/app-shell";
-import { useFirebaseSession } from "../../components/firebase-auth-gate";
+import { useAuthSession } from "../../components/auth-gate";
 import { RfpStatusBadge, statusTone } from "../../components/rfp-foundation";
 import { TendyyResponsiveDataView, TendyyResponsiveNav, TendyySheet } from "../../components/tendyy-ui";
 import type { ActivityItem, PipelineStageId, PipelineTenderCard } from "../../lib/models";
@@ -46,7 +46,7 @@ const tabs: Array<{ id: PipelineTab; label: string }> = [
 ];
 
 export default function PipelinePage() {
-  const session = useFirebaseSession();
+  const session = useAuthSession();
   const pipelineQuery = usePipeline();
   const activitiesQuery = useActivities({ entityType: "tender" });
   const [search, setSearch] = useState("");
