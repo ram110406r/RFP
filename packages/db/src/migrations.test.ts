@@ -134,4 +134,12 @@ describe("migration history", () => {
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS "rejection_reason"');
     expect(sql).toContain("WHEN duplicate_object THEN null");
   });
+
+  test("0033 repairs partially existing response template tables", () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, "0033_knowledge_brain_workflows.sql"), "utf8");
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "response_templates"');
+    expect(sql).toContain('ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "organization_id" uuid');
+    expect(sql).toContain('ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "usage_metadata" jsonb');
+    expect(sql).toContain('UPDATE "response_templates" SET');
+  });
 });

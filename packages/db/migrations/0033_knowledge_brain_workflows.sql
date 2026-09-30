@@ -31,6 +31,34 @@ CREATE TABLE IF NOT EXISTS "response_templates" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
+-- If a live database was partially pushed before this migration was recorded,
+-- the table may already exist with only some columns. Repair it before adding
+-- constraints and indexes so the one-shot deploy migration remains additive.
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid() NOT NULL;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "organization_id" uuid;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "name" text;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "category" "requirement_category";--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "status" "response_template_status" DEFAULT 'DRAFT' NOT NULL;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "owner_id" uuid;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "description" text DEFAULT '' NOT NULL;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "sections" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "variables" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "version" text DEFAULT '1.0' NOT NULL;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "usage_metadata" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "archived_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "created_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+ALTER TABLE "response_templates" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+UPDATE "response_templates" SET
+	"name" = COALESCE("name", ''),
+	"category" = COALESCE("category", 'Product'::"requirement_category"),
+	"status" = COALESCE("status", 'DRAFT'::"response_template_status"),
+	"description" = COALESCE("description", ''),
+	"sections" = COALESCE("sections", '[]'::jsonb),
+	"variables" = COALESCE("variables", '[]'::jsonb),
+	"version" = COALESCE("version", '1.0'),
+	"usage_metadata" = COALESCE("usage_metadata", '{}'::jsonb),
+	"created_at" = COALESCE("created_at", now()),
+	"updated_at" = COALESCE("updated_at", now());--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "response_templates" ADD CONSTRAINT "response_templates_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
