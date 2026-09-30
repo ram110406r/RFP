@@ -22,6 +22,7 @@ COPY --from=build /repo/package.json /repo/package.json
 COPY --from=build /repo/bun.lock /repo/bun.lock
 COPY --from=build /repo/node_modules /repo/node_modules
 COPY --from=build /repo/packages /repo/packages
+COPY --from=build /repo/apps/api/node_modules /repo/apps/api/node_modules
 COPY --from=build /repo/apps/api/package.json /repo/apps/api/package.json
 COPY --from=build /repo/apps/api/dist /repo/apps/api/dist
 
