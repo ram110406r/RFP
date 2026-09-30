@@ -125,12 +125,13 @@ describe("migration history", () => {
 
   test("0032 adds weighted discovery, saved searches, durable imports, and analytics", () => {
     const sql = readFileSync(join(MIGRATIONS_DIR, "0032_tender_search_p0_p2.sql"), "utf8");
-    expect(sql).toContain('ADD COLUMN "search_vector" tsvector GENERATED ALWAYS AS');
-    expect(sql).toContain('CREATE TABLE "tender_match_profiles"');
-    expect(sql).toContain('CREATE TABLE "tender_saved_searches"');
-    expect(sql).toContain('CREATE TABLE "tender_saved_search_matches"');
-    expect(sql).toContain('CREATE TABLE "tender_discovery_events"');
-    expect(sql).toContain('ADD COLUMN "import_status"');
-    expect(sql).toContain('ADD COLUMN "rejection_reason"');
+    expect(sql).toContain('ADD COLUMN IF NOT EXISTS "search_vector" tsvector GENERATED ALWAYS AS');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "tender_match_profiles"');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "tender_saved_searches"');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "tender_saved_search_matches"');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "tender_discovery_events"');
+    expect(sql).toContain('ADD COLUMN IF NOT EXISTS "import_status"');
+    expect(sql).toContain('ADD COLUMN IF NOT EXISTS "rejection_reason"');
+    expect(sql).toContain("WHEN duplicate_object THEN null");
   });
 });

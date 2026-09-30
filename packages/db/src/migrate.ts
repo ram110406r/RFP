@@ -1,5 +1,4 @@
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { sql } from "drizzle-orm";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,9 +20,9 @@ async function main() {
     await db.execute(sql`select 1`);
 
     console.log(`[migrate] database connection successful`);
-    await logMigrationState(db);
+    const pending = await logMigrationState(db);
     console.log(`[migrate] running migrations`);
-    await migrate(db, { migrationsFolder });
+    await runPendingMigrations(db, pending);
     console.log(`[migrate] migrations completed successfully`);
     console.log(`[migrate] exiting 0`);
   } finally {
@@ -68,6 +67,50 @@ async function logMigrationState(db: ReturnType<typeof getDb>) {
       pending.map((entry) => tags.get(entry.folderMillis) ?? String(entry.folderMillis)).join(", ") || "<none>"
     }`,
   );
+  return pending.map((entry) => ({
+    ...entry,
+    tag: tags.get(entry.folderMillis) ?? String(entry.folderMillis),
+  }));
+}
+
+async function runPendingMigrations(
+  db: ReturnType<typeof getDb>,
+  pending: Array<ReturnType<typeof readMigrationFiles>[number] & { tag: string }>,
+) {
+  if (pending.length === 0) {
+    return;
+  }
+
+  await db.execute(sql`CREATE SCHEMA IF NOT EXISTS drizzle`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
+      id SERIAL PRIMARY KEY,
+      hash text NOT NULL,
+      created_at bigint
+    )
+  `);
+
+  await db.transaction(async (tx) => {
+    for (const migration of pending) {
+      console.log(`[migrate] applying ${migration.tag}`);
+      for (const [index, statement] of migration.sql.entries()) {
+        if (!statement.trim()) continue;
+
+        try {
+          await tx.execute(sql.raw(statement));
+        } catch (error) {
+          console.error(`[migrate] failed in ${migration.tag}, statement ${index + 1}/${migration.sql.length}`);
+          console.error(`[migrate] statement: ${compactStatement(statement)}`);
+          throw error;
+        }
+      }
+
+      await tx.execute(
+        sql`insert into drizzle.__drizzle_migrations ("hash", "created_at") values(${migration.hash}, ${migration.folderMillis})`,
+      );
+      console.log(`[migrate] applied ${migration.tag}`);
+    }
+  });
 }
 
 function readJournalTags(): Map<number, string> {
@@ -75,6 +118,11 @@ function readJournalTags(): Map<number, string> {
     entries: { when: number; tag: string }[];
   };
   return new Map(journal.entries.map((entry) => [entry.when, entry.tag]));
+}
+
+function compactStatement(statement: string) {
+  const compacted = statement.replace(/\s+/g, " ").trim();
+  return compacted.length > 500 ? `${compacted.slice(0, 500)}...` : compacted;
 }
 
 function describeDatabaseTarget(env: NodeJS.ProcessEnv = process.env) {
