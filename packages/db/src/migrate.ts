@@ -1,6 +1,7 @@
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { sql } from "drizzle-orm";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { closeDb, getDb } from "./client";
@@ -20,6 +21,7 @@ async function main() {
     await db.execute(sql`select 1`);
 
     console.log(`[migrate] database connection successful`);
+    await logMigrationState(db);
     console.log(`[migrate] running migrations`);
     await migrate(db, { migrationsFolder });
     console.log(`[migrate] migrations completed successfully`);
@@ -34,6 +36,46 @@ main().catch((error: unknown) => {
   logError(error);
   process.exit(1);
 });
+
+/**
+ * Logs the last applied migration and the ones about to run, so a failure in
+ * the deploy log points at a specific file instead of just "exit 1". Drizzle
+ * applies every journal entry newer than the last recorded `created_at`.
+ */
+async function logMigrationState(db: ReturnType<typeof getDb>) {
+  const journal = readMigrationFiles({ migrationsFolder });
+  const tags = readJournalTags();
+  let lastAppliedAt: number | null = null;
+  try {
+    const rows = await db.execute<{ created_at: string | number }>(
+      sql`select created_at from drizzle.__drizzle_migrations order by created_at desc limit 1`,
+    );
+    const last = rows[0];
+    lastAppliedAt = last ? Number(last.created_at) : null;
+  } catch {
+    // Table missing on a brand-new database: everything is pending.
+  }
+
+  const lastTag = journal.find((entry) => entry.folderMillis === lastAppliedAt);
+  console.log(
+    `[migrate] last applied: ${
+      lastAppliedAt === null ? "<none>" : (tags.get(lastTag?.folderMillis ?? -1) ?? `created_at=${lastAppliedAt}`)
+    }`,
+  );
+  const pending = journal.filter((entry) => lastAppliedAt === null || entry.folderMillis > lastAppliedAt);
+  console.log(
+    `[migrate] pending (${pending.length}): ${
+      pending.map((entry) => tags.get(entry.folderMillis) ?? String(entry.folderMillis)).join(", ") || "<none>"
+    }`,
+  );
+}
+
+function readJournalTags(): Map<number, string> {
+  const journal = JSON.parse(readFileSync(join(migrationsFolder, "meta", "_journal.json"), "utf8")) as {
+    entries: { when: number; tag: string }[];
+  };
+  return new Map(journal.entries.map((entry) => [entry.when, entry.tag]));
+}
 
 function describeDatabaseTarget(env: NodeJS.ProcessEnv = process.env) {
   const user = env.POSTGRES_USER?.trim();
