@@ -47,6 +47,25 @@ CREATE TABLE IF NOT EXISTS "tender_match_profiles" (
   "certifications" text[] NOT NULL DEFAULT '{}', "industry" text, "minimum_value" numeric(18,2), "maximum_value" numeric(18,2),
   "updated_by" uuid REFERENCES "users"("id") ON DELETE set null, "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid();
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "organization_id" uuid REFERENCES "organizations"("id") ON DELETE cascade;
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "capability_keywords" text[] DEFAULT '{}';
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "preferred_categories" text[] DEFAULT '{}';
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "preferred_states" text[] DEFAULT '{}';
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "certifications" text[] DEFAULT '{}';
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "industry" text;
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "minimum_value" numeric(18,2);
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "maximum_value" numeric(18,2);
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "updated_by" uuid REFERENCES "users"("id") ON DELETE set null;
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "created_at" timestamptz DEFAULT now();
+ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz DEFAULT now();
+UPDATE "tender_match_profiles" SET
+  "capability_keywords" = COALESCE("capability_keywords", '{}'),
+  "preferred_categories" = COALESCE("preferred_categories", '{}'),
+  "preferred_states" = COALESCE("preferred_states", '{}'),
+  "certifications" = COALESCE("certifications", '{}'),
+  "created_at" = COALESCE("created_at", now()),
+  "updated_at" = COALESCE("updated_at", now());
 CREATE UNIQUE INDEX IF NOT EXISTS "tender_match_profiles_org_uq" ON "tender_match_profiles" ("organization_id");
 
 CREATE TABLE IF NOT EXISTS "tender_saved_searches" (
@@ -55,6 +74,25 @@ CREATE TABLE IF NOT EXISTS "tender_saved_searches" (
   "name" text NOT NULL, "query" jsonb NOT NULL DEFAULT '{}', "cadence" "tender_saved_search_cadence" NOT NULL DEFAULT 'DAILY', "enabled" boolean NOT NULL DEFAULT true,
   "last_evaluated_at" timestamptz, "next_evaluation_at" timestamptz, "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid();
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "organization_id" uuid REFERENCES "organizations"("id") ON DELETE cascade;
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "workspace_id" uuid REFERENCES "workspaces"("id") ON DELETE cascade;
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "user_id" uuid REFERENCES "users"("id") ON DELETE cascade;
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "name" text;
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "query" jsonb DEFAULT '{}';
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "cadence" "tender_saved_search_cadence" DEFAULT 'DAILY';
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "enabled" boolean DEFAULT true;
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "last_evaluated_at" timestamptz;
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "next_evaluation_at" timestamptz;
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "created_at" timestamptz DEFAULT now();
+ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz DEFAULT now();
+UPDATE "tender_saved_searches" SET
+  "name" = COALESCE("name", ''),
+  "query" = COALESCE("query", '{}'),
+  "cadence" = COALESCE("cadence", 'DAILY'::"tender_saved_search_cadence"),
+  "enabled" = COALESCE("enabled", true),
+  "created_at" = COALESCE("created_at", now()),
+  "updated_at" = COALESCE("updated_at", now());
 CREATE INDEX IF NOT EXISTS "tender_saved_searches_due_idx" ON "tender_saved_searches" ("enabled", "next_evaluation_at");
 CREATE INDEX IF NOT EXISTS "tender_saved_searches_owner_idx" ON "tender_saved_searches" ("organization_id", "workspace_id", "user_id");
 
@@ -63,6 +101,14 @@ CREATE TABLE IF NOT EXISTS "tender_saved_search_matches" (
   "notice_version" text NOT NULL, "matched_at" timestamptz NOT NULL DEFAULT now(), "notified_at" timestamptz,
   PRIMARY KEY ("search_id", "notice_id", "notice_version")
 );
+ALTER TABLE "tender_saved_search_matches" ADD COLUMN IF NOT EXISTS "search_id" uuid REFERENCES "tender_saved_searches"("id") ON DELETE cascade;
+ALTER TABLE "tender_saved_search_matches" ADD COLUMN IF NOT EXISTS "notice_id" uuid REFERENCES "tender_notices"("id") ON DELETE cascade;
+ALTER TABLE "tender_saved_search_matches" ADD COLUMN IF NOT EXISTS "notice_version" text;
+ALTER TABLE "tender_saved_search_matches" ADD COLUMN IF NOT EXISTS "matched_at" timestamptz DEFAULT now();
+ALTER TABLE "tender_saved_search_matches" ADD COLUMN IF NOT EXISTS "notified_at" timestamptz;
+UPDATE "tender_saved_search_matches" SET
+  "notice_version" = COALESCE("notice_version", ''),
+  "matched_at" = COALESCE("matched_at", now());
 CREATE INDEX IF NOT EXISTS "tender_saved_search_matches_notice_idx" ON "tender_saved_search_matches" ("notice_id");
 
 CREATE TABLE IF NOT EXISTS "tender_discovery_events" (
@@ -71,6 +117,21 @@ CREATE TABLE IF NOT EXISTS "tender_discovery_events" (
   "notice_id" uuid REFERENCES "tender_notices"("id") ON DELETE set null, "event_type" text NOT NULL, "query_fingerprint" text,
   "filters" jsonb NOT NULL DEFAULT '{}', "result_count" integer, "duration_ms" integer, "created_at" timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "id" uuid DEFAULT gen_random_uuid();
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "organization_id" uuid REFERENCES "organizations"("id") ON DELETE cascade;
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "workspace_id" uuid REFERENCES "workspaces"("id") ON DELETE cascade;
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "user_id" uuid REFERENCES "users"("id") ON DELETE set null;
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "notice_id" uuid REFERENCES "tender_notices"("id") ON DELETE set null;
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "event_type" text;
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "query_fingerprint" text;
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "filters" jsonb DEFAULT '{}';
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "result_count" integer;
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "duration_ms" integer;
+ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "created_at" timestamptz DEFAULT now();
+UPDATE "tender_discovery_events" SET
+  "event_type" = COALESCE("event_type", ''),
+  "filters" = COALESCE("filters", '{}'),
+  "created_at" = COALESCE("created_at", now());
 CREATE INDEX IF NOT EXISTS "tender_discovery_events_workspace_created_idx" ON "tender_discovery_events" ("workspace_id", "created_at");
 CREATE INDEX IF NOT EXISTS "tender_discovery_events_type_created_idx" ON "tender_discovery_events" ("event_type", "created_at");
 
@@ -79,3 +140,16 @@ CREATE TABLE IF NOT EXISTS "tender_discovery_daily_metrics" (
   "day" timestamptz NOT NULL, "event_type" text NOT NULL, "count" integer NOT NULL DEFAULT 0, "zero_result_count" integer NOT NULL DEFAULT 0,
   "average_duration_ms" real, "metadata" jsonb NOT NULL DEFAULT '{}', PRIMARY KEY ("workspace_id", "day", "event_type")
 );
+ALTER TABLE "tender_discovery_daily_metrics" ADD COLUMN IF NOT EXISTS "organization_id" uuid REFERENCES "organizations"("id") ON DELETE cascade;
+ALTER TABLE "tender_discovery_daily_metrics" ADD COLUMN IF NOT EXISTS "workspace_id" uuid REFERENCES "workspaces"("id") ON DELETE cascade;
+ALTER TABLE "tender_discovery_daily_metrics" ADD COLUMN IF NOT EXISTS "day" timestamptz;
+ALTER TABLE "tender_discovery_daily_metrics" ADD COLUMN IF NOT EXISTS "event_type" text;
+ALTER TABLE "tender_discovery_daily_metrics" ADD COLUMN IF NOT EXISTS "count" integer DEFAULT 0;
+ALTER TABLE "tender_discovery_daily_metrics" ADD COLUMN IF NOT EXISTS "zero_result_count" integer DEFAULT 0;
+ALTER TABLE "tender_discovery_daily_metrics" ADD COLUMN IF NOT EXISTS "average_duration_ms" real;
+ALTER TABLE "tender_discovery_daily_metrics" ADD COLUMN IF NOT EXISTS "metadata" jsonb DEFAULT '{}';
+UPDATE "tender_discovery_daily_metrics" SET
+  "event_type" = COALESCE("event_type", ''),
+  "count" = COALESCE("count", 0),
+  "zero_result_count" = COALESCE("zero_result_count", 0),
+  "metadata" = COALESCE("metadata", '{}');

@@ -132,6 +132,10 @@ describe("migration history", () => {
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS "tender_discovery_events"');
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS "import_status"');
     expect(sql).toContain('ADD COLUMN IF NOT EXISTS "rejection_reason"');
+    expect(sql).toContain('ALTER TABLE "tender_match_profiles" ADD COLUMN IF NOT EXISTS "organization_id" uuid');
+    expect(sql).toContain('ALTER TABLE "tender_saved_searches" ADD COLUMN IF NOT EXISTS "workspace_id" uuid');
+    expect(sql).toContain('ALTER TABLE "tender_discovery_events" ADD COLUMN IF NOT EXISTS "event_type" text');
+    expect(sql).toContain('UPDATE "tender_saved_searches" SET');
     expect(sql).toContain("WHEN duplicate_object THEN null");
   });
 
