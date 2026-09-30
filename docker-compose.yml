@@ -31,7 +31,7 @@ x-app-env: &app-env
   STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-rfpos}
   STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-rfpos_dev_password}
   STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
-  AI_PROVIDER: ${AI_PROVIDER:-mock}
+  AI_PROVIDER: ${AI_PROVIDER:-groq}
   OPENSEARCH_URL: ${OPENSEARCH_URL:-}
 
 x-firebase-build-args: &firebase-build-args
