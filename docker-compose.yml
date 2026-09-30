@@ -99,6 +99,8 @@ services:
       - "127.0.0.1:55432:5432"
     volumes:
       - rfp_os_postgres_data:/var/lib/postgresql/data
+      # Shared with postgres-credentials so it can connect over the local socket.
+      - rfp_os_postgres_socket:/var/run/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -166,6 +168,35 @@ services:
       timeout: 5s
       retries: 10
 
+  # POSTGRES_PASSWORD only applies when the data volume is first initialised.
+  # Re-apply it on every deploy so a rotated password (or a volume created with
+  # an older one) cannot lock the app out with "password authentication failed".
+  # The image trusts local socket connections, so no current password is needed.
+  postgres-credentials:
+    image: pgvector/pgvector:pg16
+    restart: "no"
+    profiles: *app-profiles
+    networks: [internal]
+    environment:
+      <<: *postgres-env
+    volumes:
+      - rfp_os_postgres_socket:/var/run/postgresql
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        sync_password() {
+          psql -v ON_ERROR_STOP=1 -h /var/run/postgresql -U "$$1" -d postgres \
+            -v role="$$POSTGRES_USER" -v pw="$$POSTGRES_PASSWORD" <<'SQL'
+        ALTER ROLE :"role" WITH LOGIN PASSWORD :'pw';
+        SQL
+        }
+        sync_password "$$POSTGRES_USER" || sync_password postgres
+        echo "[postgres-credentials] password for role $$POSTGRES_USER is in sync"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   migrate:
     build:
       context: .
@@ -180,6 +211,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-credentials:
+        condition: service_completed_successfully
 
   seed:
     build:
@@ -280,6 +313,7 @@ services:
       start_period: 20s
 volumes:
   rfp_os_postgres_data:
+  rfp_os_postgres_socket:
   rfp_os_redis_data:
   rfp_os_minio_data:
   rfp_os_opensearch_data:
