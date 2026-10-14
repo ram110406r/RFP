@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="620" viewBox="0 0 1600 620" role="img" aria-labelledby="title desc">
+  <title id="title">How a tender moves through TENDYY</title>
+  <desc id="desc">Five stages: find or create a tender, add source material, extract and verify requirements, draft answers with evidence, then review, validate, and deliver.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1 1L11 6L1 11" fill="none" stroke="#8293ad" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#183253" flood-opacity=".08"/>
+    </filter>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .title { fill: #142b49; font-size: 28px; font-weight: 700; }
+      .subtitle { fill: #60718a; font-size: 16px; }
+      .step-title { fill: #182e4b; font-size: 19px; font-weight: 700; }
+      .body { fill: #52657e; font-size: 15px; }
+      .note { fill: #344962; font-size: 15px; font-weight: 600; }
+    </style>
+  </defs>
+  <rect width="1600" height="620" rx="24" fill="#f5f8fc"/>
+  <text x="64" y="64" class="title">From opportunity to submission</text>
+  <text x="64" y="94" class="subtitle">A guided, evidence-backed workflow. People verify extracted requirements, review drafts, and control delivery.</text>
+
+  <g fill="none" stroke="#8293ad" stroke-width="2" marker-end="url(#arrow)">
+    <path d="M337 303H365"/>
+    <path d="M645 303H673"/>
+    <path d="M953 303H981"/>
+    <path d="M1261 303H1289"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="64" y="145" width="273" height="320" rx="18" fill="#fff" stroke="#dce5f0"/>
+    <rect x="372" y="145" width="273" height="320" rx="18" fill="#fff" stroke="#dce5f0"/>
+    <rect x="680" y="145" width="273" height="320" rx="18" fill="#fff" stroke="#dce5f0"/>
+    <rect x="988" y="145" width="273" height="320" rx="18" fill="#fff" stroke="#dce5f0"/>
+    <rect x="1296" y="145" width="240" height="320" rx="18" fill="#fff" stroke="#dce5f0"/>
+  </g>
+
+  <g>
+    <circle cx="96" cy="184" r="18" fill="#dceeff"/><text x="96" y="190" text-anchor="middle" fill="#1764a0" font-size="16" font-weight="700">1</text>
+    <text x="88" y="237" class="step-title">Find or create</text>
+    <text x="88" y="274" class="body"><tspan x="88" dy="0">Discover notices from</tspan><tspan x="88" dy="24">configured feeds, or create</tspan><tspan x="88" dy="24">a tender and start from</tspan><tspan x="88" dy="24">documents you already have.</tspan></text>
+    <rect x="88" y="403" width="215" height="34" rx="17" fill="#edf5ff"/>
+    <text x="195" y="425" text-anchor="middle" fill="#315d8c" font-size="13" font-weight="600">Feeds are configured separately</text>
+  </g>
+
+  <g>
+    <circle cx="404" cy="184" r="18" fill="#e6f5ef"/><text x="404" y="190" text-anchor="middle" fill="#147451" font-size="16" font-weight="700">2</text>
+    <text x="396" y="237" class="step-title">Add source material</text>
+    <text x="396" y="274" class="body"><tspan x="396" dy="0">Upload tender files and</tspan><tspan x="396" dy="24">maintain reusable company</tspan><tspan x="396" dy="24">knowledge. Files are stored</tspan><tspan x="396" dy="24">outside the application DB.</tspan></text>
+    <rect x="396" y="403" width="215" height="34" rx="17" fill="#edf8f3"/>
+    <text x="503" y="425" text-anchor="middle" fill="#28684f" font-size="13" font-weight="600">Documents + knowledge library</text>
+  </g>
+
+  <g>
+    <circle cx="712" cy="184" r="18" fill="#fff2df"/><text x="712" y="190" text-anchor="middle" fill="#9b5d0a" font-size="16" font-weight="700">3</text>
+    <text x="704" y="237" class="step-title">Extract and verify</text>
+    <text x="704" y="274" class="body"><tspan x="704" dy="0">Background workers parse</tspan><tspan x="704" dy="24">supported files and propose</tspan><tspan x="704" dy="24">structured requirements.</tspan><tspan x="704" dy="24">People review the results.</tspan></text>
+    <rect x="704" y="403" width="215" height="34" rx="17" fill="#fff6e8"/>
+    <text x="811" y="425" text-anchor="middle" fill="#80581c" font-size="13" font-weight="600">Async jobs via Redis + BullMQ</text>
+  </g>
+
+  <g>
+    <circle cx="1020" cy="184" r="18" fill="#f0eaff"/><text x="1020" y="190" text-anchor="middle" fill="#6744a4" font-size="16" font-weight="700">4</text>
+    <text x="1012" y="237" class="step-title">Draft with evidence</text>
+    <text x="1012" y="274" class="body"><tspan x="1012" dy="0">Find relevant evidence in</tspan><tspan x="1012" dy="24">tender files and active</tspan><tspan x="1012" dy="24">knowledge; use AI to assist</tspan><tspan x="1012" dy="24">with a traceable answer draft.</tspan></text>
+    <rect x="1012" y="403" width="215" height="34" rx="17" fill="#f4efff"/>
+    <text x="1119" y="425" text-anchor="middle" fill="#5d4787" font-size="13" font-weight="600">No evidence? Drafting is blocked</text>
+  </g>
+
+  <g>
+    <circle cx="1328" cy="184" r="18" fill="#e6f5ef"/><text x="1328" y="190" text-anchor="middle" fill="#147451" font-size="16" font-weight="700">5</text>
+    <text x="1320" y="237" class="step-title">Review &amp; deliver</text>
+    <text x="1320" y="274" class="body"><tspan x="1320" dy="0">Edit answers, attach</tspan><tspan x="1320" dy="24">evidence, complete review</tspan><tspan x="1320" dy="24">and validation, then export</tspan><tspan x="1320" dy="24">or record submission.</tspan></text>
+    <rect x="1320" y="403" width="190" height="34" rx="17" fill="#edf8f3"/>
+    <text x="1415" y="425" text-anchor="middle" fill="#28684f" font-size="13" font-weight="600">User-controlled delivery</text>
+  </g>
+
+  <rect x="64" y="502" width="1472" height="66" rx="14" fill="#eaf0f7"/>
+  <text x="800" y="530" text-anchor="middle" class="note">AI assists with drafting; it does not approve or submit a response for you.</text>
+  <text x="800" y="552" text-anchor="middle" class="subtitle">Extracted requirements are candidates. Review, validation, and delivery stay in the user's workflow.</text>
+</svg>

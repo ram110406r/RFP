@@ -20,6 +20,7 @@ build
 *.tsbuildinfo
 .tmp/
 cookiejar.txt
+/bun-test-output.txt
 
 # Next.js
 .next/
