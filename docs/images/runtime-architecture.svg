@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900" role="img" aria-labelledby="title desc">
+  <title id="title">TENDYY runtime architecture</title>
+  <desc id="desc">The browser uses the Next.js web app, which proxies requests to the NestJS API and configured object storage. The API uses PostgreSQL and enqueues background jobs in Redis. BullMQ workers process documents and knowledge, reading and writing object storage and PostgreSQL. The API and workers can use configured AI services.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1 1L11 6L1 11" fill="none" stroke="#7588a2" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1 1L11 6L1 11" fill="none" stroke="#8162b6" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+    </marker>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .title { fill: #142b49; font-size: 28px; font-weight: 700; }
+      .subtitle { fill: #60718a; font-size: 16px; }
+      .heading { fill: #182e4b; font-size: 19px; font-weight: 700; }
+      .body { fill: #52657e; font-size: 15px; }
+      .label { fill: #40546e; font-size: 13px; font-weight: 600; }
+    </style>
+  </defs>
+  <rect width="1500" height="900" rx="24" fill="#f5f8fc"/>
+  <text x="64" y="64" class="title">How the services work together</text>
+  <text x="64" y="94" class="subtitle">Application services stay the same across environments; configuration selects the backing infrastructure.</text>
+
+  <g fill="none" stroke="#7588a2" stroke-width="2" marker-end="url(#arrow)">
+    <path d="M340 220H440"/>
+    <path d="M730 220H830"/>
+    <path d="M1120 220H1190"/>
+    <path d="M970 290V430"/>
+    <path d="M900 290C820 340 660 365 575 430"/>
+    <path d="M440 500H340"/>
+    <path d="M205 560C205 620 1200 620 1200 560"/>
+    <path d="M585 290C700 330 980 330 1250 430"/>
+  </g>
+  <g fill="none" stroke="#8162b6" stroke-width="2" stroke-dasharray="7 7" marker-end="url(#arrow-purple)">
+    <path d="M200 430C200 340 1260 350 1260 290"/>
+  </g>
+
+  <g>
+    <rect x="64" y="150" width="276" height="140" rx="18" fill="#fff" stroke="#dce5f0" stroke-width="2"/>
+    <text x="90" y="198" class="heading">Browser</text>
+    <text x="90" y="230" class="body">Web interface and</text>
+    <text x="90" y="255" class="body">session cookies</text>
+
+    <rect x="440" y="150" width="290" height="140" rx="18" fill="#eaf3ff" stroke="#c5d9f2" stroke-width="2"/>
+    <text x="466" y="198" class="heading">Web app</text>
+    <text x="466" y="230" class="body">Next.js App Router</text>
+    <text x="466" y="255" class="body">Proxies API + storage routes</text>
+
+    <rect x="830" y="150" width="290" height="140" rx="18" fill="#eaf7f2" stroke="#c7e7d9" stroke-width="2"/>
+    <text x="856" y="198" class="heading">Application API</text>
+    <text x="856" y="230" class="body">NestJS + Better Auth</text>
+    <text x="856" y="255" class="body">Tenant-aware REST endpoints</text>
+
+    <rect x="1190" y="150" width="246" height="140" rx="18" fill="#f4efff" stroke="#ded2f2" stroke-width="2"/>
+    <text x="1214" y="198" class="heading">AI services</text>
+    <text x="1214" y="230" class="body">Groq for answer drafts</text>
+    <text x="1214" y="255" class="body">Optional Voyage embeddings</text>
+
+    <rect x="64" y="430" width="276" height="130" rx="18" fill="#fff5e8" stroke="#f0dfc4" stroke-width="2"/>
+    <text x="90" y="474" class="heading">Worker</text>
+    <text x="90" y="503" class="body">BullMQ consumers</text>
+    <text x="90" y="528" class="body">Document + knowledge jobs</text>
+
+    <rect x="440" y="430" width="270" height="130" rx="18" fill="#fff5e8" stroke="#f0dfc4" stroke-width="2"/>
+    <text x="464" y="474" class="heading">Redis + BullMQ</text>
+    <text x="464" y="503" class="body">API enqueues jobs;</text>
+    <text x="464" y="528" class="body">the worker consumes them</text>
+
+    <rect x="830" y="430" width="290" height="130" rx="18" fill="#fff" stroke="#dce5f0" stroke-width="2"/>
+    <text x="854" y="474" class="heading">PostgreSQL</text>
+    <text x="854" y="503" class="body">Drizzle + pgvector</text>
+    <text x="854" y="528" class="body">Tenant, auth, workflow data</text>
+
+    <rect x="1190" y="430" width="246" height="130" rx="18" fill="#fff" stroke="#dce5f0" stroke-width="2"/>
+    <text x="1214" y="474" class="heading">Object storage</text>
+    <text x="1214" y="503" class="body">MinIO locally</text>
+    <text x="1214" y="528" class="body">S3-compatible in deployment</text>
+  </g>
+
+  <g>
+    <rect x="64" y="710" width="1372" height="112" rx="18" fill="#eaf0f7"/>
+    <text x="90" y="754" class="heading">Local infrastructure</text>
+    <text x="90" y="784" class="body">Docker Compose runs PostgreSQL, Redis, MinIO, OpenSearch, and Mailpit. Bun runs the Next.js app, API, and worker.</text>
+    <text x="90" y="808" class="body">Mailpit is the local SMTP sink; deployments use configured mail and storage services.</text>
+  </g>
+
+  <g>
+    <rect x="338" y="194" width="102" height="30" rx="15" fill="#edf2f8"/>
+    <text x="389" y="214" text-anchor="middle" class="label">HTTPS</text>
+    <rect x="730" y="194" width="100" height="30" rx="15" fill="#edf2f8"/>
+    <text x="780" y="214" text-anchor="middle" class="label">API routes</text>
+    <rect x="982" y="344" width="120" height="30" rx="15" fill="#edf2f8"/>
+    <text x="1042" y="364" text-anchor="middle" class="label">SQL / Drizzle</text>
+    <rect x="664" y="354" width="92" height="30" rx="15" fill="#edf2f8"/>
+    <text x="710" y="374" text-anchor="middle" class="label">enqueue</text>
+    <rect x="346" y="484" width="84" height="30" rx="15" fill="#edf2f8"/>
+    <text x="388" y="504" text-anchor="middle" class="label">consume</text>
+    <rect x="674" y="586" width="150" height="30" rx="15" fill="#edf2f8"/>
+    <text x="749" y="606" text-anchor="middle" class="label">job state/results</text>
+    <rect x="900" y="344" width="150" height="30" rx="15" fill="#edf2f8"/>
+    <text x="975" y="364" text-anchor="middle" class="label">signed file access</text>
+    <rect x="1084" y="344" width="96" height="30" rx="15" fill="#f3edfc"/>
+    <text x="1132" y="364" text-anchor="middle" class="label">embeddings</text>
+  </g>
+</svg>
